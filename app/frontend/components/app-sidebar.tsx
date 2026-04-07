@@ -6,10 +6,12 @@ import {
   Plug,
   ShieldCheck,
   ScrollText,
+  Settings,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
 import { NavMain } from "@/components/nav-main"
+import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -27,6 +29,7 @@ import {
   integrationsPath,
   pendingApprovalsPath,
   auditLogsPath,
+  settingsPath,
 } from "@/routes"
 import type { NavItem } from "@/types"
 
@@ -35,8 +38,12 @@ const mainNavItems: NavItem[] = [
   { title: "Agents", href: agentsPath(), icon: Bot },
   { title: "Tasks", href: tasksPath(), icon: CheckSquare },
   { title: "Integrations", href: integrationsPath(), icon: Plug },
+]
+
+const secondaryNavItems: NavItem[] = [
   { title: "Approvals", href: pendingApprovalsPath(), icon: ShieldCheck },
   { title: "Audit Log", href: auditLogsPath(), icon: ScrollText },
+  { title: "Settings", href: settingsPath(), icon: Settings },
 ]
 
 export function AppSidebar() {
@@ -56,6 +63,7 @@ export function AppSidebar() {
 
       <SidebarContent>
         <NavMain items={mainNavItems} />
+        <NavSecondary items={secondaryNavItems} className="mt-auto" />
       </SidebarContent>
 
       <SidebarFooter>
