@@ -32,8 +32,10 @@ interface Props {
 
 export default function SettingsShow({ organization, members }: Props) {
   const { data, setData, patch, processing } = useForm({
-    name: organization.name,
-    email_domain: organization.email_domain || "",
+    organization: {
+      name: organization.name,
+      email_domain: organization.email_domain || "",
+    },
   })
 
   function handleSubmit(e: React.FormEvent) {
@@ -56,7 +58,7 @@ export default function SettingsShow({ organization, members }: Props) {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" value={data.name} onChange={(e) => setData("name", e.target.value)} required />
+                <Input id="name" value={data.organization.name} onChange={(e) => setData("organization", { ...data.organization, name: e.target.value })} required />
               </div>
               <div className="space-y-2">
                 <Label>Slug</Label>
@@ -85,8 +87,8 @@ export default function SettingsShow({ organization, members }: Props) {
                   <Input
                     id="email_domain"
                     placeholder="team.company.com"
-                    value={data.email_domain}
-                    onChange={(e) => setData("email_domain", e.target.value)}
+                    value={data.organization.email_domain}
+                    onChange={(e) => setData("organization", { ...data.organization, email_domain: e.target.value })}
                     className="flex-1"
                   />
                   {organization.email_domain_verified ? (
@@ -96,7 +98,7 @@ export default function SettingsShow({ organization, members }: Props) {
                   ) : null}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Agents will send emails from @{data.email_domain || "your-domain.com"}
+                  Agents will send emails from @{data.organization.email_domain || "your-domain.com"}
                 </p>
               </div>
               <div className="flex justify-end">
