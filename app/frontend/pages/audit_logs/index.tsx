@@ -2,6 +2,8 @@ import { Head, router } from "@inertiajs/react"
 import { ScrollText } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
+import { PageHeader } from "@/components/page-header"
+import { EmptyState } from "@/components/empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -31,29 +33,30 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
     <AppLayout>
       <Head title="Audit Log" />
 
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Audit Log</h1>
-          <p className="text-muted-foreground">Every action your agents take</p>
-        </div>
-        <Select onValueChange={filterByAgent} defaultValue="all">
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Filter by agent" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All agents</SelectItem>
-            {agents.map((a) => (
-              <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Audit Log"
+        description="Every action your agents take"
+        action={
+          <Select onValueChange={filterByAgent} defaultValue="all">
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter by agent" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All agents</SelectItem>
+              {agents.map((a) => (
+                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
 
       {logs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <ScrollText className="size-12 mb-4 opacity-30" />
-          <p>No activity yet</p>
-        </div>
+        <EmptyState
+          icon={ScrollText}
+          title="No activity yet"
+          description="Agent actions, tool calls, and decisions will be logged here"
+        />
       ) : (
         <div className="rounded-lg border">
           <Table>

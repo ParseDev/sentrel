@@ -1,7 +1,7 @@
 import { Head, useForm } from "@inertiajs/react"
-import { Building2, Users, Globe } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
+import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -44,63 +44,50 @@ export default function SettingsShow({ organization, members }: Props) {
   return (
     <AppLayout>
       <Head title="Settings" />
-
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Manage your organization</p>
-      </div>
+      <PageHeader title="Settings" description="Manage your organization" />
 
       <div className="max-w-2xl space-y-6">
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Building2 className="size-5 text-muted-foreground" />
-              <CardTitle>Organization</CardTitle>
-            </div>
+            <CardTitle>Organization</CardTitle>
+            <CardDescription>General settings for your workspace</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  value={data.name}
-                  onChange={(e) => setData("name", e.target.value)}
-                  required
-                />
+                <Input id="name" value={data.name} onChange={(e) => setData("name", e.target.value)} required />
               </div>
               <div className="space-y-2">
                 <Label>Slug</Label>
-                <Input value={organization.slug} disabled />
+                <Input value={organization.slug} disabled className="text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Used in URLs — cannot be changed</p>
               </div>
-              <Button type="submit" disabled={processing}>
-                {processing ? "Saving..." : "Save"}
-              </Button>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={processing}>
+                  {processing ? "Saving..." : "Save"}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Globe className="size-5 text-muted-foreground" />
-              <div>
-                <CardTitle>Email Domain</CardTitle>
-                <CardDescription>Custom domain for agent email addresses</CardDescription>
-              </div>
-            </div>
+            <CardTitle>Email Domain</CardTitle>
+            <CardDescription>Custom domain for agent email addresses</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email_domain">Domain</Label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Input
                     id="email_domain"
                     placeholder="team.company.com"
                     value={data.email_domain}
                     onChange={(e) => setData("email_domain", e.target.value)}
+                    className="flex-1"
                   />
                   {organization.email_domain_verified ? (
                     <Badge className="bg-green-600 shrink-0">Verified</Badge>
@@ -112,9 +99,11 @@ export default function SettingsShow({ organization, members }: Props) {
                   Agents will send emails from @{data.email_domain || "your-domain.com"}
                 </p>
               </div>
-              <Button type="submit" disabled={processing}>
-                {processing ? "Saving..." : "Save Domain"}
-              </Button>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={processing}>
+                  {processing ? "Saving..." : "Save Domain"}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -124,12 +113,12 @@ export default function SettingsShow({ organization, members }: Props) {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="size-5 text-muted-foreground" />
+              <div>
                 <CardTitle>Team Members</CardTitle>
+                <CardDescription>People who can manage agents in this organization</CardDescription>
               </div>
               <Button variant="outline" size="sm" disabled>
-                Invite (coming soon)
+                Invite
               </Button>
             </div>
           </CardHeader>

@@ -1,10 +1,13 @@
 import { Head, Link } from "@inertiajs/react"
-import { Bot, CheckSquare, ShieldCheck, Activity } from "lucide-react"
+import { Bot, CheckSquare, ShieldCheck, Activity, Plus } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
+import { PageHeader } from "@/components/page-header"
+import { EmptyState } from "@/components/empty-state"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { agentPath } from "@/routes"
+import { agentPath, newAgentPath } from "@/routes"
 import type { Agent, DashboardStats } from "@/types"
 
 interface Props {
@@ -25,10 +28,7 @@ export default function DashboardIndex({ agents, stats }: Props) {
     <AppLayout>
       <Head title="Dashboard" />
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Your AI team at a glance</p>
-      </div>
+      <PageHeader title="Dashboard" description="Your AI team at a glance" />
 
       <div className="grid gap-4 md:grid-cols-4 mb-8">
         <Card>
@@ -72,18 +72,19 @@ export default function DashboardIndex({ agents, stats }: Props) {
       <div>
         <h2 className="text-lg font-semibold mb-4">Agents</h2>
         {agents.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Bot className="size-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground mb-4">No agents yet</p>
-              <Link
-                href={`/agents/new`}
-                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Create your first agent
-              </Link>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={Bot}
+            title="No agents yet"
+            description="Create your first AI employee to get started"
+            action={
+              <Button asChild>
+                <Link href={newAgentPath()}>
+                  <Plus className="size-4 mr-2" />
+                  Create Agent
+                </Link>
+              </Button>
+            }
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {agents.map((agent) => (

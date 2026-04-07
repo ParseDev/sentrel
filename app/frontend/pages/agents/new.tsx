@@ -129,7 +129,7 @@ export default function AgentNew() {
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={data.role} onValueChange={(v) => setData("role", v)}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -160,14 +160,17 @@ export default function AgentNew() {
                   value={data.ai_config.provider}
                   onValueChange={(v) => {
                     const models = MODELS[v] || []
-                    setData("ai_config", {
-                      ...data.ai_config,
-                      provider: v,
-                      model_id: models[0]?.value || "",
+                    setData({
+                      ...data,
+                      ai_config: {
+                        ...data.ai_config,
+                        provider: v,
+                        model_id: models[0]?.value || "",
+                      },
                     })
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -180,10 +183,14 @@ export default function AgentNew() {
               <div className="space-y-2">
                 <Label>Model</Label>
                 <Select
+                  key={data.ai_config.provider}
                   value={data.ai_config.model_id}
-                  onValueChange={(v) => setData("ai_config", { ...data.ai_config, model_id: v })}
+                  onValueChange={(v) => setData({
+                    ...data,
+                    ai_config: { ...data.ai_config, model_id: v },
+                  })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

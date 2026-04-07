@@ -7,12 +7,14 @@ import {
   ShieldCheck,
   ScrollText,
   Settings,
+  Plus,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
+import { Button } from "@/components/ui/button"
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +23,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarGroup,
+  SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import {
   authenticatedRootPath,
@@ -30,6 +34,7 @@ import {
   pendingApprovalsPath,
   auditLogsPath,
   settingsPath,
+  newAgentPath,
 } from "@/routes"
 import type { NavItem } from "@/types"
 
@@ -59,6 +64,17 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+
+        <SidebarGroup className="p-0 pt-2">
+          <SidebarGroupContent>
+            <Button asChild variant="secondary" className="w-full justify-start gap-2 h-9">
+              <Link href={newAgentPath()}>
+                <Plus className="size-4" />
+                <span>New Agent</span>
+              </Link>
+            </Button>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarHeader>
 
       <SidebarContent>

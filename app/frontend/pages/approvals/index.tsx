@@ -2,6 +2,8 @@ import { Head, router } from "@inertiajs/react"
 import { ShieldCheck, Check, X } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
+import { PageHeader } from "@/components/page-header"
+import { EmptyState } from "@/components/empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,10 +32,7 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
     <AppLayout>
       <Head title="Approvals" />
 
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight">Approvals</h1>
-        <p className="text-muted-foreground">Review actions your agents want to take</p>
-      </div>
+      <PageHeader title="Approvals" description="Review actions your agents want to take" />
 
       {pending.length > 0 && (
         <div className="mb-8">
@@ -105,13 +104,11 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
       )}
 
       {approvals.length === 0 && (
-        <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
-            <ShieldCheck className="size-12 mx-auto mb-4 opacity-30" />
-            <p>No approvals yet</p>
-            <p className="text-xs mt-1">When agents need permission to act, requests appear here</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={ShieldCheck}
+          title="No approvals yet"
+          description="When agents need permission to act, approval requests will appear here"
+        />
       )}
     </AppLayout>
   )
