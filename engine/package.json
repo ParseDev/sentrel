@@ -1,0 +1,26 @@
+{
+  "name": "alchemy_engine",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/main.ts",
+    "start": "bun run src/main.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/pg": "^8.20.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.94",
+    "bullmq": "^5.73.0",
+    "dotenv": "^17.4.1",
+    "ioredis": "^5.10.1",
+    "pg": "^8.20.0",
+    "winston": "^3.19.0",
+    "zod": "^4.3.6"
+  }
+}
