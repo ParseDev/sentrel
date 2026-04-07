@@ -79,7 +79,7 @@ export default function SessionNew() {
         </div>
 
         {/* Right: Form */}
-        <div className="flex w-full lg:w-1/2 items-center justify-center p-8">
+        <div className="flex w-full lg:w-1/2 items-center justify-center p-8 bg-white">
           <div className="w-full max-w-sm">
             <div className="lg:hidden mb-8 text-center">
               <span className="text-2xl font-extrabold tracking-tight">ALCHEMY<span className="text-[#D4A843]">.</span></span>
