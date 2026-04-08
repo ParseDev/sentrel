@@ -19,6 +19,9 @@ gem "pundit"
 gem "sidekiq"
 gem "redis"
 
+# Channels
+gem "twilio-ruby"
+
 # AWS
 gem "aws-sdk-ec2"
 gem "aws-sdk-ses"

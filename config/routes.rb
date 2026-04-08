@@ -27,7 +27,13 @@ Rails.application.routes.draw do
 
     resources :agents do
       resources :conversations, only: [:index, :show]
-      resources :channel_configs, only: [:index, :create, :update, :destroy]
+      resources :channel_configs, only: [:index, :create, :update, :destroy] do
+        collection do
+          get :twilio_numbers
+          get :available_numbers
+          post :buy_number
+        end
+      end
       resources :scheduled_tasks, only: [:index, :create, :update, :destroy]
       get "chat/stream", to: "chat_streams#show"
       get "chat/poll", to: "chat_polls#show"

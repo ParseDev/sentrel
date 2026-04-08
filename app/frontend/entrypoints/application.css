@@ -1,99 +1,16 @@
-@import 'tailwindcss';
-
-@custom-variant dark (&:is(.dark *));
-
-@plugin '@tailwindcss/typography';
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-
-  --color-gold: #D4A843;
-  --color-gold-hover: #C49A35;
-  --color-gold-light: #F0D98A;
-  --color-gold-surface: rgba(212, 168, 67, 0.08);
-  --color-gold-border: rgba(212, 168, 67, 0.25);
-  --color-ink: #0C0A09;
-  --color-ink-soft: #1C1917;
-}
-
-:root {
-  --radius: 0.625rem;
-  --background: #FAFAF9;
-  --foreground: #0C0A09;
-  --card: #ffffff;
-  --card-foreground: #0C0A09;
-  --popover: #ffffff;
-  --popover-foreground: #0C0A09;
-  --primary: #0C0A09;
-  --primary-foreground: #FAFAF9;
-  --secondary: #F5F5F4;
-  --secondary-foreground: #0C0A09;
-  --muted: #F5F5F4;
-  --muted-foreground: #78716C;
-  --accent: #D4A843;
-  --accent-foreground: #0C0A09;
-  --destructive: #DC2626;
-  --destructive-foreground: #FAFAF9;
-  --border: #D6D3D1;
-  --input: #D6D3D1;
-  --ring: #D4A843;
-  --chart-1: #D4A843; --chart-2: #0C0A09; --chart-3: #DC2626; --chart-4: #2563EB; --chart-5: #16A34A;
-  --sidebar: #0C0A09;
-  --sidebar-foreground: #D6D3D1;
-  --sidebar-primary: #D4A843;
-  --sidebar-primary-foreground: #0C0A09;
-  --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #FAFAF9;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #D4A843;
-}
+@import "./global.css";
 
 /* ── Base ── */
 @layer base {
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overflow-x: hidden; }
   * { @apply border-border outline-ring/50; }
   body {
     @apply bg-background text-foreground antialiased;
     font-weight: 450;
     letter-spacing: -0.011em;
+    overflow-x: hidden;
   }
-  ::selection { background: var(--color-gold); color: #0C0A09; }
+  ::selection { background: var(--color-gold); color: var(--color-ink); }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #D6D3D1; border-radius: 3px; }
@@ -105,22 +22,27 @@
   }
 }
 
-/* ══════════════════════════════════
-   ALCHEMY IDENTITY
-   ══════════════════════════════════ */
+/* ==========================================================
+   Alchemy Component Identity
+   Override shadcn defaults so nothing looks stock.
+   Gold = warmth & action, Ink = authority & depth.
+   ========================================================== */
 @layer components {
 
   /* ── Inputs (scoped — exclude assistant-ui) ── */
   [data-slot="input"],
   textarea:not(.aui-composer-input) {
-    border-width: 2px !important;
-    border-color: var(--border) !important;
+    border-width: 1.5px !important;
+    border-color: var(--color-stone-lighter) !important;
     font-weight: 450;
     border-radius: var(--radius) !important;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   [data-slot="input"]::placeholder,
-  textarea:not(.aui-composer-input)::placeholder { color: #A8A29E; font-weight: 400; }
+  textarea:not(.aui-composer-input)::placeholder {
+    color: var(--color-stone-light);
+    font-weight: 400;
+  }
   [data-slot="input"]:focus,
   textarea:not(.aui-composer-input):focus {
     border-color: var(--color-gold) !important;
@@ -133,13 +55,14 @@
   [data-slot="label"] {
     font-weight: 600;
     font-size: 0.8125rem;
+    color: var(--color-ink);
   }
 
   /* ── Buttons ── */
   button[data-slot="button"] {
     font-weight: 600;
     border-radius: var(--radius);
-    border-width: 2px;
+    border-width: 1.5px;
     border-color: transparent;
     transition: all 0.15s ease;
   }
@@ -157,7 +80,7 @@
   button[data-slot="button"][data-variant="outline"] {
     background: transparent;
     color: var(--foreground);
-    border-color: var(--border);
+    border-color: var(--color-stone-lighter);
   }
   button[data-slot="button"][data-variant="outline"]:hover {
     border-color: var(--color-gold);
@@ -180,21 +103,26 @@
     background: var(--color-gold-hover);
     border-color: var(--color-gold-hover);
   }
-  button[data-slot="button"][data-variant="destructive"] { border-color: var(--destructive); }
+  button[data-slot="button"][data-variant="destructive"] {
+    border-color: var(--destructive);
+  }
 
   /* ── Cards ── */
   [data-slot="card"] {
-    border-width: 2px;
-    border-color: var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: none;
-    transition: border-color 0.2s, transform 0.2s;
+    border-width: 1px;
+    border-color: var(--color-stone-lighter);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
   [data-slot="card"]:hover {
     border-color: var(--color-gold-border);
+    box-shadow: 0 2px 8px rgba(212, 168, 67, 0.06);
   }
-  [data-slot="card-title"] { font-weight: 700; letter-spacing: -0.01em; }
-  [data-slot="card-description"] { font-weight: 450; color: var(--muted-foreground); }
+  [data-slot="card-header"] { padding: 0.875rem 1rem 0.375rem; }
+  [data-slot="card-content"] { padding: 0.375rem 1rem 0.875rem; }
+  [data-slot="card-title"] { font-weight: 700; font-size: 0.875rem; letter-spacing: -0.01em; }
+  [data-slot="card-description"] { font-weight: 400; color: var(--muted-foreground); font-size: 0.8125rem; }
 
   /* ── Badges ── */
   [data-slot="badge"] {
@@ -202,13 +130,13 @@
     font-size: 0.6875rem;
     letter-spacing: 0.02em;
     border-radius: 9999px;
-    border-width: 1.5px;
+    border-width: 1px;
   }
 
   /* ── Select ── */
   [data-slot="select-trigger"] {
-    border-width: 2px !important;
-    border-color: var(--border) !important;
+    border-width: 1.5px !important;
+    border-color: var(--color-stone-lighter) !important;
     font-weight: 500;
     border-radius: var(--radius) !important;
   }
@@ -217,55 +145,155 @@
     box-shadow: 0 0 0 3px var(--color-gold-border) !important;
   }
   [data-slot="select-content"] {
-    border-width: 2px;
-    border-color: var(--border);
+    border-width: 1px;
+    border-color: var(--color-stone-lighter);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   }
 
   /* ── Dropdowns ── */
   [data-slot="dropdown-menu-content"] {
-    border-width: 2px;
-    border-color: var(--border);
+    border-width: 1px;
+    border-color: var(--color-stone-lighter);
     border-radius: var(--radius-lg);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   }
 
   /* ── Dialog ── */
   [data-slot="dialog-content"] {
-    border-width: 2px;
-    border-color: var(--border);
+    border-width: 1px;
+    border-color: var(--color-stone-lighter);
     border-radius: var(--radius-xl);
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
   }
 
   /* ── Tabs ── */
-  [data-slot="tabs-trigger"] { font-weight: 600; }
+  [data-slot="tabs-list"] {
+    background: transparent;
+    border-bottom: 1px solid var(--color-stone-lighter);
+    border-radius: 0;
+    padding: 0;
+    gap: 0;
+  }
+  [data-slot="tabs-trigger"] {
+    font-weight: 500;
+    color: var(--color-stone);
+    border-radius: 0;
+    padding: 0.5rem 1rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  [data-slot="tabs-trigger"]:hover {
+    color: var(--foreground);
+  }
   [data-slot="tabs-trigger"][data-state="active"] {
+    font-weight: 600;
+    color: var(--foreground);
     border-bottom: 2px solid var(--color-gold);
+    background: transparent;
   }
 
   /* ── Table ── */
   [data-slot="table-header"] th {
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.04em;
-    color: var(--muted-foreground);
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+    color: var(--color-stone);
   }
 
   /* ── Checkbox ── */
-  [data-slot="checkbox"] { border-width: 2px; border-color: var(--input); border-radius: 4px; }
-  [data-slot="checkbox"][data-state="checked"] { background: var(--color-gold); border-color: var(--color-gold); }
+  [data-slot="checkbox"] {
+    border-width: 1.5px;
+    border-color: var(--color-stone-lighter);
+    border-radius: 4px;
+  }
+  [data-slot="checkbox"][data-state="checked"] {
+    background: var(--color-gold);
+    border-color: var(--color-gold);
+  }
 
   /* ── Separator ── */
-  [data-slot="separator-root"] { background: var(--border); }
+  [data-slot="separator-root"] { background: var(--color-stone-lighter); }
 
+  /* ── Alert ── */
+  [data-slot="alert"] {
+    border-width: 1px;
+    border-radius: var(--radius);
+    font-weight: 500;
+  }
+
+  /* ── Skeleton ── */
+  [data-slot="skeleton"] {
+    border-radius: var(--radius);
+    background: var(--color-stone-lightest);
+  }
 }
 
-/* ═══ Assistant UI overrides ═══ */
+/* ==========================================================
+   Sidebar — Dark. Warm. Authoritative.
+   ========================================================== */
 
-/* Kill ALL borders/rings/shadows on composer and its children */
+[data-sidebar="sidebar"],
+[data-slot="sidebar-container"] {
+  border-right: none !important;
+  border-left: none !important;
+}
+
+[data-sidebar="separator"] {
+  margin: 0 !important;
+  width: 100% !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-sidebar="header"] { padding: 0.75rem 0.5rem !important; }
+[data-sidebar="footer"] { padding: 0.5rem 0.5rem !important; }
+[data-sidebar="group"] { padding: 0.5rem 0.5rem !important; }
+
+[data-sidebar] button[data-slot="button"],
+[data-slot="sidebar-trigger"] {
+  border-radius: var(--radius) !important;
+  font-weight: 500 !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+}
+
+[data-sidebar="menu-button"] { font-weight: 500 !important; }
+
+[data-sidebar="menu-button"][data-active="true"] {
+  background: rgba(212, 168, 67, 0.15) !important;
+  color: var(--color-gold) !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius) !important;
+}
+
+[data-sidebar="menu-button"]:not([data-active="true"]):hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-sidebar] [data-slot="dropdown-menu-content"] {
+  background: var(--color-ink);
+  color: #fafafa;
+  border-color: var(--color-ink-muted);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+[data-sidebar] [data-slot="dropdown-menu-item"] { color: #fafafa; }
+[data-sidebar] [data-slot="dropdown-menu-item"]:hover,
+[data-sidebar] [data-slot="dropdown-menu-item"]:focus {
+  background: var(--color-ink-soft) !important;
+  color: #fafafa !important;
+}
+[data-sidebar] [data-slot="dropdown-menu-separator"] { background: var(--color-ink-muted); }
+[data-sidebar] [data-slot="dropdown-menu-label"] { color: var(--color-stone-light); }
+
+[data-slot="sidebar-inset"] { background: var(--background); }
+
+/* ==========================================================
+   assistant-ui — Alchemy Chat Identity
+   ========================================================== */
+
 .aui-composer-root,
 .aui-composer-root *,
 .aui-composer-root:focus-within,
@@ -284,10 +312,13 @@
 }
 
 .aui-composer-root:focus-within {
-  border-color: var(--border) !important;
+  border-color: var(--color-stone-lighter) !important;
 }
 
-/* User message — visible bg + proper width */
+[data-aui-composer-root] button {
+  border-width: 0 !important;
+}
+
 .aui-user-message-content {
   max-width: none !important;
   width: fit-content !important;
@@ -298,9 +329,24 @@
   padding: 0.625rem 1rem !important;
 }
 
-/* Thread max width — wider */
 .aui-thread-root {
   --thread-max-width: 56rem !important;
 }
 
-/* No custom dots CSS needed — using text yield with animation class */
+[data-aui-thread-viewport] {
+  scrollbar-width: thin;
+}
+
+/* ── Animations ── */
+@layer utilities {
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in { animation: fade-in 0.5s ease-out both; }
+  .animate-slide-up { animation: slide-up 0.6s ease-out both; }
+}

@@ -42,8 +42,8 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
           </h2>
           <div className="space-y-3">
             {pending.map((approval) => (
-              <Card key={approval.id} className="border-[#D4A843]/30">
-                <CardContent className="flex items-start justify-between py-4">
+              <Card key={approval.id} className="border-[var(--color-gold-border)]">
+                <CardContent className="flex items-start justify-between py-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium">{approval.agent.name}</span>
@@ -82,8 +82,8 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
           <h2 className="font-semibold mb-3 text-muted-foreground">History</h2>
           <div className="space-y-2">
             {reviewed.map((approval) => (
-              <Card key={approval.id} className="opacity-60">
-                <CardContent className="flex items-center justify-between py-3">
+              <Card key={approval.id} className="opacity-50">
+                <CardContent className="flex items-center justify-between py-2.5">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{approval.agent.name}</span>
                     <Badge variant="secondary" className="font-mono text-xs">{approval.tool_name}</Badge>

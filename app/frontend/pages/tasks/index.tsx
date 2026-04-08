@@ -172,19 +172,20 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask }: {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 mb-3 px-1 shrink-0">
+      <div className="flex items-center gap-2 mb-2 px-0.5 shrink-0">
+        <div className={`size-2 rounded-full ${dot}`} />
         <h3 className="font-semibold text-sm">{label}</h3>
-        <span className="text-xs text-muted-foreground bg-muted rounded px-1.5 py-0.5">
+        <span className="text-xs text-muted-foreground">
           {columnTasks.length}
         </span>
       </div>
 
       <div
         ref={setNodeRef}
-        className={`flex-1 space-y-2 rounded-xl p-3 border overflow-y-auto transition-colors ${
+        className={`flex-1 space-y-2 rounded-lg p-2.5 border overflow-y-auto transition-colors ${
           isOver
             ? "bg-[var(--color-gold-surface)] border-[var(--color-gold-border)] border-dashed"
-            : "bg-[#EDECEB] border-[#D6D3D1]"
+            : "bg-muted/50 border-transparent"
         }`}
       >
         <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>

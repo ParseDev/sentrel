@@ -40,6 +40,8 @@ class WebhooksController < ApplicationController
 
   # POST /webhooks/whatsapp
   def whatsapp
+    return head :forbidden unless valid_twilio_request?
+
     from = params[:From]&.gsub("whatsapp:", "")
     agent = find_agent_by_channel("whatsapp", "phone_number", params[:To]&.gsub("whatsapp:", ""))
     return head :not_found unless agent
@@ -54,6 +56,8 @@ class WebhooksController < ApplicationController
 
   # POST /webhooks/sms
   def sms
+    return head :forbidden unless valid_twilio_request?
+
     agent = find_agent_by_channel("sms", "phone_number", params[:To])
     return head :not_found unless agent
 
@@ -138,6 +142,14 @@ class WebhooksController < ApplicationController
       .where(channel_type: channel_type, enabled: true)
       .find { |cc| block.call(cc.config) }
       &.agent
+  end
+
+  def valid_twilio_request?
+    return true unless ENV["TWILIO_AUTH_TOKEN"].present? # skip in dev if not configured
+
+    validator = Twilio::Security::RequestValidator.new(ENV["TWILIO_AUTH_TOKEN"])
+    url = request.original_url
+    validator.validate(url, request.POST, request.headers["X-Twilio-Signature"] || "")
   end
 
   def enqueue(agent, channel, payload)

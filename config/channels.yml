@@ -19,24 +19,26 @@ email:
 whatsapp:
   label: "WhatsApp"
   icon: "phone"
-  description: "Own WhatsApp number via Twilio"
+  description: "Send and receive via Twilio WhatsApp"
   fields:
     phone_number:
       type: string
-      label: "Phone Number"
-      placeholder: "+15550101"
+      label: "Twilio Phone Number"
+      placeholder: "+14155238886"
       required: true
+      hint: "Your Twilio WhatsApp-enabled number. Set the webhook URL to your-domain/webhooks/whatsapp in Twilio console."
 
 sms:
   label: "SMS"
   icon: "message-circle"
-  description: "Same Twilio number, SMS channel"
+  description: "Send and receive SMS via Twilio"
   fields:
     phone_number:
       type: string
-      label: "Phone Number"
+      label: "Twilio Phone Number"
       placeholder: "+15550101"
       required: true
+      hint: "Same Twilio number. Set the SMS webhook URL to your-domain/webhooks/sms in Twilio console."
 
 slack:
   label: "Slack"

@@ -41,5 +41,6 @@ module Alchemy
 
     # Use Sidekiq for background jobs
     config.active_job.queue_adapter = :sidekiq
+    config.hosts << "unevolved-toccara-intermastoid.ngrok-free.dev"
   end
 end

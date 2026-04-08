@@ -30,41 +30,49 @@ export default function DashboardIndex({ agents, stats }: Props) {
 
       <PageHeader title="Dashboard" description="Your AI team at a glance" />
 
-      <div className="grid gap-4 md:grid-cols-4 mb-8">
+      <div className="grid gap-3 md:grid-cols-4 mb-8">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Agents</CardTitle>
-            <Bot className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total_agents}</div>
+          <CardContent className="flex items-center justify-between pt-4 pb-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Total Agents</p>
+              <p className="text-2xl font-bold mt-0.5">{stats.total_agents}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-muted">
+              <Bot className="size-4 text-muted-foreground" />
+            </div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Running</CardTitle>
-            <Activity className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.running_agents}</div>
+          <CardContent className="flex items-center justify-between pt-4 pb-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Running</p>
+              <p className="text-2xl font-bold mt-0.5">{stats.running_agents}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-green-50">
+              <Activity className="size-4 text-green-600" />
+            </div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-            <ShieldCheck className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pending_approvals}</div>
+          <CardContent className="flex items-center justify-between pt-4 pb-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Pending Approvals</p>
+              <p className="text-2xl font-bold mt-0.5">{stats.pending_approvals}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-amber-50">
+              <ShieldCheck className="size-4 text-amber-600" />
+            </div>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tasks In Progress</CardTitle>
-            <CheckSquare className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.tasks_in_progress}</div>
+          <CardContent className="flex items-center justify-between pt-4 pb-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Tasks In Progress</p>
+              <p className="text-2xl font-bold mt-0.5">{stats.tasks_in_progress}</p>
+            </div>
+            <div className="flex size-9 items-center justify-center rounded-lg bg-blue-50">
+              <CheckSquare className="size-4 text-blue-600" />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -86,32 +94,29 @@ export default function DashboardIndex({ agents, stats }: Props) {
             }
           />
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {agents.map((agent) => (
               <Link key={agent.id} href={agentPath(agent.id)} className="block">
-                <Card className="hover:border-primary/50 transition-colors">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-base font-medium">
-                      {agent.name}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`size-2 rounded-full ${statusColor[agent.status] || "bg-gray-400"}`}
-                      />
-                      <span className="text-xs text-muted-foreground capitalize">
-                        {agent.status}
-                      </span>
+                <Card className="cursor-pointer">
+                  <CardContent className="flex items-center justify-between py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-9 items-center justify-center rounded-lg bg-muted">
+                        <Bot className="size-4" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{agent.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <Badge variant="secondary" className="text-[10px]">{agent.role}</Badge>
+                          {agent.ai_config && (
+                            <span className="text-[10px] text-muted-foreground font-mono">{agent.ai_config.model_id}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Badge variant="secondary" className="mb-2">
-                      {agent.role}
-                    </Badge>
-                    {agent.ai_config && (
-                      <p className="text-xs text-muted-foreground">
-                        {agent.ai_config.provider}/{agent.ai_config.model_id}
-                      </p>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      <div className={`size-2 rounded-full ${statusColor[agent.status] || "bg-gray-400"}`} />
+                      <span className="text-xs text-muted-foreground capitalize">{agent.status}</span>
+                    </div>
                   </CardContent>
                 </Card>
               </Link>

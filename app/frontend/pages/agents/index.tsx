@@ -49,31 +49,32 @@ export default function AgentsIndex({ agents }: { agents: Agent[] }) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent) => (
             <Link key={agent.id} href={agentPath(agent.id)} className="block">
-              <Card className="hover:border-[#D4A843]/40 transition-colors cursor-pointer">
-                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
-                  <div>
-                    <CardTitle className="text-base">{agent.name}</CardTitle>
-                    <Badge variant="secondary" className="mt-1.5">{agent.role}</Badge>
+              <Card className="cursor-pointer">
+                <CardContent className="flex items-center justify-between py-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-muted">
+                      <Bot className="size-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{agent.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Badge variant="secondary" className="text-[10px]">{agent.role}</Badge>
+                        {agent.ai_config && (
+                          <span className="text-[10px] text-muted-foreground font-mono">{agent.ai_config.model_id}</span>
+                        )}
+                      </div>
+                      {agent.manager && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Reports to {agent.manager.name}</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`size-2.5 rounded-full ${statusColor[agent.status] || "bg-gray-400"}`} />
+                  <div className="flex items-center gap-1.5">
+                    <div className={`size-2 rounded-full ${statusColor[agent.status] || "bg-gray-400"}`} />
                     <span className="text-xs text-muted-foreground capitalize">{agent.status}</span>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {agent.ai_config && (
-                    <p className="text-xs text-muted-foreground font-mono">
-                      {agent.ai_config.model_id}
-                    </p>
-                  )}
-                  {agent.manager && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Reports to {agent.manager.name}
-                    </p>
-                  )}
                 </CardContent>
               </Card>
             </Link>
