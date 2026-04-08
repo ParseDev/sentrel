@@ -9,6 +9,7 @@ import { startScheduler } from "./scheduler.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
 import { startGateway } from "./gateway.js";
+import { startTelegramPolling } from "./channels/telegram.js";
 import { logger } from "./logger.js";
 import type { JobData } from "./types.js";
 
@@ -57,6 +58,9 @@ async function main() {
 
   // 10. Start gateway WebSocket server
   startGateway();
+
+  // 11. Start channel polling (Telegram, etc.) — runs in background
+  startTelegramPolling();
 
   logger.info("═══════════════════════════════════════");
   logger.info("  ALCHEMY ENGINE ready. Waiting for jobs...");

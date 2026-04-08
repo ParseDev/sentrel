@@ -59,8 +59,18 @@ export function emitToolResult(tool: string, result: string): void {
   broadcast({ type: "tool_result", tool, result: result.slice(0, 500), timestamp: Date.now() });
 }
 
+// Listeners for done events (channels like Telegram need to know when response is ready)
+const doneListeners: ((content: string) => void)[] = [];
+export function onDone(listener: (content: string) => void): void {
+  doneListeners.push(listener);
+}
+
 export function emitDone(content: string): void {
   broadcast({ type: "done", content, timestamp: Date.now() });
+  // Notify channel listeners
+  for (const listener of doneListeners) {
+    try { listener(content); } catch {}
+  }
 }
 
 export function emitError(error: string): void {

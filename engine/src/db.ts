@@ -19,6 +19,14 @@ export async function getAgent(id: string): Promise<Agent> {
   return rows[0] as Agent;
 }
 
+export async function getChannelConfigs(agentId: string): Promise<{ channel_type: string; enabled: boolean; config: Record<string, unknown>; status: string }[]> {
+  const { rows } = await pool.query(
+    `SELECT * FROM channel_configs WHERE agent_id = $1 AND enabled = true`,
+    [agentId]
+  );
+  return rows;
+}
+
 export async function getSubAgents(managerId: number): Promise<SubAgent[]> {
   const { rows } = await pool.query(
     `SELECT a.id, a.name, a.slug, a.role, a.identity_md, a.personality_md, a.instructions_md,
