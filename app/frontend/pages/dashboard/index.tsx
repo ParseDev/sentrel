@@ -16,11 +16,11 @@ interface Props {
 }
 
 const statusColor: Record<string, string> = {
-  running: "bg-green-500",
+  running: "bg-green-500/100",
   pending: "bg-yellow-500",
   paused: "bg-gray-400",
   stopped: "bg-red-500",
-  starting: "bg-blue-500",
+  starting: "bg-blue-500/100",
 }
 
 export default function DashboardIndex({ agents, stats }: Props) {
@@ -48,8 +48,8 @@ export default function DashboardIndex({ agents, stats }: Props) {
               <p className="text-xs text-muted-foreground font-medium">Running</p>
               <p className="text-2xl font-bold mt-0.5">{stats.running_agents}</p>
             </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-green-50">
-              <Activity className="size-4 text-green-600" />
+            <div className="flex size-9 items-center justify-center rounded-lg bg-green-500/10">
+              <Activity className="size-4 text-green-400" />
             </div>
           </CardContent>
         </Card>
@@ -59,8 +59,8 @@ export default function DashboardIndex({ agents, stats }: Props) {
               <p className="text-xs text-muted-foreground font-medium">Pending Approvals</p>
               <p className="text-2xl font-bold mt-0.5">{stats.pending_approvals}</p>
             </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-amber-50">
-              <ShieldCheck className="size-4 text-amber-600" />
+            <div className="flex size-9 items-center justify-center rounded-lg bg-amber-500/10">
+              <ShieldCheck className="size-4 text-amber-400" />
             </div>
           </CardContent>
         </Card>
@@ -70,8 +70,8 @@ export default function DashboardIndex({ agents, stats }: Props) {
               <p className="text-xs text-muted-foreground font-medium">Tasks In Progress</p>
               <p className="text-2xl font-bold mt-0.5">{stats.tasks_in_progress}</p>
             </div>
-            <div className="flex size-9 items-center justify-center rounded-lg bg-blue-50">
-              <CheckSquare className="size-4 text-blue-600" />
+            <div className="flex size-9 items-center justify-center rounded-lg bg-blue-500/10">
+              <CheckSquare className="size-4 text-blue-400" />
             </div>
           </CardContent>
         </Card>
