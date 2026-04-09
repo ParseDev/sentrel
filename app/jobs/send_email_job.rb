@@ -34,6 +34,10 @@ class SendEmailJob < ApplicationJob
       .first
     in_reply_to = last_inbound&.metadata&.dig("message_id")
 
+    # Build HTML body before Mail.new block (self changes inside the block)
+    html_body = build_html_body(payload)
+    text_body = payload[:body_text] || ""
+
     # Build raw email with threading headers
     mail = Mail.new do
       from    "#{payload[:from_name]} <#{from_address}>"
@@ -49,12 +53,12 @@ class SendEmailJob < ApplicationJob
       end
 
       text_part do
-        body payload[:body_text] || ""
+        body text_body
       end
 
       html_part do
         content_type "text/html; charset=UTF-8"
-        body build_html_body(payload)
+        body html_body
       end
     end
 
