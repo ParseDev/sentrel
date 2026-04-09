@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import * as db from "./db.js";
@@ -6,10 +8,15 @@ import { syncMemoryToDb, readMemoryMd } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
 import { createPermissionHook, createAuditHook } from "./permissions.js";
 import { emitThinking, emitTextDelta, emitToolCall, emitToolResult, emitDone, emitError } from "./gateway.js";
+import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
 import type { Agent, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
 
 export async function runAgent(agent: Agent, job: JobData): Promise<void> {
+  // Set up channel reply if needed
+  if (job.channel === "whatsapp" && job.payload?.from) {
+    setWhatsAppPendingReply(job.payload.from);
+  }
   logger.info(`Running agent: ${agent.name} (${agent.role})`, { jobType: job.type });
 
   // Build conversation context
@@ -139,6 +146,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       "success"
     );
 
+    // Process email outbox (agent may have written email drafts)
+    await processOutbox(agent, job);
+
     // Sync memory back to DB (agent may have updated MEMORY.md)
     await syncMemoryToDb(agent.id);
 
@@ -188,7 +198,15 @@ function buildPrompt(agent: Agent, job: JobData, history: Message[]): string {
       parts.push(`New ${channel} from ${from}:`);
       if (job.payload?.subject) parts.push(`Subject: ${job.payload.subject}`);
       parts.push(`\n${job.payload?.body || ""}`);
-      parts.push("\nRespond as yourself (not as an AI assistant). Use your personality and follow your instructions.");
+
+      if (channel === "email") {
+        parts.push("\nYou received this as an email. To reply, use the send-email skill:");
+        parts.push("Write a JSON file to workspace/outbox/ with: to, cc, bcc, subject, body_text, body_html");
+        parts.push(`Reply-To: ${job.payload?.from}`);
+        parts.push("Maintain the subject thread. Be professional and use your personality.");
+      } else {
+        parts.push("\nRespond as yourself (not as an AI assistant). Use your personality and follow your instructions.");
+      }
       break;
     }
 
@@ -207,4 +225,66 @@ function buildPrompt(agent: Agent, job: JobData, history: Message[]): string {
   }
 
   return parts.join("\n");
+}
+
+async function processOutbox(agent: Agent, job: JobData): Promise<void> {
+  const outboxDir = path.join(config.dataDir, "workspace", "outbox");
+  if (!fs.existsSync(outboxDir)) return;
+
+  const files = fs.readdirSync(outboxDir).filter(f => f.endsWith(".json"));
+  if (files.length === 0) return;
+
+  // Get email channel config for from address
+  const channels = await db.getChannelConfigs(String(agent.id));
+  const emailConfig = channels.find(c => c.channel_type === "email");
+
+  if (!emailConfig) {
+    logger.warn("No email channel configured, skipping outbox");
+    return;
+  }
+
+  for (const file of files) {
+    const filePath = path.join(outboxDir, file);
+    try {
+      const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+
+      const emailPayload = {
+        agent_id: agent.id,
+        org_id: agent.organization_id,
+        conversation_id: job.conversationId || null,
+        to: content.to,
+        cc: content.cc || [],
+        bcc: content.bcc || [],
+        subject: content.subject || "(no subject)",
+        body_text: content.body_text || "",
+        body_html: content.body_html || content.body_text || "",
+        from_address: emailConfig.config.address as string,
+        from_name: agent.name,
+      };
+
+      const permLevel = agent.permissions?.["send_email"] || "auto";
+
+      if (permLevel === "never") {
+        logger.info(`Email blocked by permissions: ${content.to}`);
+      } else if (permLevel === "draft") {
+        await db.savePendingApproval(
+          agent.organization_id,
+          agent.id,
+          "send_email",
+          emailPayload,
+          `Email to ${content.to}: "${content.subject}"`
+        );
+        logger.info(`Email queued for approval: ${content.to}`);
+      } else {
+        // auto — send immediately via Redis → Rails
+        await redis.lpush("outbound-email", JSON.stringify(emailPayload));
+        logger.info(`Email queued for send: ${content.to}`);
+      }
+
+      // Remove processed file
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      logger.error(`Failed to process outbox file ${file}`, { error: (err as Error).message });
+    }
+  }
 }

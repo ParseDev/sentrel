@@ -13,6 +13,7 @@ export function ensureWorkspace(): void {
     path.join(dataDir, ".claude", "skills"),
     path.join(dataDir, "memory"),
     path.join(dataDir, "workspace"),
+    path.join(dataDir, "workspace", "outbox"),
     path.join(dataDir, "browser"),
   ];
   for (const dir of dirs) {

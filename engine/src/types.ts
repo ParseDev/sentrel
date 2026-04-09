@@ -85,6 +85,7 @@ export interface JobData {
   channel?: string;
   payload?: {
     from?: string;
+    from_name?: string;
     to?: string;
     subject?: string;
     body?: string;

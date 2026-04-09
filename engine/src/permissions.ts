@@ -11,7 +11,15 @@ export function createPermissionHook(agent: Agent) {
     }
 
     if (level === "draft") {
-      // Save pending approval to DB
+      // Create pending approval record
+      await db.savePendingApproval(
+        agent.organization_id,
+        agent.id,
+        input.toolName,
+        input.toolInput,
+        `Agent ${agent.name} wants to use ${input.toolName}`
+      );
+      // Also log for audit trail
       await db.saveAuditLog(
         agent.organization_id,
         agent.id,

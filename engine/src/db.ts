@@ -116,6 +116,22 @@ export async function saveAuditLog(
   );
 }
 
+export async function savePendingApproval(
+  orgId: number,
+  agentId: number,
+  toolName: string,
+  toolInput: unknown,
+  context?: string
+): Promise<number> {
+  const { rows } = await pool.query(
+    `INSERT INTO pending_approvals (organization_id, agent_id, tool_name, tool_input, context, status, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 'pending', NOW(), NOW())
+     RETURNING id`,
+    [orgId, agentId, toolName, JSON.stringify(toolInput || {}), context || null]
+  );
+  return rows[0].id;
+}
+
 export async function getScheduledTasks(agentId: number): Promise<ScheduledTask[]> {
   const { rows } = await pool.query(
     `SELECT * FROM scheduled_tasks WHERE agent_id = $1 AND active = true`,
