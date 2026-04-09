@@ -16,22 +16,43 @@ class WebhooksController < ApplicationController
     if request.headers["x-amz-sns-message-type"] == "Notification"
       sns_body = JSON.parse(request.body.read)
       ses_notification = JSON.parse(sns_body["Message"])
-      mail = ses_notification["mail"]
 
-      from = mail["source"]
-      from_name = mail.dig("commonHeaders", "from")&.first
-      subject = mail.dig("commonHeaders", "subject")
+      # If raw email content available, use Action Mailbox
+      if ses_notification["content"].present?
+        ActionMailbox::InboundEmail.create_and_extract_message_id!(source: ses_notification["content"])
+        return head :ok
+      end
+
+      # Otherwise parse SES notification manually
+      mail_info = ses_notification["mail"]
+      from = mail_info["source"]
+      from_name = mail_info.dig("commonHeaders", "from")&.first
+      subject = mail_info.dig("commonHeaders", "subject")
       body_text = extract_email_body(ses_notification)
+      message_id = mail_info["messageId"]
 
-      # Route to the right agent based on To address
-      Array(mail["destination"]).each do |to_addr|
+      Array(mail_info["destination"]).each do |to_addr|
         agent = find_agent_by_channel("email", "address", to_addr)
         next unless agent
+
+        # Use threading logic: find or create email thread
+        conversation = find_or_create_email_thread(agent, from, from_name, subject)
+
+        # Save inbound message
+        conversation.messages.create!(
+          role: "user",
+          content: body_text,
+          direction: "inbound",
+          channel: "email",
+          metadata: { from: from, from_name: from_name, to: to_addr, subject: subject, message_id: message_id }
+        )
+
         enqueue(agent, "email", {
           from: from,
           from_name: from_name,
           subject: subject,
           body: body_text,
+          conversationId: conversation.id,
         })
       end
       return head :ok
@@ -41,11 +62,21 @@ class WebhooksController < ApplicationController
     agent = find_agent_by_channel("email", "address", params[:to])
     return head :not_found unless agent
 
+    conversation = find_or_create_email_thread(agent, params[:from], params[:from_name], params[:subject])
+    conversation.messages.create!(
+      role: "user",
+      content: params[:text] || params[:body] || params[:html] || "",
+      direction: "inbound",
+      channel: "email",
+      metadata: { from: params[:from], from_name: params[:from_name], subject: params[:subject] }
+    )
+
     enqueue(agent, "email", {
       from: params[:from],
       from_name: params[:from_name],
       subject: params[:subject],
       body: params[:text] || params[:body] || params[:html],
+      conversationId: conversation.id,
     })
     head :ok
   end
@@ -183,6 +214,29 @@ class WebhooksController < ApplicationController
     validator = Twilio::Security::RequestValidator.new(ENV["TWILIO_AUTH_TOKEN"])
     url = request.original_url
     validator.validate(url, request.POST, request.headers["X-Twilio-Signature"] || "")
+  end
+
+  def find_or_create_email_thread(agent, from_address, from_name, subject)
+    clean_subject = subject&.gsub(/^(Re|Fwd|Fw):\s*/i, "")&.strip
+
+    if clean_subject.present?
+      existing = agent.conversations
+        .where(kind: "external", contact_identifier: from_address)
+        .where("subject ILIKE ?", "%#{clean_subject}%")
+        .order(updated_at: :desc)
+        .first
+      return existing if existing
+    end
+
+    agent.conversations.create!(
+      organization: agent.organization,
+      kind: "external",
+      contact_identifier: from_address,
+      contact_name: from_name || from_address,
+      contact_email: from_address,
+      subject: subject,
+      status: "active"
+    )
   end
 
   def extract_email_body(ses_notification)

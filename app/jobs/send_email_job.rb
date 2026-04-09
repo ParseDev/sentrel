@@ -21,37 +21,48 @@ class SendEmailJob < ApplicationJob
       return
     end
 
-    ses = Aws::SES::Client.new(region: ENV.fetch("AWS_REGION", "us-east-1"))
-    ses.send_email(
-      source: "#{payload[:from_name]} <#{from_address}>",
-      destination: {
-        to_addresses: Array(payload[:to]),
-        cc_addresses: Array(payload[:cc]).compact.reject(&:blank?),
-        bcc_addresses: Array(payload[:bcc]).compact.reject(&:blank?),
-      },
-      message: {
-        subject: { data: payload[:subject] || "(no subject)" },
-        body: {
-          text: { data: payload[:body_text] || "" },
-          html: { data: build_html_body(payload) },
-        },
-      }
-    )
+    to_address = Array(payload[:to]).first
+    subject = payload[:subject] || "(no subject)"
 
-    # Save outbound message to an email conversation (NOT internal chat)
-    email_conversation = Conversation.find_or_create_by!(
-      agent_id: agent.id,
-      organization_id: org.id,
-      kind: "external",
-      contact_identifier: Array(payload[:to]).first
-    ) do |c|
-      c.contact_email = Array(payload[:to]).first
-      c.contact_name = Array(payload[:to]).first
-      c.subject = payload[:subject]
-      c.status = "active"
+    # Find existing email thread for proper threading
+    conversation = find_email_thread(agent, org, to_address, subject)
+
+    # Get last inbound message_id for In-Reply-To header
+    last_inbound = conversation.messages
+      .where(direction: "inbound", channel: "email")
+      .order(created_at: :desc)
+      .first
+    in_reply_to = last_inbound&.metadata&.dig("message_id")
+
+    # Build raw email with threading headers
+    mail = Mail.new do
+      from    "#{payload[:from_name]} <#{from_address}>"
+      to      Array(payload[:to])
+      cc      Array(payload[:cc]).compact.reject(&:blank?) if payload[:cc].present?
+      bcc     Array(payload[:bcc]).compact.reject(&:blank?) if payload[:bcc].present?
+      subject subject
+
+      # Threading headers
+      if in_reply_to
+        header["In-Reply-To"] = in_reply_to
+        header["References"] = in_reply_to
+      end
+
+      text_part do
+        body payload[:body_text] || ""
+      end
+
+      html_part do
+        content_type "text/html; charset=UTF-8"
+        body build_html_body(payload)
+      end
     end
 
-    email_conversation.messages.create!(
+    ses = Aws::SES::Client.new(region: ENV.fetch("AWS_REGION", "us-east-1"))
+    result = ses.send_raw_email(raw_message: { data: mail.to_s })
+
+    # Save outbound message with message_id for threading
+    conversation.messages.create!(
       role: "assistant",
       content: payload[:body_text] || payload[:body_html] || "",
       direction: "outbound",
@@ -60,19 +71,24 @@ class SendEmailJob < ApplicationJob
         to: payload[:to],
         cc: payload[:cc],
         bcc: payload[:bcc],
-        subject: payload[:subject],
+        subject: subject,
+        message_id: result.message_id ? "#{result.message_id}@email.amazonses.com" : mail.message_id,
+        in_reply_to: in_reply_to,
       }
     )
+
+    # Update conversation subject if not set
+    conversation.update!(subject: subject) if conversation.subject.blank?
 
     AuditLog.create!(
       organization: org, agent: agent,
       action: "email_sent", tool_name: "send_email",
       input: payload.except(:body_html, :body_text).as_json,
-      output: { status: "sent" },
+      output: { status: "sent", ses_message_id: result.message_id },
       status: "success"
     )
 
-    Rails.logger.info "Email sent: #{from_address} → #{payload[:to]} (#{payload[:subject]})"
+    Rails.logger.info "Email sent: #{from_address} → #{to_address} (#{subject})"
   rescue Aws::SES::Errors::ServiceError => e
     Rails.logger.error "SES error: #{e.message}"
     AuditLog.create!(
@@ -87,14 +103,35 @@ class SendEmailJob < ApplicationJob
 
   private
 
+  def find_email_thread(agent, org, to_address, subject)
+    # Try to find by contact + matching subject (strip Re:/Fwd:)
+    clean_subject = subject.gsub(/^(Re|Fwd|Fw):\s*/i, "").strip
+
+    existing = agent.conversations
+      .where(kind: "external", contact_identifier: to_address)
+      .where("subject ILIKE ?", "%#{clean_subject}%")
+      .order(updated_at: :desc)
+      .first
+
+    return existing if existing
+
+    # Create new conversation
+    agent.conversations.create!(
+      organization: org,
+      kind: "external",
+      contact_identifier: to_address,
+      contact_email: to_address,
+      contact_name: to_address,
+      subject: subject,
+      status: "active"
+    )
+  end
+
   def build_html_body(payload)
-    # If explicit HTML provided, use it
     return payload[:body_html] if payload[:body_html].present?
 
-    # Convert plain text to styled HTML
     text = payload[:body_text] || ""
     escaped = ERB::Util.html_escape(text)
-    # Convert newlines to <br>, preserve double newlines as paragraph breaks
     html_content = escaped
       .gsub(/\n\n/, "</p><p style=\"margin: 0 0 1em 0;\">")
       .gsub(/\n/, "<br>")
