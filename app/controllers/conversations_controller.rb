@@ -20,13 +20,25 @@ class ConversationsController < ApplicationController
   def show
     conversation = @agent.conversations.find(params[:id])
 
-    render inertia: "conversations/show", props: {
-      agent: @agent.as_json(only: [:id, :name, :slug, :role]),
-      conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
-      messages: conversation.messages.order(created_at: :asc).as_json(
-        only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at]
-      )
-    }
+    respond_to do |format|
+      format.json do
+        render json: {
+          conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
+          messages: conversation.messages.order(created_at: :asc).as_json(
+            only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at]
+          )
+        }
+      end
+      format.html do
+        render inertia: "conversations/show", props: {
+          agent: @agent.as_json(only: [:id, :name, :slug, :role]),
+          conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
+          messages: conversation.messages.order(created_at: :asc).as_json(
+            only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at]
+          )
+        }
+      end
+    end
   end
 
   private

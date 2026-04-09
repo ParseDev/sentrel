@@ -152,7 +152,7 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div style={{ height: "calc(100vh - 280px)", minHeight: "400px" }} className="rounded-xl border border-border overflow-hidden bg-background">
+      <div className="h-full overflow-hidden bg-background">
         <Thread />
       </div>
     </AssistantRuntimeProvider>
