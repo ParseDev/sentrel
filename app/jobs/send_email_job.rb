@@ -132,9 +132,12 @@ class SendEmailJob < ApplicationJob
   end
 
   def build_html_body(payload)
-    return payload[:body_html] if payload[:body_html].present?
+    # Only use body_html if it actually contains HTML tags
+    if payload[:body_html].present? && payload[:body_html].include?("<")
+      return payload[:body_html]
+    end
 
-    text = payload[:body_text] || ""
+    text = payload[:body_text] || payload[:body_html] || ""
     escaped = ERB::Util.html_escape(text)
     html_content = escaped
       .gsub(/\n\n/, "</p><p style=\"margin: 0 0 1em 0;\">")
