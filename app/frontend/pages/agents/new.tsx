@@ -3,11 +3,9 @@ import { ArrowLeft } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { agentsPath } from "@/routes"
 
 const ROLE_TEMPLATES = [
@@ -47,6 +45,18 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
   ],
 }
 
+function AgentNewHeader() {
+  return (
+    <div className="flex items-center gap-3 w-full">
+      <Link href={agentsPath()} className="flex items-center justify-center size-6 rounded text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="size-3.5" />
+      </Link>
+      <div className="w-px h-4 bg-border" />
+      <span className="text-sm font-medium">Create Agent</span>
+    </div>
+  )
+}
+
 export default function AgentNew() {
   const { data, setData, post, processing } = useForm({
     name: "",
@@ -82,77 +92,46 @@ export default function AgentNew() {
   const availableModels = MODELS[data.ai_config.provider] || []
 
   return (
-    <AppLayout>
+    <AppLayout header={<AgentNewHeader />}>
       <Head title="New Agent" />
 
-      <div className="mb-8">
-        <Link href={agentsPath()} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
-          <ArrowLeft className="size-4 mr-1" />
-          Back to Agents
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Create Agent</h1>
-        <p className="text-muted-foreground">Add a new AI employee to your team</p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Identity</CardTitle>
-            <CardDescription>Who is this agent?</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-8">
+        {/* Identity */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Identity</h2>
+          <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Sarah"
-                  value={data.name}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  required
-                  autoFocus
-                />
+                <Input id="name" placeholder="Sarah" value={data.name} onChange={(e) => handleNameChange(e.target.value)} required autoFocus />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="slug">Slug</Label>
-                <Input
-                  id="slug"
-                  placeholder="sarah-sdr"
-                  value={data.slug}
-                  onChange={(e) => setData("slug", e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">Used in email addresses and URLs</p>
+                <Input id="slug" placeholder="sarah-sdr" value={data.slug} onChange={(e) => setData("slug", e.target.value)} required />
+                <p className="text-[10px] text-muted-foreground">Used in email addresses and URLs</p>
               </div>
             </div>
-
             <div className="space-y-2">
               <Label>Role</Label>
               <Select value={data.role} onValueChange={(v) => setData("role", v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ROLE_TEMPLATES.map((role) => (
                     <SelectItem key={role.value} value={role.value}>
-                      <div>
-                        <span className="font-medium">{role.label}</span>
-                        <span className="text-muted-foreground ml-2 text-xs">{role.description}</span>
-                      </div>
+                      <span className="font-medium">{role.label}</span>
+                      <span className="text-muted-foreground ml-2 text-xs">{role.description}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Model</CardTitle>
-            <CardDescription>Which model powers this agent?</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* AI Model */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">AI Model</h2>
+          <div className="rounded-lg border border-border p-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Provider</Label>
@@ -160,23 +139,12 @@ export default function AgentNew() {
                   value={data.ai_config.provider}
                   onValueChange={(v) => {
                     const models = MODELS[v] || []
-                    setData({
-                      ...data,
-                      ai_config: {
-                        ...data.ai_config,
-                        provider: v,
-                        model_id: models[0]?.value || "",
-                      },
-                    })
+                    setData({ ...data, ai_config: { ...data.ai_config, provider: v, model_id: models[0]?.value || "" } })
                   }}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PROVIDERS.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                    ))}
+                    {PROVIDERS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -185,36 +153,27 @@ export default function AgentNew() {
                 <Select
                   key={data.ai_config.provider}
                   value={data.ai_config.model_id}
-                  onValueChange={(v) => setData({
-                    ...data,
-                    ai_config: { ...data.ai_config, model_id: v },
-                  })}
+                  onValueChange={(v) => setData({ ...data, ai_config: { ...data.ai_config, model_id: v } })}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {availableModels.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                    ))}
+                    {availableModels.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Instructions</CardTitle>
-            <CardDescription>Tell this agent who they are and what they do</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Instructions */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Instructions</h2>
+          <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="identity_md">Identity</Label>
               <textarea
                 id="identity_md"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
                 placeholder="I am Sarah, an SDR at ScribeMD. My email is sarah-sdr@scribemd.com..."
                 value={data.identity_md}
                 onChange={(e) => setData("identity_md", e.target.value)}
@@ -224,7 +183,7 @@ export default function AgentNew() {
               <Label htmlFor="personality_md">Personality</Label>
               <textarea
                 id="personality_md"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
                 placeholder="I'm professional but friendly. I keep emails short and to the point..."
                 value={data.personality_md}
                 onChange={(e) => setData("personality_md", e.target.value)}
@@ -234,18 +193,16 @@ export default function AgentNew() {
               <Label htmlFor="instructions_md">Instructions</Label>
               <textarea
                 id="instructions_md"
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="1. Search Apollo for leads matching our ICP&#10;2. Draft personalized cold emails&#10;3. Follow up after 3 days if no reply&#10;4. Book meetings with interested leads..."
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
+                placeholder={"1. Search Apollo for leads matching our ICP\n2. Draft personalized cold emails\n3. Follow up after 3 days if no reply"}
                 value={data.instructions_md}
                 onChange={(e) => setData("instructions_md", e.target.value)}
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Separator />
-
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-2 pb-8">
           <Button variant="outline" asChild>
             <Link href={agentsPath()}>Cancel</Link>
           </Button>

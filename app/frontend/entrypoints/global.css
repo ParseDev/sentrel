@@ -53,6 +53,7 @@
   --color-signal: #0089ff;
 
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
 /* ── Light Theme (default) ── */
@@ -94,36 +95,36 @@
 
 /* ── Dark Theme ── */
 .dark {
-  --background: #0a0a0a;
-  --foreground: #fafafa;
-  --card: #111111;
-  --card-foreground: #fafafa;
-  --popover: #111111;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #0a0a0a;
-  --secondary: rgba(255, 255, 255, 0.06);
-  --secondary-foreground: #fafafa;
-  --muted: rgba(255, 255, 255, 0.06);
-  --muted-foreground: #a1a1aa;
+  --background: #161615;
+  --foreground: #ececea;
+  --card: #1c1c1a;
+  --card-foreground: #ececea;
+  --popover: #1c1c1a;
+  --popover-foreground: #ececea;
+  --primary: #ececea;
+  --primary-foreground: #161615;
+  --secondary: rgba(255, 255, 250, 0.06);
+  --secondary-foreground: #ececea;
+  --muted: rgba(255, 255, 250, 0.07);
+  --muted-foreground: #8a8a82;
   --accent: #00e0e0;
-  --accent-foreground: #0a0a0a;
+  --accent-foreground: #161615;
   --destructive: #ef4444;
-  --destructive-foreground: #fafafa;
-  --border: rgba(255, 255, 255, 0.10);
-  --input: rgba(255, 255, 255, 0.10);
+  --destructive-foreground: #ececea;
+  --border: rgba(255, 255, 245, 0.08);
+  --input: rgba(255, 255, 245, 0.10);
   --ring: #0089ff;
   --chart-1: #00e0e0;
   --chart-2: #0089ff;
   --chart-3: #ef4444;
   --chart-4: #8b5cf6;
   --chart-5: #22c55e;
-  --sidebar: #0a0a0a;
-  --sidebar-foreground: #a1a1aa;
+  --sidebar: #121211;
+  --sidebar-foreground: #8a8a82;
   --sidebar-primary: #00e0e0;
-  --sidebar-primary-foreground: #0a0a0a;
-  --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-primary-foreground: #161615;
+  --sidebar-accent: rgba(255, 255, 250, 0.07);
+  --sidebar-accent-foreground: #ececea;
+  --sidebar-border: rgba(255, 255, 245, 0.06);
   --sidebar-ring: #0089ff;
 }

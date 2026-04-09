@@ -3,14 +3,10 @@ import { useState } from "react"
 import { Copy, Check, Loader2, RefreshCw } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
-import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { settingsPath } from "@/routes"
 
 interface Member {
@@ -50,35 +46,40 @@ export default function SettingsShow({ organization, members }: Props) {
   return (
     <AppLayout>
       <Head title="Settings" />
-      <PageHeader title="Settings" description="Manage your organization" />
 
-      <div className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Organization</CardTitle>
-            <CardDescription>General settings for your workspace</CardDescription>
-          </CardHeader>
-          <CardContent>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Manage your organization</p>
+      </div>
+
+      <div className="max-w-2xl space-y-8">
+        {/* Organization */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Organization</h2>
+          <div className="rounded-lg border border-border p-4">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" value={data.organization.name} onChange={(e) => setData("organization", { ...data.organization, name: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Slug</Label>
-                <Input value={organization.slug} disabled className="text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">Used in URLs — cannot be changed</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input id="name" value={data.organization.name} onChange={(e) => setData("organization", { ...data.organization, name: e.target.value })} required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Slug</Label>
+                  <Input value={organization.slug} disabled className="text-muted-foreground" />
+                  <p className="text-[10px] text-muted-foreground">Used in URLs — cannot be changed</p>
+                </div>
               </div>
               <div className="flex justify-end">
-                <Button type="submit" disabled={processing}>
+                <Button type="submit" size="sm" disabled={processing}>
                   {processing ? "Saving..." : "Save"}
                 </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <EmailDomainCard
+        {/* Email Domain */}
+        <EmailDomainSection
           organization={organization}
           emailDomain={data.organization.email_domain}
           onDomainChange={(val) => setData("organization", { ...data.organization, email_domain: val })}
@@ -86,89 +87,77 @@ export default function SettingsShow({ organization, members }: Props) {
           processing={processing}
         />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Organization Context</CardTitle>
-            <CardDescription>Tell your agents about your company — shared with all agents</CardDescription>
-          </CardHeader>
-          <CardContent>
+        {/* Organization Context */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Agent Context</h2>
+          <div className="rounded-lg border border-border p-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="context_md">Context</Label>
+                <Label htmlFor="context_md">Shared context for all agents</Label>
                 <textarea
                   id="context_md"
-                  className="flex min-h-[160px] w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-gold)] focus:ring-[3px] focus:ring-[var(--color-gold-border)]"
-                  placeholder={"ScribeMD builds AI-powered medical transcription.\nOur ICP: healthcare companies, 50-500 employees.\nCompetitors: Nuance, DeepScribe.\nCEO prefers Slack for updates."}
+                  className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
+                  placeholder={"ScribeMD builds AI-powered medical transcription.\nOur ICP: healthcare companies, 50-500 employees.\nCompetitors: Nuance, DeepScribe."}
                   value={data.organization.context_md}
                   onChange={(e) => setData("organization", { ...data.organization, context_md: e.target.value })}
                 />
-                <p className="text-xs text-muted-foreground">
-                  This appears in every agent's context as "About My Organization"
+                <p className="text-[10px] text-muted-foreground">
+                  Appears in every agent's context as "About My Organization"
                 </p>
               </div>
               <div className="flex justify-end">
-                <Button type="submit" disabled={processing}>
+                <Button type="submit" size="sm" disabled={processing}>
                   {processing ? "Saving..." : "Save"}
                 </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Separator />
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Team Members</CardTitle>
-                <CardDescription>People who can manage agents in this organization</CardDescription>
-              </div>
-              <Button variant="outline" size="sm" disabled>
-                Invite
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Joined</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+        {/* Team Members */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Members</h2>
+            <Button variant="outline" size="sm" className="h-7 text-xs" disabled>
+              Invite
+            </Button>
+          </div>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Role</th>
+                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Joined</th>
+                </tr>
+              </thead>
+              <tbody>
                 {members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{member.email}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="capitalize">{member.role}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                  <tr key={member.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5 font-medium">{member.name}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{member.email}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge variant="secondary" className="text-[10px] capitalize">{member.role}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
                       {new Date(member.created_at).toLocaleDateString()}
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </AppLayout>
   )
 }
 
-interface DnsRecord {
-  type: string
-  name: string
-  value: string
-  purpose: string
-}
+// ── Email domain section ──
+interface DnsRecord { type: string; name: string; value: string; purpose: string }
 
-function EmailDomainCard({ organization, emailDomain, onDomainChange, onSave, processing }: {
+function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave, processing }: {
   organization: Props["organization"]
   emailDomain: string
   onDomainChange: (val: string) => void
@@ -209,12 +198,9 @@ function EmailDomainCard({ organization, emailDomain, onDomainChange, onSave, pr
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Email Domain</CardTitle>
-        <CardDescription>Custom domain for agent email addresses</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section>
+      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Email Domain</h2>
+      <div className="rounded-lg border border-border p-4 space-y-4">
         <form onSubmit={onSave} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email_domain">Domain</Label>
@@ -227,30 +213,28 @@ function EmailDomainCard({ organization, emailDomain, onDomainChange, onSave, pr
                 className="flex-1"
               />
               {organization.email_domain_verified ? (
-                <Badge className="bg-green-600 shrink-0">Verified</Badge>
+                <Badge className="bg-emerald-600 shrink-0 text-[10px]">Verified</Badge>
               ) : organization.email_domain ? (
-                <Badge variant="secondary" className="shrink-0">
-                  {verificationStatus || "Pending"}
-                </Badge>
+                <Badge variant="secondary" className="shrink-0 text-[10px]">{verificationStatus || "Pending"}</Badge>
               ) : null}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Agents will send emails from @{emailDomain || "your-domain.com"}
+            <p className="text-[10px] text-muted-foreground">
+              Agents send emails from @{emailDomain || "your-domain.com"}
             </p>
           </div>
           <div className="flex items-center gap-2 justify-end">
-            <Button type="submit" disabled={processing} variant="outline" size="sm">
+            <Button type="submit" disabled={processing} variant="outline" size="sm" className="h-7 text-xs">
               {processing ? "Saving..." : "Save Domain"}
             </Button>
             {organization.email_domain && !organization.email_domain_verified && (
               <>
-                <Button type="button" size="sm" variant="outline" onClick={getDnsRecords} disabled={loading}>
-                  {loading ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
-                  Get DNS Records
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={getDnsRecords} disabled={loading}>
+                  {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+                  DNS Records
                 </Button>
-                <Button type="button" size="sm" onClick={checkVerification} disabled={checking}>
-                  {checking ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <RefreshCw className="size-3.5 mr-1.5" />}
-                  Check Verification
+                <Button type="button" size="sm" className="h-7 text-xs" onClick={checkVerification} disabled={checking}>
+                  {checking ? <Loader2 className="size-3 animate-spin mr-1" /> : <RefreshCw className="size-3 mr-1" />}
+                  Verify
                 </Button>
               </>
             )}
@@ -259,38 +243,38 @@ function EmailDomainCard({ organization, emailDomain, onDomainChange, onSave, pr
 
         {dnsRecords.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Add these DNS records to your domain:</p>
-            <div className="rounded-lg border overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Purpose</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">DNS Records</p>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Type</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Value</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Purpose</th>
+                    <th className="w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
                   {dnsRecords.map((record, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell><Badge variant="outline" className="font-mono text-[10px]">{record.type}</Badge></TableCell>
-                      <TableCell className="font-mono text-xs break-all">{record.name}</TableCell>
-                      <TableCell className="font-mono text-xs break-all max-w-[200px] truncate">{record.value}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{record.purpose}</TableCell>
-                      <TableCell>
+                    <tr key={idx} className="border-b border-border last:border-0">
+                      <td className="px-3 py-2"><Badge variant="outline" className="font-mono text-[10px]">{record.type}</Badge></td>
+                      <td className="px-3 py-2 font-mono break-all">{record.name}</td>
+                      <td className="px-3 py-2 font-mono break-all max-w-[180px] truncate">{record.value}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{record.purpose}</td>
+                      <td className="px-2 py-2">
                         <button onClick={() => copyValue(record.value, idx)} className="p-1 hover:bg-muted rounded">
-                          {copiedIdx === idx ? <Check className="size-3.5 text-green-600" /> : <Copy className="size-3.5 text-muted-foreground" />}
+                          {copiedIdx === idx ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3 text-muted-foreground" />}
                         </button>
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   ))}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

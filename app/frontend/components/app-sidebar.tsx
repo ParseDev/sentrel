@@ -10,6 +10,8 @@ import {
   Plus,
   Sun,
   Moon,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
@@ -28,6 +30,7 @@ import {
   SidebarMenuItem,
   SidebarGroup,
   SidebarGroupContent,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   authenticatedRootPath,
@@ -56,6 +59,7 @@ const secondaryNavItems: NavItem[] = [
 
 export function AppSidebar() {
   const { theme, setTheme } = useTheme()
+  const { toggleSidebar, open } = useSidebar()
 
   return (
     <Sidebar collapsible="icon" variant="inset">
@@ -89,13 +93,20 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarGroup className="p-0">
-          <SidebarGroupContent>
+          <SidebarGroupContent className="flex items-center gap-1">
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted"
+              className="flex items-center gap-2 flex-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted"
             >
               {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
               <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+            </button>
+            <button
+              onClick={toggleSidebar}
+              className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              title={open ? "Collapse sidebar" : "Expand sidebar"}
+            >
+              {open ? <PanelLeftClose className="size-3.5" /> : <PanelLeft className="size-3.5" />}
             </button>
           </SidebarGroupContent>
         </SidebarGroup>

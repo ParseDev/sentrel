@@ -8,10 +8,7 @@ import { userSessionPath, newUserRegistrationPath } from "@/routes"
 
 export default function SessionNew() {
   const { data, setData, post, processing } = useForm({
-    user: {
-      email: "",
-      password: "",
-    },
+    user: { email: "", password: "" },
   })
 
   function handleSubmit(e: React.FormEvent) {
@@ -28,7 +25,6 @@ export default function SessionNew() {
           <div>
             <span className="text-2xl font-medium tracking-tight">ALCHEMY<span className="text-[var(--color-cyan)]">.</span></span>
           </div>
-
           <div className="space-y-8">
             <div>
               <h1 className="text-4xl font-normal tracking-tight leading-[0.9] mb-4">
@@ -39,7 +35,6 @@ export default function SessionNew() {
                 Create AI employees with their own email, phone, and Slack. They work autonomously, collaborate as a team, and report to you.
               </p>
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               {[
                 { icon: Bot, title: "Any Role", desc: "SDR, engineer, finance, content" },
@@ -57,7 +52,6 @@ export default function SessionNew() {
               ))}
             </div>
           </div>
-
           <p className="text-xs opacity-30">Alchemy — Turn effort into outcome</p>
         </div>
 
@@ -67,41 +61,23 @@ export default function SessionNew() {
             <div className="lg:hidden mb-8 text-center">
               <span className="text-2xl font-medium tracking-tight">ALCHEMY<span className="text-[var(--color-cyan)]">.</span></span>
             </div>
-
             <div className="mb-8">
               <h2 className="text-2xl font-normal tracking-tight">Welcome back</h2>
               <p className="text-muted-foreground mt-1">Sign in to manage your AI team</p>
             </div>
-
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@company.com"
-                  value={data.user.email}
-                  onChange={(e) => setData("user", { ...data.user, email: e.target.value })}
-                  required
-                  autoFocus
-                />
+                <Input id="email" type="email" placeholder="you@company.com" value={data.user.email} onChange={(e) => setData("user", { ...data.user, email: e.target.value })} required autoFocus />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={data.user.password}
-                  onChange={(e) => setData("user", { ...data.user, password: e.target.value })}
-                  required
-                />
+                <Input id="password" type="password" placeholder="••••••••" value={data.user.password} onChange={(e) => setData("user", { ...data.user, password: e.target.value })} required />
               </div>
               <Button type="submit" className="w-full h-10" disabled={processing}>
                 {processing ? "Signing in..." : "Sign in"}
               </Button>
             </form>
-
             <p className="mt-8 text-center text-sm text-muted-foreground">
               Don't have an account?{" "}
               <Link href={newUserRegistrationPath()} className="text-[var(--color-cyan)] hover:text-[var(--color-cyan-hover)] font-medium">

@@ -27,10 +27,10 @@ export default function RegistrationNew() {
       <Head title="Sign up" />
       <div className="flex min-h-screen">
         {/* Left: Branding */}
-        <div className="hidden lg:flex lg:w-1/2 bg-background text-white flex-col justify-between p-12">
+        <div className="hidden lg:flex lg:w-1/2 bg-primary text-primary-foreground flex-col justify-between p-12">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl font-medium tracking-tight text-white">ALCHEMY<span className="text-[var(--color-cyan)]">.</span></span>
+              <span className="text-2xl font-medium tracking-tight ">ALCHEMY<span className="text-[var(--color-cyan)]">.</span></span>
             </div>
           </div>
 
@@ -40,44 +40,44 @@ export default function RegistrationNew() {
                 Build your AI team<br />
                 <span className="text-[var(--color-cyan)]">in minutes.</span>
               </h1>
-              <p className="text-[#A8A29E] text-lg max-w-md">
+              <p className="opacity-50 text-lg max-w-md">
                 Create an organization, add AI employees, connect your tools. They start working immediately.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-background/[0.04] border border-white/[0.06]">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary-foreground/5 border border-primary-foreground/10">
                 <Bot className="size-5 text-[var(--color-cyan)] mt-0.5 shrink-0" />
                 <div>
                   <p className="font-semibold text-sm">Any Role</p>
-                  <p className="text-xs text-[#A8A29E]">SDR, engineer, finance, content — any employee you need</p>
+                  <p className="text-xs opacity-50">SDR, engineer, finance, content — any employee you need</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-background/[0.04] border border-white/[0.06]">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary-foreground/5 border border-primary-foreground/10">
                 <Zap className="size-5 text-[var(--color-cyan)] mt-0.5 shrink-0" />
                 <div>
                   <p className="font-semibold text-sm">Always On</p>
-                  <p className="text-xs text-[#A8A29E]">Heartbeat checks, proactive work, 24/7 execution</p>
+                  <p className="text-xs opacity-50">Heartbeat checks, proactive work, 24/7 execution</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-background/[0.04] border border-white/[0.06]">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary-foreground/5 border border-primary-foreground/10">
                 <Shield className="size-5 text-[var(--color-cyan)] mt-0.5 shrink-0" />
                 <div>
                   <p className="font-semibold text-sm">You Control</p>
-                  <p className="text-xs text-[#A8A29E]">Auto-send or draft for approval — per agent, per action</p>
+                  <p className="text-xs opacity-50">Auto-send or draft for approval — per agent, per action</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-background/[0.04] border border-white/[0.06]">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-primary-foreground/5 border border-primary-foreground/10">
                 <Users className="size-5 text-[var(--color-cyan)] mt-0.5 shrink-0" />
                 <div>
                   <p className="font-semibold text-sm">Team Play</p>
-                  <p className="text-xs text-[#A8A29E]">Agents delegate, collaborate, and report to each other</p>
+                  <p className="text-xs opacity-50">Agents delegate, collaborate, and report to each other</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-[#78716C]">Alchemy — Turn effort into outcome</p>
+          <p className="text-xs opacity-30">Alchemy — Turn effort into outcome</p>
         </div>
 
         {/* Right: Form */}

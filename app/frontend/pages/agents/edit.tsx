@@ -3,14 +3,24 @@ import { ArrowLeft } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
 import { agentPath } from "@/routes"
 import type { Agent } from "@/types"
+
+function AgentEditHeader({ agent }: { agent: Agent }) {
+  return (
+    <div className="flex items-center gap-3 w-full">
+      <Link href={agentPath(agent.id)} className="flex items-center justify-center size-6 rounded text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="size-3.5" />
+      </Link>
+      <div className="w-px h-4 bg-border" />
+      <span className="text-sm font-medium">Edit {agent.name}</span>
+    </div>
+  )
+}
 
 export default function AgentEdit({ agent }: { agent: Agent }) {
   const { data, setData, patch, processing } = useForm({
@@ -38,23 +48,14 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
   }
 
   return (
-    <AppLayout>
+    <AppLayout header={<AgentEditHeader agent={agent} />}>
       <Head title={`Edit ${agent.name}`} />
 
-      <div className="mb-8">
-        <Link href={agentPath(agent.id)} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
-          <ArrowLeft className="size-4 mr-1" />
-          Back to {agent.name}
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Edit {agent.name}</h1>
-      </div>
-
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Identity</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-8">
+        {/* Identity */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Identity</h2>
+          <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
@@ -69,19 +70,18 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
               <Label htmlFor="role">Role</Label>
               <Input id="role" value={data.role} onChange={(e) => setData("role", e.target.value)} required />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Instructions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Instructions */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Instructions</h2>
+          <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="identity_md">Identity</Label>
               <textarea
                 id="identity_md"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
                 value={data.identity_md}
                 onChange={(e) => setData("identity_md", e.target.value)}
               />
@@ -90,7 +90,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
               <Label htmlFor="personality_md">Personality</Label>
               <textarea
                 id="personality_md"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
                 value={data.personality_md}
                 onChange={(e) => setData("personality_md", e.target.value)}
               />
@@ -99,20 +99,18 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
               <Label htmlFor="instructions_md">Instructions</Label>
               <textarea
                 id="instructions_md"
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
                 value={data.instructions_md}
                 onChange={(e) => setData("instructions_md", e.target.value)}
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Heartbeat</CardTitle>
-            <CardDescription>Proactive check-ins — agent periodically checks for things that need attention</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Heartbeat */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Heartbeat</h2>
+          <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="heartbeat_enabled"
@@ -135,25 +133,23 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
                 />
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Permissions</CardTitle>
-            <CardDescription>Control what actions require approval</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Permissions */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Permissions</h2>
+          <div className="rounded-lg border border-border p-4">
             <div className="flex items-center justify-between">
               <div>
                 <Label>Send Email</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Agent can compose and send emails</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Agent can compose and send emails</p>
               </div>
               <Select
                 value={data.permissions?.send_email || "auto"}
                 onValueChange={(v) => setData("permissions", { ...data.permissions, send_email: v })}
               >
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-44 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -163,12 +159,10 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Separator />
-
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-2 pb-8">
           <Button variant="outline" asChild>
             <Link href={agentPath(agent.id)}>Cancel</Link>
           </Button>

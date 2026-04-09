@@ -2,11 +2,8 @@ import { Head, router } from "@inertiajs/react"
 import { ScrollText } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
-import { PageHeader } from "@/components/page-header"
-import { EmptyState } from "@/components/empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface LogEntry {
   id: number
@@ -33,68 +30,68 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
     <AppLayout>
       <Head title="Audit Log" />
 
-      <PageHeader
-        title="Audit Log"
-        description="Every action your agents take"
-        action={
-          <Select onValueChange={filterByAgent} defaultValue="all">
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by agent" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All agents</SelectItem>
-              {agents.map((a) => (
-                <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
-      />
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Audit Log</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Every action your agents take</p>
+        </div>
+        <Select onValueChange={filterByAgent} defaultValue="all">
+          <SelectTrigger className="w-44 h-8 text-xs">
+            <SelectValue placeholder="Filter by agent" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All agents</SelectItem>
+            {agents.map((a) => (
+              <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {logs.length === 0 ? (
-        <EmptyState
-          icon={ScrollText}
-          title="No activity yet"
-          description="Agent actions, tool calls, and decisions will be logged here"
-        />
+        <div className="flex flex-col items-center justify-center py-20 border border-dashed border-border rounded-lg">
+          <ScrollText className="size-8 text-muted-foreground/30 mb-3" />
+          <p className="text-sm font-medium mb-1">No activity yet</p>
+          <p className="text-xs text-muted-foreground">Agent actions, tool calls, and decisions will be logged here</p>
+        </div>
       ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Agent</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Tool</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Time</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Agent</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Action</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Tool</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody>
               {logs.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                <tr key={log.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap font-mono">
                     {new Date(log.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="font-medium text-sm">
+                  </td>
+                  <td className="px-4 py-2.5 font-medium text-sm">
                     {log.agent?.name || "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-xs">{log.action}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs font-mono text-muted-foreground">
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <Badge variant="secondary" className="text-[10px]">{log.action}</Badge>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground">
                     {log.tool_name || "—"}
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="px-4 py-2.5">
                     {log.status && (
-                      <Badge variant={log.status === "success" ? "default" : "destructive"} className="text-xs">
+                      <Badge variant={log.status === "success" ? "default" : "destructive"} className="text-[10px]">
                         {log.status}
                       </Badge>
                     )}
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       )}
     </AppLayout>
