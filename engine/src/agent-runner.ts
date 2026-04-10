@@ -3,7 +3,7 @@ import { config } from "./config.js";
 import * as db from "./db.js";
 import { syncMemoryToDb } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
-import { buildPrompt } from "./prompt-builder.js";
+import { buildPrompt, type UserMessageInput } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
@@ -115,7 +115,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // ── Build prompt with refreshed history + summaries ──
   const conversationId = conversation?.id;
   const history = conversationId ? await db.getConversationHistory(conversationId, 20) : [];
-  const prompt = buildPrompt(agent, job, history, conversation);
+  const built = buildPrompt(agent, job, history, conversation);
 
   const options = await buildQueryOptions(agent);
   options.systemPrompt = buildSystemPrompt(agent);
@@ -124,7 +124,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   }
 
   try {
-    const result = await runAgentLoop(prompt, options);
+    const result = await runAgentLoop(built.messages, options);
 
     // ── Persist captured session ID for future resumption ──
     if (isInbound && conversation && result.capturedSessionId) {
@@ -171,7 +171,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       agent.id,
       job.type,
       undefined,
-      { prompt: prompt.slice(0, 500) },
+      { prompt: built.promptText.slice(0, 500) },
       { response: finalResponse.slice(0, 500), session_id: result.capturedSessionId, resumed: resumeSessionId !== null },
       "success",
     );
@@ -186,7 +186,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       agent.id,
       job.type,
       undefined,
-      { prompt: prompt.slice(0, 500) },
+      { prompt: built.promptText.slice(0, 500) },
       { error: (err as Error).message },
       "failed",
     );
@@ -215,14 +215,28 @@ interface QueryResult {
   capturedSessionId: string | null;
 }
 
-async function runAgentLoop(prompt: string, options: Record<string, unknown>): Promise<QueryResult> {
+async function runAgentLoop(
+  messages: UserMessageInput[],
+  options: Record<string, unknown>,
+): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
   let responseContent = "";
   let capturedSessionId: string | null = null;
 
   emitThinking();
 
-  for await (const message of query({ prompt, options: options as any })) {
+  // Sprint 0c — pass an async generator of SDKUserMessage objects instead of
+  // a string. This is the streaming-input form of `query()` and is the
+  // prerequisite for multimodal: each message's content is an array of
+  // ContentBlockParam (text now, image/document in Sprint 2).
+  async function* promptGenerator() {
+    for (const m of messages) {
+      // The SDK fills session_id when streaming. We just provide the shape.
+      yield { ...m, session_id: "" } as any;
+    }
+  }
+
+  for await (const message of query({ prompt: promptGenerator(), options: options as any })) {
     const msg = message as any;
 
     // Capture sessionId from the first message that has one (per sdk.d.ts:2467+,

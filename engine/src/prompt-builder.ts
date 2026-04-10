@@ -1,12 +1,39 @@
 import { readMemoryMd } from "./memory.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
 
+// Sprint 0c — return SDK content blocks instead of a string.
+// For now (text-only) each call returns a single user message with one text block.
+// In Sprint 2 we'll add image and document blocks alongside the text for multimodal.
+//
+// Note: SDKUserMessage is the streaming-input form. We re-declare a minimal subset
+// here to avoid pulling in the SDK type at the prompt-builder layer.
+export interface UserMessageInput {
+  type: "user";
+  message: {
+    role: "user";
+    content: TextBlock[];
+    // Sprint 2 will extend with: ImageBlock | DocumentBlock
+  };
+  parent_tool_use_id: null;
+}
+
+export interface TextBlock {
+  type: "text";
+  text: string;
+}
+
+export interface BuiltPrompt {
+  messages: UserMessageInput[];
+  // The plain-text equivalent for audit logging (truncated to 500 chars by caller)
+  promptText: string;
+}
+
 export function buildPrompt(
   agent: Agent,
   job: JobData,
   history: Message[],
   conversation?: Conversation | null
-): string {
+): BuiltPrompt {
   const parts: string[] = [];
 
   // Inject memory directly into prompt
@@ -56,7 +83,21 @@ export function buildPrompt(
       break;
   }
 
-  return parts.join("\n");
+  const promptText = parts.join("\n");
+
+  return {
+    messages: [
+      {
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: promptText }],
+        },
+        parent_tool_use_id: null,
+      },
+    ],
+    promptText,
+  };
 }
 
 function buildInboundMessageContext(job: JobData): string[] {
@@ -68,33 +109,29 @@ function buildInboundMessageContext(job: JobData): string[] {
   if (job.payload?.subject) parts.push(`Subject: ${job.payload.subject}`);
   parts.push(`\n${job.payload?.body || ""}`);
 
+  // Per-channel reply context. The agent's persona, tone rules, email formatting
+  // rules, and "you are not an AI assistant" guardrails all live in the system
+  // prompt now (Sprint 0a) — we don't repeat them here.
   if (channel === "email") {
-    parts.push(...buildEmailReplyInstructions(job));
-  } else {
-    parts.push("\nRespond as yourself (not as an AI assistant). Use your personality and follow your instructions.");
+    parts.push(...buildEmailReplyContext(job));
   }
 
   return parts;
 }
 
-function buildEmailReplyInstructions(job: JobData): string[] {
+function buildEmailReplyContext(job: JobData): string[] {
   const ccList = job.payload?.cc || [];
   const parts: string[] = [];
 
-  parts.push("\nYou received this as an email. Reply via the send-email skill:");
-  parts.push("Write a JSON file to workspace/outbox/ with: to, cc, bcc, subject, body_text");
+  parts.push("");
+  parts.push("Reply via the send-email skill (write a JSON file to workspace/outbox/).");
   parts.push(`Reply-To: ${job.payload?.from}`);
   if (ccList.length > 0) {
-    parts.push(`CC (include in your reply to keep them in the loop): ${ccList.join(", ")}`);
+    parts.push(`CC (keep these recipients in the loop): ${ccList.join(", ")}`);
   }
-  parts.push("");
-  parts.push("CRITICAL EMAIL RULES:");
-  parts.push("- DO NOT use emojis (no 🚀 🏥 ✅ etc.)");
-  parts.push("- DO NOT use markdown formatting (no **bold**, no bullets with *)");
-  parts.push("- Write in plain professional prose, like a real human email");
-  parts.push("- Keep the same subject line (prefix with 'Re: ' if not already)");
-  parts.push("- DO NOT add a signature — the system appends one automatically");
-  parts.push("- End your message with 'Best,' or similar but DO NOT add your name/email after — that comes from the signature");
+  if (job.payload?.subject) {
+    parts.push(`Original subject: ${job.payload.subject}`);
+  }
 
   return parts;
 }
