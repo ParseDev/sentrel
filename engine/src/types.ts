@@ -43,6 +43,17 @@ export interface Conversation {
   contact_identifier: string | null;
   subject: string | null;
   status: string;
+  // Sprint 0b — session resume + summaries
+  claude_session_id?: string | null;
+  claude_session_turn_count?: number;
+  last_message_at?: string | null;
+  summaries?: ConversationSummary[];
+}
+
+export interface ConversationSummary {
+  summarized_at: string;
+  turn_range: string; // e.g. "1-30"
+  summary: string;
 }
 
 export interface Message {

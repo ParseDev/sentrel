@@ -1,6 +1,6 @@
 import pg from "pg";
 import { config } from "./config.js";
-import type { Agent, Conversation, Message, SubAgent, ScheduledTask } from "./types.js";
+import type { Agent, Conversation, ConversationSummary, Message, SubAgent, ScheduledTask } from "./types.js";
 
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
 
@@ -94,10 +94,47 @@ export async function saveMessage(
     [conversationId, role, content, direction || null, channel || null, JSON.stringify(toolCalls || []), JSON.stringify(metadata || {})]
   );
 
-  // Update conversation timestamp
-  await pool.query(`UPDATE conversations SET updated_at = NOW() WHERE id = $1`, [conversationId]);
+  // Update conversation timestamps (updated_at and last_message_at for session rotation logic)
+  await pool.query(
+    `UPDATE conversations SET updated_at = NOW(), last_message_at = NOW() WHERE id = $1`,
+    [conversationId]
+  );
 
   return rows[0] as Message;
+}
+
+export async function getConversation(id: number): Promise<Conversation | null> {
+  const { rows } = await pool.query(
+    `SELECT * FROM conversations WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return (rows[0] as Conversation) || null;
+}
+
+export async function updateConversationSessionId(
+  conversationId: number,
+  sessionId: string | null,
+  turnCount: number
+): Promise<void> {
+  await pool.query(
+    `UPDATE conversations
+     SET claude_session_id = $1, claude_session_turn_count = $2, updated_at = NOW()
+     WHERE id = $3`,
+    [sessionId, turnCount, conversationId]
+  );
+}
+
+export async function appendConversationSummary(
+  conversationId: number,
+  summary: ConversationSummary
+): Promise<void> {
+  await pool.query(
+    `UPDATE conversations
+     SET summaries = COALESCE(summaries, '[]'::jsonb) || $1::jsonb,
+         updated_at = NOW()
+     WHERE id = $2`,
+    [JSON.stringify([summary]), conversationId]
+  );
 }
 
 export async function saveAuditLog(

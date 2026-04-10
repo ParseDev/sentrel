@@ -26,7 +26,8 @@ async function main() {
   logger.info(`Model: ${agent.ai_config?.provider}/${agent.ai_config?.model_id}`);
   logger.info(`Organization: ${agent.organization?.name}`);
 
-  // 2. Sync workspace (CLAUDE.md, MEMORY.md)
+  // 2. Sync workspace (directories + MEMORY.md). Identity comes from
+  // buildSystemPrompt() at query time, not from a CLAUDE.md file.
   syncWorkspace(agent);
   logger.info("Workspace synced");
 

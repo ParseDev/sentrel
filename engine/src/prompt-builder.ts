@@ -1,7 +1,12 @@
 import { readMemoryMd } from "./memory.js";
-import type { Agent, JobData, Message } from "./types.js";
+import type { Agent, Conversation, JobData, Message } from "./types.js";
 
-export function buildPrompt(agent: Agent, job: JobData, history: Message[]): string {
+export function buildPrompt(
+  agent: Agent,
+  job: JobData,
+  history: Message[],
+  conversation?: Conversation | null
+): string {
   const parts: string[] = [];
 
   // Inject memory directly into prompt
@@ -11,7 +16,19 @@ export function buildPrompt(agent: Agent, job: JobData, history: Message[]): str
   }
   parts.push("After this interaction, update memory/MEMORY.md with any new important facts you learn.\n");
 
-  // Conversation history
+  // Conversation summaries (older context, compressed) — Sprint 0b
+  // These accumulate over the lifetime of the conversation as Claude sessions rotate.
+  // The agent always sees them so context is never lost on rotation.
+  if (conversation?.summaries && conversation.summaries.length > 0) {
+    parts.push("## Conversation summary (older context):");
+    for (const s of conversation.summaries) {
+      parts.push(`### Turns ${s.turn_range} (summarized ${s.summarized_at}):`);
+      parts.push(s.summary);
+    }
+    parts.push("");
+  }
+
+  // Conversation history (most recent messages, verbatim)
   if (history.length > 0) {
     const senderName = job.payload?.from_name || job.payload?.from || "User";
     parts.push("## Conversation history with " + senderName + ":");

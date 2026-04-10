@@ -4,6 +4,8 @@ import * as db from "./db.js";
 import { syncMemoryToDb } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
 import { buildPrompt } from "./prompt-builder.js";
+import { buildSystemPrompt } from "./system-prompt-builder.js";
+import { summarizeConversation } from "./summarizer.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -16,12 +18,16 @@ import {
   emitError,
 } from "./gateway.js";
 import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
-import type { Agent, JobData, Message } from "./types.js";
+import type { Agent, Conversation, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
 
+// Sprint 0b — session rotation thresholds
+const SESSION_TURN_CAP = 30;
+const SESSION_TIME_GAP_HOURS = 24;
+
 // Top-level orchestrator: routes a job to the right handler and runs the
-// Claude Agent SDK loop. Heavy lifting (prompt, outbox, approvals) lives in
-// dedicated modules.
+// Claude Agent SDK loop. Heavy lifting (prompt, outbox, approvals, summarization)
+// lives in dedicated modules.
 export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   if (job.channel === "whatsapp" && job.payload?.from) {
     setWhatsAppPendingReply(job.payload.from);
@@ -32,14 +38,103 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // not new prompts. Handle them and skip the agent run entirely.
   if (await maybeHandleApprovalResponse(agent, job)) return;
 
-  const conversationId = await ensureConversation(agent, job);
+  // ── Conversation lookup (only inbound_message jobs have conversations) ──
+  const isInbound = job.type === "inbound_message";
+  let conversation: Conversation | null = null;
+  if (job.conversationId) {
+    conversation = await db.getConversation(job.conversationId);
+  } else if (isInbound && job.payload?.from) {
+    conversation = await db.findOrCreateConversation(
+      agent.id,
+      agent.organization_id,
+      "external",
+      job.payload.from,
+      job.payload.from,
+      job.payload.from.includes("@") ? job.payload.from : undefined,
+      !job.payload.from.includes("@") ? job.payload.from : undefined,
+    );
+  }
+
+  // ── Session resume / rotation decision (inbound only) ──
+  // CRITICAL: this read must happen BEFORE we save the new user message,
+  // because saving bumps last_message_at which would defeat the time-gap check.
+  let resumeSessionId: string | null = null;
+  let priorTurnCount = 0;
+
+  if (isInbound && conversation) {
+    if (shouldResumeSession(conversation)) {
+      resumeSessionId = conversation.claude_session_id ?? null;
+      priorTurnCount = conversation.claude_session_turn_count ?? 0;
+      logger.info(
+        `Resuming session ${resumeSessionId} for conversation ${conversation.id} ` +
+        `(turn ${priorTurnCount + 1}/${SESSION_TURN_CAP})`
+      );
+    } else if (conversation.claude_session_id) {
+      // Session exists but rotation triggered — summarize before abandoning
+      const reason =
+        (conversation.claude_session_turn_count ?? 0) >= SESSION_TURN_CAP
+          ? "turn cap"
+          : "time gap";
+      logger.info(
+        `Rotating session for conversation ${conversation.id} (reason: ${reason})`
+      );
+      const summary = await summarizeConversation(
+        agent,
+        conversation.id,
+        1,
+        conversation.claude_session_turn_count ?? 0,
+      );
+      if (summary) {
+        await db.appendConversationSummary(conversation.id, summary);
+        logger.info(
+          `Conversation ${conversation.id} summarized (${summary.summary.length} chars, range ${summary.turn_range})`
+        );
+      }
+    }
+  }
+
+  // ── Save the inbound user message (NOW it's safe to bump last_message_at) ──
+  if (isInbound && conversation && job.payload?.body !== undefined) {
+    await db.saveMessage(
+      conversation.id,
+      "user",
+      job.payload.body || "",
+      "inbound",
+      job.channel,
+      [],
+      { from: job.payload.from, subject: job.payload.subject },
+    );
+  }
+
+  // ── Refetch conversation so prompt sees the new summary ──
+  // (only needed if we just appended a summary)
+  if (conversation && resumeSessionId === null && conversation.claude_session_id) {
+    conversation = await db.getConversation(conversation.id);
+  }
+
+  // ── Build prompt with refreshed history + summaries ──
+  const conversationId = conversation?.id;
   const history = conversationId ? await db.getConversationHistory(conversationId, 20) : [];
-  const prompt = buildPrompt(agent, job, history);
+  const prompt = buildPrompt(agent, job, history, conversation);
 
   const options = await buildQueryOptions(agent);
+  options.systemPrompt = buildSystemPrompt(agent);
+  if (resumeSessionId) {
+    options.resume = resumeSessionId;
+  }
 
   try {
     const result = await runAgentLoop(prompt, options);
+
+    // ── Persist captured session ID for future resumption ──
+    if (isInbound && conversation && result.capturedSessionId) {
+      const newTurnCount = resumeSessionId ? priorTurnCount + 1 : 1;
+      await db.updateConversationSessionId(
+        conversation.id,
+        result.capturedSessionId,
+        newTurnCount,
+      );
+    }
 
     // Save the assistant's response so future runs see it in history
     let savedMessageId: number | null = null;
@@ -77,7 +172,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       job.type,
       undefined,
       { prompt: prompt.slice(0, 500) },
-      { response: finalResponse.slice(0, 500) },
+      { response: finalResponse.slice(0, 500), session_id: result.capturedSessionId, resumed: resumeSessionId !== null },
       "success",
     );
 
@@ -99,21 +194,43 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   }
 }
 
+// Decide whether to resume the existing Claude session for a conversation,
+// or rotate to a fresh one. Rotation triggers on EITHER turn cap OR time gap.
+function shouldResumeSession(conversation: Conversation): boolean {
+  if (!conversation.claude_session_id) return false;
+  if ((conversation.claude_session_turn_count ?? 0) >= SESSION_TURN_CAP) return false;
+  if (conversation.last_message_at) {
+    const hoursSince =
+      (Date.now() - new Date(conversation.last_message_at).getTime()) / 3_600_000;
+    if (hoursSince > SESSION_TIME_GAP_HOURS) return false;
+  }
+  return true;
+}
+
 // ── Internals ──────────────────────────────────────────────────
 
 interface QueryResult {
   responseContent: string;
   interceptor: ToolInterceptor;
+  capturedSessionId: string | null;
 }
 
 async function runAgentLoop(prompt: string, options: Record<string, unknown>): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
   let responseContent = "";
+  let capturedSessionId: string | null = null;
 
   emitThinking();
 
   for await (const message of query({ prompt, options: options as any })) {
     const msg = message as any;
+
+    // Capture sessionId from the first message that has one (per sdk.d.ts:2467+,
+    // every SDKMessage has session_id, and the first is always SDKSystemMessage
+    // with subtype: "init" containing it)
+    if (!capturedSessionId && msg.session_id) {
+      capturedSessionId = msg.session_id;
+    }
 
     if (msg.message?.content) {
       for (const block of msg.message.content) {
@@ -137,34 +254,7 @@ async function runAgentLoop(prompt: string, options: Record<string, unknown>): P
     }
   }
 
-  return { responseContent, interceptor };
-}
-
-async function ensureConversation(agent: Agent, job: JobData): Promise<number | undefined> {
-  if (job.conversationId) return job.conversationId;
-  if (job.type !== "inbound_message" || !job.payload?.from) return undefined;
-
-  const conversation = await db.findOrCreateConversation(
-    agent.id,
-    agent.organization_id,
-    "external",
-    job.payload.from,
-    job.payload.from,
-    job.payload.from.includes("@") ? job.payload.from : undefined,
-    !job.payload.from.includes("@") ? job.payload.from : undefined,
-  );
-
-  await db.saveMessage(
-    conversation.id,
-    "user",
-    job.payload.body || "",
-    "inbound",
-    job.channel,
-    [],
-    { from: job.payload.from, subject: job.payload.subject },
-  );
-
-  return conversation.id;
+  return { responseContent, interceptor, capturedSessionId };
 }
 
 async function buildQueryOptions(agent: Agent): Promise<Record<string, unknown>> {
@@ -176,7 +266,8 @@ async function buildQueryOptions(agent: Agent): Promise<Record<string, unknown>>
 
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
-    settingSources: ["project"],
+    // No settingSources — identity comes from buildSystemPrompt() in agent-runner,
+    // not from a CLAUDE.md file. Single source of truth is the DB.
     allowedTools: [
       "Skill",
       "Agent",
