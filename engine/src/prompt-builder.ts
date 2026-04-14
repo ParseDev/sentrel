@@ -1,4 +1,4 @@
-import { readMemoryMd } from "./memory.js";
+import { readMemoryMd, getMemoryUsage } from "./memory.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
 import type { ProcessedAttachment } from "./media/pipeline.js";
 
@@ -38,12 +38,12 @@ export function buildPrompt(
 ): BuiltPrompt {
   const parts: string[] = [];
 
-  // Inject memory directly into prompt
+  // Inject memory with usage indicator (bounded to 2200 chars)
   const memory = readMemoryMd();
   if (memory && memory.trim() !== "# Memory\n\nNo memories yet.") {
-    parts.push("## Your Memory (accumulated knowledge):\n" + memory + "\n");
+    parts.push(`## Your Memory — ${getMemoryUsage()}\n${memory}\n`);
   }
-  parts.push("After this interaction, update memory/MEMORY.md with any new important facts you learn.\n");
+  parts.push("After this interaction, update memories/memory.md with any new important facts you learn. Keep it concise — you have a 2200 character limit.\n");
 
   // Conversation summaries (older context, compressed) — Sprint 0b
   // These accumulate over the lifetime of the conversation as Claude sessions rotate.

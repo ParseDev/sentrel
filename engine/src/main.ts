@@ -8,7 +8,7 @@ import { startHeartbeat } from "./heartbeat.js";
 import { startScheduler } from "./scheduler.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
-import { startGateway } from "./gateway.js";
+import { startGateway, setSyncHandler } from "./gateway.js";
 import { startTelegramPolling } from "./channels/telegram.js";
 import { initWhatsApp } from "./channels/whatsapp.js";
 import { logger } from "./logger.js";
@@ -58,7 +58,13 @@ async function main() {
   // 9. Start inbox poller (reads from simple Redis list, feeds into BullMQ)
   startInboxPoller();
 
-  // 10. Start gateway WebSocket server
+  // 10. Start gateway (WebSocket + HTTP: POST /sync, GET /health)
+  setSyncHandler(async () => {
+    const freshAgent = await host.getAgent(config.employeeId);
+    syncWorkspace(freshAgent);
+    provisionSkills(freshAgent);
+    logger.info(`Config synced: ${freshAgent.name} (${freshAgent.role})`);
+  });
   startGateway();
 
   // 11. Start channels

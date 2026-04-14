@@ -63,16 +63,15 @@ export function buildSystemPrompt(agent: Agent): string {
   parts.push(
     `# Memory\n` +
     `You have three layers of memory:\n` +
-    `1. memory/MEMORY.md — your curated long-term notes (contacts, deals, preferences, lessons). Read it at the start of each task. Update via the Write tool when you learn something important. Keep it concise — bullet points, not prose.\n` +
-    `2. Conversation context — the recent messages in your current thread are already in your context.\n` +
-    `3. The search_messages tool — when someone references something from a previous conversation that isn't in your current context, call this tool to find the relevant older messages.\n` +
+    `1. memories/memory.md — your curated long-term notes (2200 char limit). Update via Write tool. Be concise — bullet points, not prose. Curate actively: remove stale info to make room for new facts.\n` +
+    `2. Conversation context — recent messages in your current thread are already in your context.\n` +
+    `3. search_messages tool — for older context from previous conversations.\n` +
+    `\n` +
+    `Your identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.\n` +
     `\n` +
     `# Tool: search_messages\n` +
-    `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older context. Examples:\n` +
-    `- "What was Bob's budget last time we talked?" → search_messages({ contact: "bob@example.com", query: "budget" })\n` +
-    `- "Did anyone email me about the contract?" → search_messages({ query: "contract", channel: "email" })\n` +
-    `- "What did we discuss with Acme last month?" → search_messages({ contact: "acme", days_back: 45 })\n` +
-    `Don't call search_messages if the answer is already in your current conversation context — only when you need older information.`
+    `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older context.\n` +
+    `Don't call it if the answer is already in your current conversation — only for older information.`
   );
 
   parts.push(

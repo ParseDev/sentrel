@@ -16,7 +16,7 @@ const ROLE_MAP: Record<string, string> = {
 };
 
 export function provisionSkills(agent: Agent): void {
-  const targetDir = path.join(config.dataDir, ".claude", "skills");
+  const targetDir = path.join(config.dataDir, "skills");
   const sourceDir = path.join(import.meta.dir, "..", "skills");
 
   if (!fs.existsSync(sourceDir)) {

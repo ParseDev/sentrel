@@ -1,3 +1,4 @@
+import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
@@ -9,14 +10,71 @@ const clients = new Set<WebSocket>();
 
 let wss: WebSocketServer;
 
+// Sync callback — set by main.ts so the gateway doesn't need to know about
+// agent loading, workspace sync, etc. Keeps the gateway independent.
+let onSyncRequested: (() => Promise<void>) | null = null;
+export function setSyncHandler(handler: () => Promise<void>): void {
+  onSyncRequested = handler;
+}
+
 export function startGateway(): void {
-  wss = new WebSocketServer({ port: PORT });
+  // HTTP server for REST endpoints + WebSocket upgrade
+  const server = http.createServer(async (req, res) => {
+    // CORS headers for browser access
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // POST /sync — trigger config reload from Host
+    if (req.method === "POST" && req.url === "/sync") {
+      try {
+        if (onSyncRequested) {
+          await onSyncRequested();
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "synced", timestamp: Date.now() }));
+          logger.info("Gateway: config sync triggered via POST /sync");
+        } else {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "sync handler not registered" }));
+        }
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+        logger.error("Gateway: sync failed", { error: (err as Error).message });
+      }
+      return;
+    }
+
+    // GET /health — engine health check
+    if (req.method === "GET" && req.url === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        status: "ok",
+        agentId: config.employeeId,
+        uptime: process.uptime(),
+        clients: clients.size,
+        timestamp: Date.now(),
+      }));
+      return;
+    }
+
+    res.writeHead(404);
+    res.end();
+  });
+
+  // WebSocket server on the same port (upgrade handler)
+  wss = new WebSocketServer({ server });
 
   wss.on("connection", (ws) => {
     clients.add(ws);
     logger.info(`Gateway: client connected (${clients.size} total)`);
 
-    // Send current status
     ws.send(JSON.stringify({ type: "connected", agentId: config.employeeId }));
 
     ws.on("close", () => {
@@ -29,7 +87,11 @@ export function startGateway(): void {
     });
   });
 
-  logger.info(`Gateway WebSocket server on ws://localhost:${PORT}`);
+  server.listen(PORT, () => {
+    logger.info(`Gateway on port ${PORT} (ws + http)`);
+    logger.info(`  POST /sync   — trigger config reload`);
+    logger.info(`  GET  /health — engine health check`);
+  });
 }
 
 // Broadcast event to all connected clients
