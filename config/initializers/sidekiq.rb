@@ -1,12 +1,13 @@
 Sidekiq.configure_server do |config|
   config.redis = { url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0") }
+  config[:concurrency] = Integer(ENV.fetch("SIDEKIQ_CONCURRENCY", "10"))
 
   config.on(:startup) do
-    # Run health check every 30 seconds
+    # Run health check every 60 seconds (was 30, reduced spam)
     Sidekiq.logger.info "Starting periodic health check..."
     Thread.new do
       loop do
-        sleep 30
+        sleep 60
         EmployeeHealthCheckJob.perform_later
       rescue => e
         Sidekiq.logger.error "Health check error: #{e.message}"

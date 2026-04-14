@@ -44,7 +44,14 @@ module Email
       mail = build_mail(threading_headers)
 
       ses = SesClient.for(@org)
-      result = ses.send_raw_email(raw_message: { data: mail.to_s })
+      # Must pass destinations explicitly — Mail gem strips BCC from raw output
+      # (correct MIME behavior), so SES won't see BCC recipients without this.
+      all_recipients = Array(@payload[:to]) + Array(@payload[:cc]) + Array(@payload[:bcc])
+      all_recipients = all_recipients.compact.reject(&:blank?).uniq
+      result = ses.send_raw_email(
+        raw_message: { data: mail.to_s },
+        destinations: all_recipients,
+      )
 
       save_outbound_message(conversation, threading_headers, result.message_id)
       conversation.update!(subject: @subject) if conversation.subject.blank?
