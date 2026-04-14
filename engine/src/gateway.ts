@@ -115,16 +115,25 @@ export function emitTextDelta(text: string): void {
 
 export function emitToolCall(tool: string, input: unknown): void {
   broadcast({ type: "tool_call", tool, input, timestamp: Date.now() });
+  for (const listener of toolCallListeners) {
+    try { listener(tool); } catch {}
+  }
 }
 
 export function emitToolResult(tool: string, result: string): void {
   broadcast({ type: "tool_result", tool, result: result.slice(0, 500), timestamp: Date.now() });
 }
 
-// Listeners for done events (channels like Telegram need to know when response is ready)
+// Listeners for agent events (channels like Telegram subscribe to these)
 const doneListeners: ((content: string) => void)[] = [];
+const toolCallListeners: ((tool: string) => void)[] = [];
+
 export function onDone(listener: (content: string) => void): void {
   doneListeners.push(listener);
+}
+
+export function onToolCall(listener: (tool: string) => void): void {
+  toolCallListeners.push(listener);
 }
 
 export function emitDone(content: string): void {

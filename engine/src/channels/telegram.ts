@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import { redis } from "../queue.js";
 import { host } from "../host/index.js";
-import { onDone } from "../gateway.js";
+import { onDone, onToolCall } from "../gateway.js";
 import { logger } from "../logger.js";
 
 // Sprint 1a — Telegram media types we accept (best-largest size for photos,
@@ -179,14 +179,69 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
     },
   }));
 
-  // Wait for response from gateway WebSocket broadcast
-  // 10 min timeout — complex tasks (building code, researching leads) can take 5-6 min
+  // Real-time tool call updates — show what the agent is doing as it works
+  // (like Hermes: "🔧 Using WebSearch...", "🔧 Writing file...")
+  let statusMsgId: number | null = null;
+  let lastTool = "";
+
+  const toolListener = async (tool: string) => {
+    const toolLabels: Record<string, string> = {
+      WebSearch: "🔍 Searching the web...",
+      WebFetch: "🌐 Fetching page...",
+      Read: "📄 Reading file...",
+      Write: "✏️ Writing file...",
+      Bash: "⚙️ Running command...",
+      Browser: "🖥️ Using browser...",
+      Skill: "📚 Loading skill...",
+      Agent: "🤖 Delegating to sub-agent...",
+      Grep: "🔎 Searching code...",
+      Glob: "📂 Finding files...",
+    };
+    const label = toolLabels[tool] || `🔧 Using ${tool}...`;
+    if (tool === lastTool) return; // avoid duplicate updates
+    lastTool = tool;
+
+    try {
+      if (!statusMsgId) {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: label }),
+        });
+        const data = await res.json() as { ok: boolean; result?: { message_id: number } };
+        statusMsgId = data.result?.message_id ?? null;
+      } else {
+        await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId, text: label }),
+        });
+      }
+    } catch {}
+  };
+
+  onToolCall(toolListener);
+
   const response = await waitForResponse(600_000);
 
   clearInterval(typingInterval);
 
+  // Delete the status message and send the real response
+  if (statusMsgId) {
+    try {
+      await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId }),
+      });
+    } catch {}
+  }
+
   if (response) {
     await sendMessage(botToken, chatId, response);
+  } else {
+    // Timeout — send what we know
+    await sendMessage(botToken, chatId, "⚠️ Still processing — check the dashboard for the full response.");
   }
 }
 
