@@ -60,7 +60,11 @@ async function poll(botToken: string, orgId: number): Promise<void> {
       if (data.ok && data.result.length > 0) {
         for (const update of data.result) {
           lastUpdateId = update.update_id;
-          await handleUpdate(update, botToken, orgId);
+          if (update.callback_query) {
+            await handleCallbackQuery(update.callback_query, botToken);
+          } else {
+            await handleUpdate(update, botToken, orgId);
+          }
         }
       }
     } catch (err) {
@@ -218,6 +222,105 @@ async function downloadAndUpload(
   }
 }
 
+// ── Inline keyboard buttons for approvals ──
+
+// Send a message with inline keyboard buttons (for approvals)
+export async function sendWithButtons(
+  botToken: string,
+  chatId: number,
+  text: string,
+  buttons: Array<{ text: string; callback_data: string }>[],
+): Promise<number | null> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: buttons },
+      }),
+    });
+    const data = await res.json() as { ok: boolean; result?: { message_id: number } };
+    return data.result?.message_id ?? null;
+  } catch (err) {
+    logger.error("Telegram sendWithButtons failed", { error: (err as Error).message });
+    return null;
+  }
+}
+
+// Edit an existing message (used after button tap to update the approval status)
+async function editMessage(botToken: string, chatId: number, messageId: number, text: string): Promise<void> {
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: "Markdown",
+      }),
+    });
+  } catch {}
+}
+
+// Handle callback_query from inline button taps
+async function handleCallbackQuery(
+  query: TelegramCallbackQuery,
+  botToken: string,
+): Promise<void> {
+  const data = query.data || "";
+  const chatId = query.message?.chat?.id;
+  const messageId = query.message?.message_id;
+
+  // Answer the callback (removes the loading spinner on the button)
+  await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callback_query_id: query.id }),
+  });
+
+  // Parse: "approve_{approvalId}" or "reject_{approvalId}"
+  const approveMatch = data.match(/^approve_(\d+)$/);
+  const rejectMatch = data.match(/^reject_(\d+)$/);
+
+  if (!approveMatch && !rejectMatch) return;
+
+  const approvalId = parseInt(approveMatch?.[1] || rejectMatch?.[1] || "0");
+  const isApproved = !!approveMatch;
+
+  try {
+    const approval = await host.getApprovalById(approvalId);
+    if (!approval) {
+      logger.warn(`Telegram: approval #${approvalId} not found`);
+      return;
+    }
+
+    await host.updateApprovalStatus(approvalId, isApproved ? "approved" : "rejected");
+
+    // If approved + send_email, trigger the send
+    if (isApproved && approval.tool_name === "send_email") {
+      const payload = { ...approval.tool_input, agent_id: approval.agent_id };
+      await host.sendEmail(payload);
+    }
+
+    // Edit the original message to show result (removes buttons, no chat clutter)
+    if (chatId && messageId) {
+      const recipient = (approval.tool_input as { to?: string })?.to || "";
+      const statusText = isApproved
+        ? `✅ *Approved* — sending to ${recipient}`
+        : `❌ *Cancelled*`;
+      await editMessage(botToken, chatId, messageId, statusText);
+    }
+
+    logger.info(`Telegram: approval #${approvalId} ${isApproved ? "approved" : "rejected"} via inline button`);
+  } catch (err) {
+    logger.error("Telegram callback approval failed", { error: (err as Error).message });
+  }
+}
+
 async function sendTyping(botToken: string, chatId: number): Promise<void> {
   try {
     await fetch(`https://api.telegram.org/bot${botToken}/sendChatAction`, {
@@ -306,8 +409,16 @@ export function stopTelegramPolling(): void {
   pollingActive = false;
 }
 
+interface TelegramCallbackQuery {
+  id: string;
+  from: { id: number; first_name?: string; last_name?: string; username?: string };
+  message?: { chat: { id: number }; message_id: number };
+  data?: string;
+}
+
 interface TelegramUpdate {
   update_id: number;
+  callback_query?: TelegramCallbackQuery;
   message?: {
     message_id: number;
     from?: { id: number; first_name?: string; last_name?: string; username?: string };

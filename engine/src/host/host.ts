@@ -104,6 +104,7 @@ export interface Host {
     messageId?: number,
   ): Promise<number>;
   getLatestPendingApproval(agentId: number): Promise<PendingApproval | null>;
+  getApprovalById(id: number): Promise<PendingApproval | null>;
   updateApprovalStatus(approvalId: number, status: "approved" | "rejected"): Promise<void>;
 
   // ── Audit + agent state ──

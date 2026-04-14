@@ -200,11 +200,35 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       result.interceptor.capturedEmails(),
     );
 
-    // For non-web channels, append approval prompts to the response so the
-    // user can reply YES/NO directly in their channel
+    // For non-web channels, show approval prompts.
+    // Telegram: inline keyboard buttons (tap to approve/reject)
+    // WhatsApp: text with "Reply YES/NO" (no button support in sandbox)
     let finalResponse = result.responseContent;
     if (approvalResults.length > 0 && job.channel && job.channel !== "web") {
-      finalResponse += formatChannelApprovalPreview(approvalResults);
+      if (job.channel === "telegram" && job.payload?.metadata?.bot_token && job.payload?.metadata?.chat_id) {
+        // Telegram: send separate messages with inline buttons for each approval
+        const { sendWithButtons } = await import("./channels/telegram.js");
+        for (const a of approvalResults) {
+          const preview = a.body_text?.slice(0, 300) || "";
+          const text =
+            `📧 *Email Draft*\n` +
+            `*To:* ${a.to}\n` +
+            `*Subject:* ${a.subject}\n` +
+            `---\n${preview}${preview.length < (a.body_text?.length || 0) ? "..." : ""}\n---`;
+          await sendWithButtons(
+            job.payload.metadata.bot_token as string,
+            job.payload.metadata.chat_id as number,
+            text,
+            [[
+              { text: "✅ Send", callback_data: `approve_${a.approvalId}` },
+              { text: "❌ Cancel", callback_data: `reject_${a.approvalId}` },
+            ]],
+          );
+        }
+      } else {
+        // Other channels: text-based YES/NO
+        finalResponse += formatChannelApprovalPreview(approvalResults);
+      }
     }
 
     emitDone(finalResponse);

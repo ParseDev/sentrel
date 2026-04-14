@@ -219,6 +219,25 @@ export class PostgresHost implements Host {
     };
   }
 
+  async getApprovalById(id: number): Promise<PendingApproval | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, agent_id, tool_name, tool_input, status, context, message_id
+       FROM pending_approvals WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      agent_id: r.agent_id,
+      tool_name: r.tool_name,
+      tool_input: typeof r.tool_input === "string" ? JSON.parse(r.tool_input) : r.tool_input,
+      status: r.status,
+      context: r.context,
+      message_id: r.message_id,
+    };
+  }
+
   async updateApprovalStatus(approvalId: number, status: "approved" | "rejected"): Promise<void> {
     await this.pool.query(
       `UPDATE pending_approvals SET status = $1, reviewed_at = NOW(), updated_at = NOW() WHERE id = $2`,
