@@ -338,7 +338,32 @@ async function handleCallbackQuery(
     body: JSON.stringify({ callback_query_id: query.id }),
   });
 
-  // Parse: "approve_{approvalId}" or "reject_{approvalId}"
+  // ── Command approval buttons (Phase S) ──
+  const cmdMatch = data.match(/^cmd_(once|session|always|deny)_(cmd_\d+)$/);
+  if (cmdMatch) {
+    const level = cmdMatch[1] as "once" | "session" | "always" | "deny";
+    const cmdId = cmdMatch[2];
+
+    const { resolveCommandApproval } = await import("../security/command-approval.js");
+    const resolved = resolveCommandApproval(cmdId, level);
+
+    if (chatId && messageId) {
+      const labels: Record<string, string> = {
+        once: "✅ Allowed once",
+        session: "✅ Allowed for this session",
+        always: "✅ Always allowed",
+        deny: "❌ Denied",
+      };
+      await editMessage(botToken, chatId, messageId, labels[level] || level);
+    }
+
+    if (!resolved) {
+      logger.warn(`Telegram: command approval ${cmdId} not found or already resolved`);
+    }
+    return;
+  }
+
+  // ── Email approval buttons ──
   const approveMatch = data.match(/^approve_(\d+)$/);
   const rejectMatch = data.match(/^reject_(\d+)$/);
 

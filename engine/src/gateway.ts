@@ -152,6 +152,17 @@ export function emitError(error: string): void {
   broadcast({ type: "error", error, timestamp: Date.now() });
 }
 
+export function emitCommandApproval(data: {
+  approvalId: string;
+  command: string;
+  category: string;
+  level: string;
+  explanation: string;
+  suggestedFix?: string;
+}): void {
+  broadcast({ type: "command_approval", ...data, timestamp: Date.now() });
+}
+
 // Sprint 3 — media sent during the current agent run. Collected here so
 // agent-runner can persist them on the assistant message after the run.
 let pendingMedia: Array<{ url: string; filename: string; contentType: string; byteSize: number; signedId?: string }> = [];

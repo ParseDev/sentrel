@@ -12,6 +12,8 @@ import { buildRecallMcpServer } from "./tools/recall.js";
 import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { getComposioMcpServer } from "./integrations/composio.js";
 import { scanCommand } from "./security/command-scanner.js";
+import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
+import { recordApproval } from "./security/approval-interceptor.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -401,6 +403,7 @@ async function buildQueryOptions(
     hooks: {
       PreToolUse: [{
         matcher: "Bash",
+        timeout: 330, // 5.5 min timeout (approval wait is max 5 min)
         hooks: [async (input: any) => {
           const toolInput = input.tool_input as { command?: string } | undefined;
           const command = toolInput?.command || "";
@@ -412,18 +415,70 @@ async function buildQueryOptions(
           if (risk && agent.approval_mode !== "off") {
             logger.warn(`⚠️ Dangerous command detected: ${risk.category} (${risk.level})`, {
               command: command.slice(0, 100),
-              explanation: risk.explanation,
             });
 
-            // Deny the command and tell the agent why
-            return {
-              hookEventName: "PreToolUse" as const,
-              permissionDecision: "deny" as const,
-              permissionDecisionReason:
-                `⚠️ BLOCKED: ${risk.explanation}\n` +
-                `Category: ${risk.category} | Risk: ${risk.level}\n` +
-                (risk.suggestedFix ? `Safer alternative: ${risk.suggestedFix}` : ""),
-            };
+            // Create a pending approval and send buttons to the user
+            const { id, promise } = createCommandApproval(command, risk.category);
+
+            // Send approval request to channel (Telegram buttons, etc.)
+            const { emitCommandApproval } = await import("./gateway.js");
+            emitCommandApproval({
+              approvalId: id,
+              command: command.slice(0, 500),
+              category: risk.category,
+              level: risk.level,
+              explanation: risk.explanation,
+              suggestedFix: risk.suggestedFix,
+            });
+
+            // If on Telegram, send inline buttons
+            if (job.channel === "telegram" && job.payload?.metadata?.bot_token && job.payload?.metadata?.chat_id) {
+              const { sendWithButtons } = await import("./channels/telegram.js");
+              const text =
+                `⚠️ *Command Approval Required*\n\n` +
+                `\`${command.slice(0, 300)}\`\n\n` +
+                `Risk: *${risk.level}* — ${risk.explanation}` +
+                (risk.suggestedFix ? `\nSafer: ${risk.suggestedFix}` : "");
+
+              await sendWithButtons(
+                job.payload.metadata.bot_token as string,
+                job.payload.metadata.chat_id as number,
+                text,
+                [
+                  [
+                    { text: "✅ Allow Once", callback_data: `cmd_once_${id}` },
+                    { text: "✅ Session", callback_data: `cmd_session_${id}` },
+                  ],
+                  [
+                    { text: "✅ Always", callback_data: `cmd_always_${id}` },
+                    { text: "❌ Deny", callback_data: `cmd_deny_${id}` },
+                  ],
+                ],
+              );
+            }
+
+            // PAUSE — wait for user's decision (up to 5 min)
+            logger.info(`Waiting for command approval ${id}...`);
+            const decision = await promise;
+
+            // Record the decision (updates session approvals / DB allowlist)
+            await recordApproval(agent, {
+              level: decision,
+              command,
+              risk,
+            }, conversationId);
+
+            if (decision === "deny") {
+              return {
+                hookEventName: "PreToolUse" as const,
+                permissionDecision: "deny" as const,
+                permissionDecisionReason: `Command denied by user: ${risk.explanation}`,
+              };
+            }
+
+            // Allowed — let it through
+            logger.info(`Command approved (${decision}): ${command.slice(0, 80)}`);
+            return { hookEventName: "PreToolUse" as const };
           }
 
           return { hookEventName: "PreToolUse" as const };
