@@ -39,13 +39,9 @@ Rails.application.configure do
   # Log to STDOUT with the current request id as a default log tag.
   config.log_tags = [ :request_id ]
 
-  # Structured JSON logs for Better Stack (opt-in via LOG_FORMAT=json)
-  if ENV["LOG_FORMAT"] == "json"
-    config.logger = ActiveSupport::TaggedLogging.new(
-      ActiveSupport::Logger.new(STDOUT, formatter: ->(severity, time, _progname, msg) {
-        { level: severity, time: time.iso8601, msg: msg }.to_json + "\n"
-      })
-    )
+  # Better Stack logging via logtail-rails (opt-in via BETTERSTACK_SOURCE_TOKEN)
+  if ENV["BETTERSTACK_SOURCE_TOKEN"].present?
+    config.logger = Logtail::Logger.create_default_logger(ENV["BETTERSTACK_SOURCE_TOKEN"])
   else
     config.logger = ActiveSupport::TaggedLogging.logger(STDOUT)
   end
