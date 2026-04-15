@@ -1,5 +1,5 @@
-import { Head, useForm, router } from "@inertiajs/react"
-import { Plus, CheckSquare, MoreHorizontal, Pencil, Trash2, ArrowRight } from "lucide-react"
+import { Head, useForm, router, Link } from "@inertiajs/react"
+import { Plus, CheckSquare, MoreHorizontal, Pencil, Trash2, ArrowRight, MessageSquare, Clock, User, Bot, Send, X } from "lucide-react"
 import {
   DndContext,
   DragOverlay,
@@ -40,6 +40,7 @@ interface TaskItem {
   due_at: string | null
   agent: { id: number; name: string; slug: string }
   assigned_by: { id: number; name: string } | null
+  comments_count?: number
 }
 
 interface Props {
@@ -62,7 +63,7 @@ const priorityBadge: Record<string, { label: string; variant: "default" | "secon
 }
 
 // ── Sortable Task Card ──
-function TaskCard({ task, overlay, setEditingTask }: { task: TaskItem; overlay?: boolean; setEditingTask?: (t: TaskItem) => void }) {
+function TaskCard({ task, overlay, setEditingTask, onOpen }: { task: TaskItem; overlay?: boolean; setEditingTask?: (t: TaskItem) => void; onOpen?: (t: TaskItem) => void }) {
   const {
     attributes,
     listeners,
@@ -94,7 +95,9 @@ function TaskCard({ task, overlay, setEditingTask }: { task: TaskItem; overlay?:
       <Card className={`group ${overlay ? "shadow-lg ring-2 ring-accent rotate-2" : ""}`}>
         <CardContent className="px-3 py-2">
           <div className="flex items-start justify-between gap-2">
-            <p className="font-medium text-sm leading-snug flex-1">{task.title}</p>
+            <button className="font-medium text-sm leading-snug flex-1 text-left hover:underline" onClick={(e) => { e.stopPropagation(); onOpen?.(task) }} onPointerDown={(e) => e.stopPropagation()}>
+              {task.title}
+            </button>
             {!overlay && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -149,11 +152,18 @@ function TaskCard({ task, overlay, setEditingTask }: { task: TaskItem; overlay?:
               <span className="text-xs text-muted-foreground">{task.agent.name}</span>
             </div>
           </div>
-          {task.due_at && (
-            <p className="text-[11px] text-muted-foreground mt-2">
-              Due {new Date(task.due_at).toLocaleDateString()}
-            </p>
-          )}
+          <div className="flex items-center gap-3 mt-2">
+            {task.due_at && (
+              <span className="text-[11px] text-muted-foreground">
+                Due {new Date(task.due_at).toLocaleDateString()}
+              </span>
+            )}
+            {(task.comments_count ?? 0) > 0 && (
+              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground ml-auto">
+                <MessageSquare className="size-3" /> {task.comments_count}
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -190,7 +200,7 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask }: {
       >
         <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {columnTasks.map((task) => (
-            <TaskCard key={task.id} task={task} setEditingTask={setEditingTask} />
+            <TaskCard key={task.id} task={task} setEditingTask={setEditingTask} onOpen={openTaskDetail} />
           ))}
         </SortableContext>
 
@@ -264,9 +274,33 @@ function EditTaskForm({ task, agents, onClose }: { task: TaskItem; agents: Props
 }
 
 // ── Main Page ──
+interface Comment {
+  id: number
+  content: string
+  created_at: string
+  author: { id: number; name: string } | null
+  author_type: "user" | "agent"
+}
+
 export default function TasksIndex({ tasks, agents }: Props) {
   const [activeTask, setActiveTask] = useState<TaskItem | null>(null)
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null)
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [loadingComments, setLoadingComments] = useState(false)
+
+  async function openTaskDetail(task: TaskItem) {
+    setSelectedTask(task)
+    setLoadingComments(true)
+    try {
+      const res = await fetch(`/tasks/${task.id}`, { headers: { "Accept": "application/json", "X-Inertia": "true", "X-Inertia-Version": "" } })
+      if (res.ok) {
+        const data = await res.json()
+        setComments(data.props?.comments || [])
+      }
+    } catch {}
+    setLoadingComments(false)
+  }
   const { data, setData, post, processing, reset } = useForm({
     agent_id: "",
     title: "",
@@ -408,6 +442,129 @@ export default function TasksIndex({ tasks, agents }: Props) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Task Detail Modal (Linear-style) */}
+      {selectedTask && (
+        <TaskDetailModal task={selectedTask} comments={comments} loading={loadingComments} onClose={() => setSelectedTask(null)} />
+      )}
     </AppLayout>
+  )
+}
+
+function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem; comments: Comment[]; loading: boolean; onClose: () => void }) {
+  const [newComment, setNewComment] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [localComments, setLocalComments] = useState(comments)
+  const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+
+  // Sync when comments prop changes
+  if (comments !== localComments && comments.length > 0 && localComments.length === 0) {
+    setLocalComments(comments)
+  }
+
+  async function handleAddComment() {
+    if (!newComment.trim() || submitting) return
+    setSubmitting(true)
+    await fetch(`/tasks/${task.id}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ content: newComment }),
+    })
+    setLocalComments((prev) => [...prev, {
+      id: Date.now(), content: newComment, created_at: new Date().toISOString(),
+      author: { id: 0, name: "You" }, author_type: "user",
+    }])
+    setNewComment("")
+    setSubmitting(false)
+  }
+
+  const statusColors: Record<string, string> = {
+    todo: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+    in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
+    failed: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  }
+
+  const pb = priorityBadge[task.priority] || priorityBadge.normal
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]" onClick={onClose}>
+      <div className="fixed inset-0 bg-black/50 animate-in fade-in duration-150" />
+      <div className="relative w-full max-w-2xl max-h-[75vh] bg-background border rounded-xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-150" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold">{task.title}</h2>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusColors[task.status] || ""}`}>
+                {task.status.replace("_", " ")}
+              </span>
+              <Badge variant={pb.variant} className="text-[10px]">{pb.label}</Badge>
+              <span className="text-xs text-muted-foreground">{task.agent.name}</span>
+              {task.due_at && <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="size-3" /> Due {new Date(task.due_at).toLocaleDateString()}</span>}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-muted transition-colors">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {task.description && (
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
+          )}
+          {task.instruction && (
+            <div className="rounded-md bg-muted p-3">
+              <p className="text-[11px] font-medium text-muted-foreground mb-1">Instruction</p>
+              <p className="text-sm whitespace-pre-wrap">{task.instruction}</p>
+            </div>
+          )}
+
+          {/* Comments */}
+          <div className="border-t pt-4">
+            <h3 className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
+              <MessageSquare className="size-3.5" /> Comments ({localComments.length})
+            </h3>
+
+            {loading ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
+            ) : (
+              <div className="space-y-3">
+                {localComments.map((c) => (
+                  <div key={c.id} className="flex gap-2.5">
+                    <div className={`size-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-medium ${c.author_type === "agent" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}>
+                      {c.author_type === "agent" ? <Bot className="size-3" /> : <User className="size-3" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium">{c.author?.name || "System"}</span>
+                        <span className="text-[10px] text-muted-foreground">{new Date(c.created_at).toLocaleString()}</span>
+                      </div>
+                      <p className="text-sm mt-0.5 whitespace-pre-wrap">{c.content}</p>
+                    </div>
+                  </div>
+                ))}
+                {localComments.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No comments yet</p>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Comment input */}
+        <div className="border-t p-3 flex gap-2">
+          <input
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Add a comment..."
+            className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm"
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment() } }}
+          />
+          <button onClick={handleAddComment} disabled={!newComment.trim() || submitting} className="px-3 py-1.5 rounded-md bg-foreground text-background text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+            <Send className="size-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

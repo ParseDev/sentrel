@@ -23,7 +23,7 @@ import {
   Check,
 } from "lucide-react"
 import { useState, useCallback, useRef } from "react"
-import { Plus, Trash2, Pause, Play, X as XIcon } from "lucide-react"
+import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown } from "lucide-react"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -36,6 +36,8 @@ import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { agentsPath, editAgentPath, agentChannelConfigsPath } from "@/routes"
 import type { Agent, Task, ChannelConfig, ScheduledTask } from "@/types"
 
@@ -808,7 +810,8 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
   const nameRef = useRef<HTMLInputElement>(null)
   const cronRef = useRef<HTMLInputElement>(null)
   const instructionRef = useRef<HTMLTextAreaElement>(null)
-  const timezoneRef = useRef<HTMLInputElement>(null)
+  const [timezone, setTimezone] = useState("UTC")
+  const [tzOpen, setTzOpen] = useState(false)
 
   const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
   const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrfToken }
@@ -819,7 +822,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
         name: nameRef.current?.value || "",
         cron_expression: cronRef.current?.value || "",
         instruction: instructionRef.current?.value || "",
-        timezone: timezoneRef.current?.value || "UTC",
+        timezone: timezone,
         active: true,
       },
     }
@@ -837,7 +840,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
         name: nameRef.current?.value,
         cron_expression: cronRef.current?.value,
         instruction: instructionRef.current?.value,
-        timezone: timezoneRef.current?.value,
+        timezone: timezone,
       },
     }
     const res = await fetch(`/agents/${agentId}/scheduled_tasks/${id}`, { method: "PATCH", headers, body: JSON.stringify(body) })
@@ -874,13 +877,64 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
 
       {(showForm || editId) && (
         <div className="rounded-lg border bg-card p-4 mb-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <input ref={nameRef} placeholder="Name (e.g. Weekly Report)" defaultValue={editId ? tasks.find(t => t.id === editId)?.name : ""} className="rounded-md border bg-background px-3 py-1.5 text-sm" />
-            <input ref={cronRef} placeholder="Cron (e.g. 0 9 * * 1)" defaultValue={editId ? tasks.find(t => t.id === editId)?.cron_expression : ""} className="rounded-md border bg-background px-3 py-1.5 text-sm font-mono" />
+          <input ref={nameRef} placeholder="Name (e.g. Weekly Report)" defaultValue={editId ? tasks.find(t => t.id === editId)?.name : ""} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm" />
+
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Schedule</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {[
+                { label: "Every hour", cron: "0 * * * *" },
+                { label: "Daily 9am", cron: "0 9 * * *" },
+                { label: "Weekdays 9am", cron: "0 9 * * 1-5" },
+                { label: "Monday 9am", cron: "0 9 * * 1" },
+                { label: "Every 6 hours", cron: "0 */6 * * *" },
+                { label: "1st of month", cron: "0 9 1 * *" },
+              ].map((preset) => (
+                <button key={preset.cron} type="button" onClick={() => { if (cronRef.current) cronRef.current.value = preset.cron }}
+                  className="px-2 py-0.5 rounded border text-[11px] hover:bg-muted transition-colors">
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <input ref={cronRef} placeholder="Custom cron (e.g. 30 8 * * 1-5)" defaultValue={editId ? tasks.find(t => t.id === editId)?.cron_expression : ""} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm font-mono" />
+            <p className="text-[10px] text-muted-foreground mt-1">Format: minute hour day-of-month month day-of-week</p>
           </div>
-          <textarea ref={instructionRef} placeholder="Instruction — what to do when this fires..." defaultValue="" rows={2} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm resize-none" />
+
+          <textarea ref={instructionRef} placeholder="Instruction — what to do when this fires..." defaultValue={editId ? tasks.find(t => t.id === editId)?.instruction || "" : ""} rows={2} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm resize-none" />
+
           <div className="flex items-center gap-2">
-            <input ref={timezoneRef} placeholder="Timezone (UTC)" defaultValue="UTC" className="rounded-md border bg-background px-3 py-1.5 text-sm w-48" />
+            <Popover open={tzOpen} onOpenChange={setTzOpen}>
+              <PopoverTrigger asChild>
+                <button className="flex items-center justify-between w-56 rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-muted transition-colors">
+                  <span className="truncate">{timezone.replace(/_/g, " ")}</span>
+                  <ChevronsUpDown className="size-3 opacity-50 ml-2 shrink-0" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search timezone..." />
+                  <CommandList className="max-h-[250px]">
+                    <CommandEmpty>No timezone found.</CommandEmpty>
+                    {[
+                      { group: "Americas", zones: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Mexico_City", "America/Argentina/Buenos_Aires", "America/Bogota", "America/Lima"] },
+                      { group: "Europe", zones: ["Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid", "Europe/Rome", "Europe/Zurich", "Europe/Stockholm", "Europe/Warsaw", "Europe/Moscow", "Europe/Istanbul"] },
+                      { group: "Asia & Pacific", zones: ["Asia/Dubai", "Asia/Riyadh", "Asia/Kolkata", "Asia/Bangkok", "Asia/Singapore", "Asia/Hong_Kong", "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Jakarta", "Asia/Manila"] },
+                      { group: "Oceania & Africa", zones: ["Australia/Sydney", "Australia/Melbourne", "Australia/Perth", "Pacific/Auckland", "Pacific/Honolulu", "Africa/Cairo", "Africa/Lagos", "Africa/Johannesburg", "Africa/Nairobi"] },
+                      { group: "Other", zones: ["UTC"] },
+                    ].map(({ group, zones }) => (
+                      <CommandGroup key={group} heading={group}>
+                        {zones.map((tz) => (
+                          <CommandItem key={tz} value={tz} onSelect={() => { setTimezone(tz); setTzOpen(false) }}>
+                            <Check className={`size-3 mr-2 ${timezone === tz ? "opacity-100" : "opacity-0"}`} />
+                            {tz.replace(/_/g, " ")}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <div className="flex-1" />
             <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowForm(false); setEditId(null) }}>Cancel</Button>
             <Button size="sm" className="h-7 text-xs" onClick={() => editId ? handleUpdate(editId) : handleCreate()}>

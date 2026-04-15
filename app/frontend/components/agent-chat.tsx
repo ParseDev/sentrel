@@ -328,8 +328,10 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
   useEffect(() => {
     let ws: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout>
+    let mounted = true
 
     function connect() {
+      if (!mounted) return
       ws = new WebSocket(GATEWAY_URL)
       ws.onmessage = (event) => {
         try {
@@ -358,16 +360,17 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
         } catch {}
       }
       ws.onclose = () => {
-        reconnectTimer = setTimeout(connect, 3000)
+        if (mounted) reconnectTimer = setTimeout(connect, 5000)
       }
     }
 
     connect()
     return () => {
+      mounted = false
       ws?.close()
       clearTimeout(reconnectTimer)
     }
-  }, [])
+  }, [agentId])
   const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
 
   // Inject media attachments + approval markers into message content for rendering
