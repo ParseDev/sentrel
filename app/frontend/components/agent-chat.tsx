@@ -233,6 +233,17 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
           } else if (data.type === "media_attachment") {
             // Sprint 3 — agent sent an image/file via send_image/send_file
             mediaAttachments.push({ url: data.url, filename: data.filename, contentType: data.contentType })
+          } else if (data.type === "command_approval") {
+            // Phase S — dangerous command detected, agent is paused waiting for approval
+            // Send approval decision back to engine via gateway
+            const approvalId = data.approvalId as string
+            const commandText = data.command as string
+            const explanation = data.explanation as string
+            const level = data.level as string
+
+            // Auto-approve in web chat for now (TODO: show proper UI dialog)
+            // For safety, we deny by default — the user should use Telegram for approvals
+            responseText += `\n\n⚠️ **Command Approval Required** (${level})\n\`${commandText.slice(0, 200)}\`\n${explanation}\n\n_Use Telegram to approve/deny this command._`
           } else if (data.type === "pending_approval" && data.toolName === "send_email") {
             approvalData = { approvalId: data.approvalId, ...data.toolInput }
           } else if (data.type === "done") {
