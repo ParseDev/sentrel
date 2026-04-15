@@ -1,0 +1,25 @@
+Weekly Digest — <%= @org.name %>
+<%= @week_start.strftime('%b %d') %> – <%= @week_end.strftime('%b %d, %Y') %>
+
+SUMMARY
+  Messages:      <%= @totals[:messages] %>
+  Emails Sent:   <%= @totals[:emails] %>
+  Tasks Done:    <%= @totals[:tasks] %>
+  Approvals:     <%= @totals[:approvals] %>
+  Conversations: <%= @totals[:conversations] %>
+  Errors:        <%= @totals[:errors] %>
+
+<% if @per_agent.any? %>
+PER-AGENT BREAKDOWN
+<% @per_agent.each do |s| %>
+  <%= s[:agent].name %> (<%= s[:agent].role %>)
+    Messages: <%= s[:messages] %> | Emails: <%= s[:emails] %> | Tasks: <%= s[:tasks] %> | Errors: <%= s[:errors] %>
+<% end %>
+<% end %>
+
+<% if @pending_count > 0 %>
+<%= @pending_count %> approval<%= @pending_count == 1 ? '' : 's' %> still pending review.
+<% end %>
+
+—
+Sent by Alchemy · <%= @org.name %>

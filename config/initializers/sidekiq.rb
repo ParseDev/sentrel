@@ -26,6 +26,19 @@ Sidekiq.configure_server do |config|
       end
     end
 
+    # Weekly digest every Monday at 8am
+    Thread.new do
+      loop do
+        now = Time.current
+        next_monday_8am = now.beginning_of_week(:monday).change(hour: 8)
+        next_monday_8am += 1.week if next_monday_8am <= now
+        sleep(next_monday_8am - now)
+        WeeklyDigestJob.perform_later
+      rescue => e
+        Sidekiq.logger.error "Weekly digest scheduler error: #{e.message}"
+      end
+    end
+
     # Archive dormant conversations daily at 3am
     Thread.new do
       loop do
