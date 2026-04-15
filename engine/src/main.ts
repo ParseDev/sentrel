@@ -12,7 +12,7 @@ import { startGateway, setSyncHandler } from "./gateway.js";
 import { startTelegramPolling } from "./channels/telegram.js";
 import { initWhatsApp } from "./channels/whatsapp.js";
 import { initSentry, setAgentContext, captureException, flush as flushSentry } from "./sentry.js";
-import { logger } from "./logger.js";
+import { logger, flushLogs } from "./logger.js";
 import type { JobData } from "./types.js";
 
 async function main() {
@@ -89,6 +89,7 @@ async function main() {
     logger.info("Shutting down...");
     await host.updateAgentStatus(agent.id, "stopped");
     await worker.close();
+    await flushLogs();
     await flushSentry();
     process.exit(0);
   };
@@ -99,7 +100,8 @@ async function main() {
 
 main().catch(async (err) => {
   captureException(err, { fatal: true });
-  await flushSentry();
   logger.error("Fatal error", { error: err.message, stack: err.stack });
+  await flushLogs();
+  await flushSentry();
   process.exit(1);
 });
