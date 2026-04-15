@@ -38,7 +38,20 @@ import {
   XIcon,
   Loader2Icon,
 } from "lucide-react";
-import { type FC, useState } from "react";
+import { ShieldAlertIcon, CheckIcon as CheckCircleIcon, XIcon as XCircleIcon } from "lucide-react";
+import { type FC, useState, createContext, useContext } from "react";
+
+// Command approval context — set by AgentChat, consumed by Thread
+type CmdApprovalData = {
+  approvalId: string
+  command: string
+  level: string
+  explanation: string
+  resolve: (level: "once" | "session" | "always" | "deny") => void
+} | null
+
+const CmdApprovalContext = createContext<CmdApprovalData>(null);
+export const CmdApprovalProvider = CmdApprovalContext.Provider;
 
 export const Thread: FC = () => {
   return (
@@ -63,7 +76,10 @@ export const Thread: FC = () => {
           {() => <ThreadMessage />}
         </ThreadPrimitive.Messages>
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
+        <div className="flex-1" />
+        <InlineCommandApproval />
+
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
           <ThreadScrollToBottom />
           <Composer />
         </ThreadPrimitive.ViewportFooter>
@@ -78,6 +94,59 @@ const ThreadMessage: FC = () => {
   if (isEditing) return <EditComposer />;
   if (role === "user") return <UserMessage />;
   return <AssistantMessage />;
+};
+
+const InlineCommandApproval: FC = () => {
+  const approval = useContext(CmdApprovalContext);
+  const [result, setResult] = useState<string | null>(null);
+
+  if (!approval && !result) return null;
+
+  if (result) {
+    return (
+      <div className="mx-auto w-full max-w-(--thread-max-width) py-2">
+        <div className={`rounded-xl border p-3 text-sm ${result === "Denied" ? "border-red-200 text-red-700 dark:border-red-800 dark:text-red-400" : "border-emerald-200 text-emerald-700 dark:border-emerald-800 dark:text-emerald-400"}`}>
+          Command {result.toLowerCase()}
+        </div>
+      </div>
+    );
+  }
+
+  if (!approval) return null;
+
+  function handleAction(level: "once" | "session" | "always" | "deny") {
+    const labels: Record<string, string> = { once: "Allowed once", session: "Allowed for session", always: "Always allowed", deny: "Denied" };
+    setResult(labels[level]);
+    approval!.resolve(level);
+    setTimeout(() => setResult(null), 3000);
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-(--thread-max-width) pb-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+      <div className="rounded-xl border bg-card p-3 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
+          <ShieldAlertIcon className="size-4" />
+          Command Approval Required ({approval.level})
+        </div>
+        <code className="block text-xs bg-muted p-2.5 rounded overflow-x-auto">{approval.command}</code>
+        <p className="text-xs text-muted-foreground">{approval.explanation}</p>
+        <div className="flex flex-wrap gap-2 pt-2 border-t">
+          <button onClick={() => handleAction("once")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors">
+            <CheckCircleIcon className="size-3" /> Allow Once
+          </button>
+          <button onClick={() => handleAction("session")} className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors">
+            Allow Session
+          </button>
+          <button onClick={() => handleAction("always")} className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors">
+            Always Allow
+          </button>
+          <button onClick={() => handleAction("deny")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-300 text-red-600 dark:border-red-700 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950 transition-colors">
+            <XCircleIcon className="size-3" /> Deny
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const ThreadScrollToBottom: FC = () => {

@@ -1,4 +1,5 @@
-import { useRef } from "react"
+import { useRef, useState, useEffect } from "react"
+import { Check, X, Loader2, Mail } from "lucide-react"
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -9,7 +10,7 @@ import {
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
-import { Thread } from "@/components/assistant-ui/thread"
+import { Thread, CmdApprovalProvider } from "@/components/assistant-ui/thread"
 
 const GATEWAY_URL = "ws://localhost:3300"
 const DIRECT_UPLOAD_URL = "/rails/active_storage/direct_uploads"
@@ -188,6 +189,14 @@ interface PendingEmail {
 const APPROVAL_MARKER = "<!--EMAIL_APPROVAL:"
 const APPROVAL_MARKER_END = ":EMAIL_APPROVAL-->"
 
+type CmdApprovalState = {
+  approvalId: string
+  command: string
+  level: string
+  explanation: string
+  resolve: (level: "once" | "session" | "always" | "deny") => void
+} | null
+
 function createAgentAdapter(agentId: number): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
@@ -234,16 +243,7 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
             // Sprint 3 — agent sent an image/file via send_image/send_file
             mediaAttachments.push({ url: data.url, filename: data.filename, contentType: data.contentType })
           } else if (data.type === "command_approval") {
-            // Phase S — dangerous command detected, agent is paused waiting for approval
-            // Send approval decision back to engine via gateway
-            const approvalId = data.approvalId as string
-            const commandText = data.command as string
-            const explanation = data.explanation as string
-            const level = data.level as string
-
-            // Auto-approve in web chat for now (TODO: show proper UI dialog)
-            // For safety, we deny by default — the user should use Telegram for approvals
-            responseText += `\n\n⚠️ **Command Approval Required** (${level})\n\`${commandText.slice(0, 200)}\`\n${explanation}\n\n_Use Telegram to approve/deny this command._`
+            // Handled by persistent WebSocket in AgentChat — skip here
           } else if (data.type === "pending_approval" && data.toolName === "send_email") {
             approvalData = { approvalId: data.approvalId, ...data.toolInput }
           } else if (data.type === "done") {
@@ -320,7 +320,54 @@ interface AgentChatProps {
 }
 
 export function AgentChat({ agentId, agentName, initialMessages = [], approvalsByMessage = {} }: AgentChatProps) {
+  const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
   const adapter = useRef(createAgentAdapter(agentId)).current
+
+  // Persistent WebSocket — stays open while on the chat page.
+  // Receives command_approval events even when user hasn't sent a message.
+  useEffect(() => {
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout>
+
+    function connect() {
+      ws = new WebSocket(GATEWAY_URL)
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          if (data.type === "command_approval") {
+            setCmdApproval({
+              approvalId: data.approvalId,
+              command: (data.command as string).slice(0, 300),
+              level: data.level as string,
+              explanation: data.explanation as string,
+              resolve: (chosenLevel) => {
+                setCmdApproval(null)
+                const approvalWs = new WebSocket(GATEWAY_URL)
+                approvalWs.onopen = () => {
+                  approvalWs.send(JSON.stringify({
+                    type: "command_approval_response",
+                    approvalId: data.approvalId,
+                    command: data.command,
+                    level: chosenLevel,
+                  }))
+                  setTimeout(() => approvalWs.close(), 500)
+                }
+              },
+            })
+          }
+        } catch {}
+      }
+      ws.onclose = () => {
+        reconnectTimer = setTimeout(connect, 3000)
+      }
+    }
+
+    connect()
+    return () => {
+      ws?.close()
+      clearTimeout(reconnectTimer)
+    }
+  }, [])
   const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
 
   // Inject media attachments + approval markers into message content for rendering
@@ -376,9 +423,11 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="h-full overflow-hidden bg-background">
-        <Thread />
-      </div>
+      <CmdApprovalProvider value={cmdApproval}>
+        <div className="h-full overflow-hidden bg-background">
+          <Thread />
+        </div>
+      </CmdApprovalProvider>
     </AssistantRuntimeProvider>
   )
 }
