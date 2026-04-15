@@ -11,6 +11,8 @@ export interface Agent {
   instructions_md: string | null;
   memory_md: string | null;
   permissions: Record<string, string>;
+  approval_mode: "manual" | "smart" | "off";
+  command_allowlist: string[];
   heartbeat_enabled: boolean;
   heartbeat_interval_minutes: number;
   ai_config: AiConfig | null;

@@ -130,6 +130,7 @@ export interface Host {
   ): Promise<void>;
   updateAgentMemory(agentId: number, memoryMd: string): Promise<void>;
   updateAgentStatus(agentId: number, status: string): Promise<void>;
+  updateAgentCommandAllowlist(agentId: number, allowlist: string[]): Promise<void>;
 
   // ── Skills ──
   getAgentSkills(agentId: number): Promise<AgentSkill[]>;

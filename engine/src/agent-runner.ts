@@ -11,6 +11,7 @@ import { syncSkillsFromDb } from "./skills.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
 import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { getComposioMcpServer } from "./integrations/composio.js";
+import { scanCommand } from "./security/command-scanner.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -396,6 +397,39 @@ async function buildQueryOptions(
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     mcpServers,
+    // Phase S — PreToolUse hook for dangerous command detection
+    hooks: {
+      PreToolUse: [{
+        matcher: "Bash",
+        hooks: [async (input: any) => {
+          const toolInput = input.tool_input as { command?: string } | undefined;
+          const command = toolInput?.command || "";
+
+          if (!command) return { hookEventName: "PreToolUse" as const };
+
+          const risk = scanCommand(command, agent.command_allowlist || []);
+
+          if (risk && agent.approval_mode !== "off") {
+            logger.warn(`⚠️ Dangerous command detected: ${risk.category} (${risk.level})`, {
+              command: command.slice(0, 100),
+              explanation: risk.explanation,
+            });
+
+            // Deny the command and tell the agent why
+            return {
+              hookEventName: "PreToolUse" as const,
+              permissionDecision: "deny" as const,
+              permissionDecisionReason:
+                `⚠️ BLOCKED: ${risk.explanation}\n` +
+                `Category: ${risk.category} | Risk: ${risk.level}\n` +
+                (risk.suggestedFix ? `Safer alternative: ${risk.suggestedFix}` : ""),
+            };
+          }
+
+          return { hookEventName: "PreToolUse" as const };
+        }],
+      }],
+    },
   };
 
   if (agent.ai_config?.model_id) {

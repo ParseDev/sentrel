@@ -309,6 +309,13 @@ export class PostgresHost implements Host {
     }));
   }
 
+  async updateAgentCommandAllowlist(agentId: number, allowlist: string[]): Promise<void> {
+    await this.pool.query(
+      `UPDATE agents SET command_allowlist = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(allowlist), agentId],
+    );
+  }
+
   // ── Scheduling ──
 
   async getScheduledTasks(agentId: number): Promise<ScheduledTask[]> {
