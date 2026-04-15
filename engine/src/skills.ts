@@ -5,6 +5,7 @@ import { host } from "./host/index.js";
 import type { Agent } from "./types.js";
 import type { AgentSkill } from "./host/host.js";
 import { logger } from "./logger.js";
+import { scanForInjection } from "./security/injection-scanner.js";
 
 // Role → built-in skill slugs to auto-install for new agents
 const ROLE_DEFAULT_SKILLS: Record<string, string[]> = {
@@ -55,6 +56,13 @@ export async function syncSkillsFromDb(agentId: number): Promise<AgentSkill[]> {
   fs.mkdirSync(targetDir, { recursive: true });
 
   for (const skill of skills) {
+    // Phase S P2 — scan skill content for injection
+    const threats = scanForInjection(skill.skill_md, `skill:${skill.slug}`);
+    if (threats.length > 0) {
+      logger.warn(`⚠️ Injection threats in skill ${skill.slug}: ${threats.map(t => t.category).join(", ")} — skipping`);
+      continue; // Don't write unsafe skills
+    }
+
     const skillDir = path.join(targetDir, skill.slug);
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), skill.skill_md);

@@ -350,8 +350,8 @@ async function handleCallbackQuery(
   logger.info(`Telegram callback received: ${data}`);
   const cmdMatch = data.match(/^cmd_(once|session|always|deny)_(cmd_\d+)$/);
   if (cmdMatch) {
-    const level = cmdMatch[1] as "once" | "session" | "always" | "deny";
-    const cmdId = cmdMatch[2];
+    const level = cmdMatch[1]! as "once" | "session" | "always" | "deny";
+    const cmdId = cmdMatch[2]!;
 
     const { resolveCommandApproval } = await import("../security/command-approval.js");
     const resolved = resolveCommandApproval(cmdId, level);

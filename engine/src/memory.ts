@@ -3,6 +3,7 @@ import path from "path";
 import { config } from "./config.js";
 import { host } from "./host/index.js";
 import { logger } from "./logger.js";
+import { scanForInjection } from "./security/injection-scanner.js";
 import type { Agent } from "./types.js";
 
 const dataDir = config.dataDir;
@@ -54,6 +55,14 @@ export function syncSoulMd(agent: Agent): void {
   }
 
   const soulMd = parts.join("\n\n");
+
+  // Phase S P2 — scan for prompt injection before writing
+  const threats = scanForInjection(soulMd, "SOUL.md");
+  if (threats.length > 0) {
+    logger.warn(`⚠️ Injection threats in SOUL.md: ${threats.map(t => `${t.category}: "${t.matchedText}"`).join(", ")}`);
+    // Still write the file but log the warning — don't block agent startup
+  }
+
   fs.writeFileSync(path.join(dataDir, "soul.md"), soulMd);
 }
 

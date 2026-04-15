@@ -14,6 +14,7 @@ import { getComposioMcpServer } from "./integrations/composio.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
 import { recordApproval } from "./security/approval-interceptor.js";
+import { redactSecrets } from "./security/credential-filter.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -254,8 +255,8 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     await syncMemoryToDb(agent.id);
     logger.info(`Agent run completed (${finalResponse.length} chars)`);
   } catch (err) {
-    emitError((err as Error).message);
-    logger.error(`Agent run failed`, { error: (err as Error).message });
+    emitError(redactSecrets((err as Error).message));
+    logger.error(`Agent run failed`, { error: redactSecrets((err as Error).message) });
     await host.saveAuditLog(
       agent.organization_id,
       agent.id,
@@ -466,7 +467,7 @@ async function buildQueryOptions(
               level: decision,
               command,
               risk,
-            }, conversationId);
+            }, job.conversationId);
 
             if (decision === "deny") {
               return {
