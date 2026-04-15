@@ -328,6 +328,82 @@ export class PostgresHost implements Host {
     return rows as ScheduledTask[];
   }
 
+  async createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone = "UTC"): Promise<number> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO scheduled_tasks (organization_id, agent_id, name, instruction, cron_expression, timezone, active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW()) RETURNING id`,
+      [orgId, agentId, name, instruction, cronExpression, timezone],
+    );
+    return rows[0].id;
+  }
+
+  async updateScheduledTask(id: number, updates: { name?: string; instruction?: string; cron_expression?: string; timezone?: string; active?: boolean }): Promise<void> {
+    const sets: string[] = ["updated_at = NOW()"];
+    const params: unknown[] = [];
+    for (const [key, val] of Object.entries(updates)) {
+      if (val !== undefined) {
+        params.push(val);
+        sets.push(`${key} = $${params.length}`);
+      }
+    }
+    params.push(id);
+    await this.pool.query(`UPDATE scheduled_tasks SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+  }
+
+  async deleteScheduledTask(id: number): Promise<void> {
+    await this.pool.query(`DELETE FROM scheduled_tasks WHERE id = $1`, [id]);
+  }
+
+  // ── Tasks ──
+
+  async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO tasks (organization_id, agent_id, title, description, instruction, status, priority, due_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, NOW(), NOW()) RETURNING id`,
+      [orgId, agentId, title, opts?.description || null, opts?.instruction || null, opts?.priority || "normal", opts?.due_at || null],
+    );
+    return rows[0].id;
+  }
+
+  async listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>> {
+    const wheres = ["agent_id = $1"];
+    const params: unknown[] = [agentId];
+    if (status) {
+      params.push(status);
+      wheres.push(`status = $${params.length}`);
+    }
+    const { rows } = await this.pool.query(
+      `SELECT id, title, description, status, priority, due_at, created_at FROM tasks WHERE ${wheres.join(" AND ")} ORDER BY created_at DESC LIMIT 50`,
+      params,
+    );
+    return rows;
+  }
+
+  async updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown> }): Promise<void> {
+    const sets: string[] = ["updated_at = NOW()"];
+    const params: unknown[] = [];
+    for (const [key, val] of Object.entries(updates)) {
+      if (val !== undefined) {
+        params.push(key === "result" ? JSON.stringify(val) : val);
+        sets.push(`${key} = $${params.length}`);
+      }
+    }
+    // Auto-set timestamps
+    if (updates.status === "in_progress") sets.push("started_at = NOW()");
+    if (updates.status === "done" || updates.status === "failed") sets.push("completed_at = NOW()");
+    params.push(id);
+    await this.pool.query(`UPDATE tasks SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+  }
+
+  async addTaskComment(taskId: number, agentId: number, content: string): Promise<number> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO task_comments (task_id, agent_id, content, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id`,
+      [taskId, agentId, content],
+    );
+    return rows[0].id;
+  }
+
   // ── Blob storage (Sprint 1) ──
   //
   // Bytes flow through Rails ActiveStorage. The engine doesn't run an HTTP

@@ -85,6 +85,27 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
   );
 
   parts.push(
+    `# Scheduling & Reminders\n` +
+    `You can schedule recurring tasks and one-time reminders:\n` +
+    `- schedule_task({ name, instruction, cron_expression, timezone? }) — recurring cron schedule\n` +
+    `- set_reminder({ name, instruction, datetime, timezone? }) — one-time reminder at a specific time\n` +
+    `- list_schedules() — see all active schedules\n` +
+    `- delete_schedule({ id }) — remove a schedule\n` +
+    `Convert natural language times to cron/ISO 8601 using the current date in your system prompt.\n` +
+    `Examples: "every Monday 9am" → cron "0 9 * * 1", "Friday at 2pm" → ISO "2026-04-18T14:00:00"`
+  );
+
+  parts.push(
+    `# Task Management\n` +
+    `You can create and track tasks:\n` +
+    `- create_task({ title, description?, priority?, due_at? }) — create a new task\n` +
+    `- list_tasks({ status? }) — see your tasks (todo/in_progress/done/failed)\n` +
+    `- update_task({ id, status?, priority?, due_at? }) — update task status or details\n` +
+    `- comment_on_task({ task_id, content }) — add progress notes to a task\n` +
+    `When asked to "remind me" or "follow up", create a task with a due date. When completing work, mark tasks as done.`
+  );
+
+  parts.push(
     `# Sending media\n` +
     `You have tools to send media back to the user on any channel:\n` +
     `- send_voice({ text }) — converts text to speech and sends as a voice note. Use for quick audio replies.\n` +

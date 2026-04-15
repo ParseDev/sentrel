@@ -159,6 +159,15 @@ export interface Host {
 
   // ── Scheduling ──
   getScheduledTasks(agentId: number): Promise<ScheduledTask[]>;
+  createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone?: string): Promise<number>;
+  updateScheduledTask(id: number, updates: { name?: string; instruction?: string; cron_expression?: string; timezone?: string; active?: boolean }): Promise<void>;
+  deleteScheduledTask(id: number): Promise<void>;
+
+  // ── Tasks ──
+  createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number>;
+  listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>>;
+  updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown> }): Promise<void>;
+  addTaskComment(taskId: number, agentId: number, content: string): Promise<number>;
 
   // ── Cross-conversation message recall (Sprint 0e) ──
   // Returns messages matching the filters, scoped to organizationId.

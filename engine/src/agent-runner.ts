@@ -10,6 +10,8 @@ import { processAttachments } from "./media/pipeline.js";
 import { syncSkillsFromDb } from "./skills.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
 import { buildSendMediaMcpServer } from "./tools/send-media.js";
+import { buildSchedulingMcpServer } from "./tools/scheduling.js";
+import { buildTasksMcpServer } from "./tools/tasks.js";
 import { getComposioMcpServer } from "./integrations/composio.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
@@ -368,9 +370,15 @@ async function buildQueryOptions(
   // Sprint 6 — Composio integration (1000+ app tools)
   const composioServer = await getComposioMcpServer(agent.organization_id);
 
+  // Post-V1 #2 — scheduling + task management tools
+  const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id);
+  const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
+
   const mcpServers: Record<string, unknown> = {
     recall: recallServer,
     "send-media": sendMediaServer,
+    scheduling: schedulingServer,
+    tasks: tasksServer,
   };
   if (composioServer) {
     mcpServers.composio = composioServer;
