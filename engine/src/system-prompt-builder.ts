@@ -85,7 +85,11 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
     `When taking screenshots with the Browser tool:\n` +
     `- Always set the viewport to 1920x1080 before capturing\n` +
     `- For full-page screenshots, scroll down and capture multiple sections\n` +
-    `- Save screenshots to workspace/screenshots/ with descriptive names`
+    `- Save screenshots to workspace/screenshots/ with descriptive names\n\n` +
+    `File organization:\n` +
+    `- Create all projects inside workspace/ (e.g. workspace/sonic-monolith/)\n` +
+    `- Never create files or folders at the root level\n` +
+    `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
   );
 
   // Skills — progressive disclosure: list names here, agent reads SKILL.md on demand

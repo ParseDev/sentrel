@@ -61,7 +61,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <img
-                src="https://static.scribemd.ai/assets/prod/logo-white-924baac46e034a61b17f39df1ffa86eea23200f5b52b1b5b988c5f581eec26ca.png"
+                src="/scribemd-logo.png"
                 alt="ScribeMD"
                 className="h-8 w-auto"
               />
