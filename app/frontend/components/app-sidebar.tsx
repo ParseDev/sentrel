@@ -4,6 +4,7 @@ import {
   Bot,
   CheckSquare,
   Plug,
+  TrendingUp,
   ShieldCheck,
   ScrollText,
   Settings,
@@ -49,6 +50,7 @@ const mainNavItems: NavItem[] = [
   { title: "Agents", href: agentsPath(), icon: Bot },
   { title: "Tasks", href: tasksPath(), icon: CheckSquare },
   { title: "Integrations", href: integrationsPath(), icon: Plug },
+  { title: "Reports", href: "/reports", icon: TrendingUp },
 ]
 
 const secondaryNavItems: NavItem[] = [

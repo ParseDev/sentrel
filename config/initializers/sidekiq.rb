@@ -14,6 +14,18 @@ Sidekiq.configure_server do |config|
       end
     end
 
+    # Daily summary job at midnight
+    Thread.new do
+      loop do
+        now = Time.current
+        next_midnight = now.change(hour: 0) + 1.day
+        sleep(next_midnight - now)
+        DailySummaryJob.perform_later
+      rescue => e
+        Sidekiq.logger.error "Daily summary scheduler error: #{e.message}"
+      end
+    end
+
     # Archive dormant conversations daily at 3am
     Thread.new do
       loop do

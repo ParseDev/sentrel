@@ -49,6 +49,7 @@ Rails.application.routes.draw do
     end
 
     resources :tasks
+    resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do
         post ":service_name/connect", action: :connect, as: :connect

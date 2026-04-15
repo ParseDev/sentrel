@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_15_050838) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_15_162812) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -53,6 +53,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_050838) do
     t.index ["agent_id", "skill_definition_id"], name: "idx_agent_skills_unique", unique: true
     t.index ["agent_id"], name: "index_agent_skills_on_agent_id"
     t.index ["skill_definition_id"], name: "index_agent_skills_on_skill_definition_id"
+  end
+
+  create_table "agent_summaries", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.integer "approvals_approved", default: 0
+    t.integer "approvals_pending", default: 0
+    t.integer "approvals_rejected", default: 0
+    t.jsonb "channel_breakdown", default: {}
+    t.integer "conversations_started", default: 0
+    t.datetime "created_at", null: false
+    t.date "date", null: false
+    t.integer "emails_sent", default: 0
+    t.integer "errors_count", default: 0
+    t.integer "messages_handled", default: 0
+    t.bigint "organization_id", null: false
+    t.integer "tasks_completed", default: 0
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "date"], name: "index_agent_summaries_on_agent_id_and_date", unique: true
+    t.index ["agent_id"], name: "index_agent_summaries_on_agent_id"
+    t.index ["organization_id"], name: "index_agent_summaries_on_organization_id"
   end
 
   create_table "agents", force: :cascade do |t|
@@ -322,6 +342,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_050838) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "agent_skills", "agents"
   add_foreign_key "agent_skills", "skill_definitions"
+  add_foreign_key "agent_summaries", "agents"
+  add_foreign_key "agent_summaries", "organizations"
   add_foreign_key "agents", "agents", column: "manager_id"
   add_foreign_key "agents", "organizations"
   add_foreign_key "ai_configs", "agents"
