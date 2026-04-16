@@ -13,6 +13,7 @@
 | 7 | Auto-suggested recalls | Engine proactively injects related context before each run | ~3 days |
 | 8 | Conversation analytics | Sentiment analysis, response quality scoring, resolution rate | ~3 days |
 | 9 | Inter-agent messaging | `message_agent()` tool. Delegate + await response | ~2 days |
+| 9b | Session resume (retry) | Re-enable SDK session resume so back-to-back messages continue the same Claude session. Reduces cost (prompt caching) and improves continuity. Previously disabled due to SDK hang on large transcripts — needs investigation | ~2 days |
 | 10 | Conversation handoff | Agent escalates to human. Live takeover in web UI | ~2 days |
 
 ## Deployment
