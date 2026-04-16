@@ -159,18 +159,28 @@ export function emitToolResult(tool: string, result: string): void {
 const doneListeners: ((content: string) => void)[] = [];
 const toolCallListeners: ((tool: string) => void)[] = [];
 
-export function onDone(listener: (content: string) => void): void {
+export function onDone(listener: (content: string) => void): () => void {
   doneListeners.push(listener);
+  // Return cleanup function
+  return () => {
+    const idx = doneListeners.indexOf(listener);
+    if (idx !== -1) doneListeners.splice(idx, 1);
+  };
 }
 
-export function onToolCall(listener: (tool: string) => void): void {
+export function onToolCall(listener: (tool: string) => void): () => void {
   toolCallListeners.push(listener);
+  return () => {
+    const idx = toolCallListeners.indexOf(listener);
+    if (idx !== -1) toolCallListeners.splice(idx, 1);
+  };
 }
 
 export function emitDone(content: string): void {
   broadcast({ type: "done", content, timestamp: Date.now() });
-  // Notify channel listeners
-  for (const listener of doneListeners) {
+  // Fire the FIRST listener only (FIFO — each job registered in order)
+  const listener = doneListeners.shift();
+  if (listener) {
     try { listener(content); } catch {}
   }
 }
