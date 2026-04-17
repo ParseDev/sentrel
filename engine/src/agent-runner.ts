@@ -555,24 +555,31 @@ async function buildQueryOptions(
   };
   const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
 
-  // Step 2 — Context-aware tool loading.
-  // Route based on current message text + recent conversation context.
-  // If the user says "try again" after a Google Sheets conversation, we
-  // should keep those tools loaded — not force them to re-mention "sheets".
+  // Step 2 — Context-aware tool loading (3-layer cascade).
+  // Layer 1: Check recent audit logs for Composio tool usage — if the agent
+  //   used Google Sheets tools last turn, keep them loaded for "try again".
+  // Layer 2: Keyword regex on current message + conversation history.
+  // Layer 3: Agent calls COMPOSIO_SEARCH_TOOLS at runtime (always available).
   const jobText = [
     job.payload?.instruction || "",
     job.payload?.body || "",
     job.payload?.subject || "",
   ].join(" ");
-  // Also scan recent history so follow-up messages inherit toolkit context
   const recentContext = history.slice(-5).map((m) => m.content).join(" ");
   const routingText = `${jobText} ${recentContext}`;
 
   const availableToolkits = await getActiveToolkits(agent.organization_id);
   const toolRouting = process.env.TOOL_ROUTING || "keyword";
+
+  // Layer 1: extract toolkit slugs from recent tool calls in audit log
+  const recentToolkitsFromHistory = await getRecentComposioToolkits(agent.id);
+
   const relevantToolkits = toolRouting === "all"
     ? availableToolkits
-    : routeToolkits(routingText, availableToolkits);
+    : [...new Set([
+        ...recentToolkitsFromHistory.filter((t) => availableToolkits.includes(t)),
+        ...routeToolkits(routingText, availableToolkits),
+      ])];
   logger.info(
     `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} (available: ${availableToolkits.join(", ") || "none"})`,
   );
@@ -734,4 +741,23 @@ async function notifyTaskEvent(taskId: number, messageId: number): Promise<void>
     },
     body: JSON.stringify({ task_id: taskId, message_id: messageId }),
   });
+}
+
+// Layer 1 of tool routing: extract toolkit slugs from the agent's most recent
+// audit log entry. If the agent used mcp__composio__GOOGLESHEETS_* last turn,
+// keep googlesheets loaded without the user needing to re-mention it.
+async function getRecentComposioToolkits(agentId: number): Promise<string[]> {
+  try {
+    const logs = await host.getRecentAuditToolCalls(agentId, 3);
+    const toolkits = new Set<string>();
+    for (const toolName of logs) {
+      const match = toolName.match(/^mcp__composio__([A-Z]+?)_/);
+      if (match && match[1]) {
+        toolkits.add(match[1].toLowerCase());
+      }
+    }
+    return [...toolkits];
+  } catch {
+    return [];
+  }
 }

@@ -194,6 +194,7 @@ export function getToolLabel(tool: string): string {
 
 export function emitToolCall(tool: string, input: unknown): void {
   const label = humanizeToolName(tool);
+  logger.info(`Tool: ${tool} → ${label}`);
   broadcast({ type: "tool_call", tool, label, input, timestamp: Date.now() });
   // Also broadcast a progress event that any UI/channel can consume
   broadcast({ type: "progress", label, tool, timestamp: Date.now() });

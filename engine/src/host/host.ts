@@ -168,6 +168,9 @@ export interface Host {
   // ── Skills ──
   getAgentSkills(agentId: number): Promise<AgentSkill[]>;
 
+  // Layer 1 tool routing: recent Composio tool names from audit logs
+  getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]>;
+
   // ── Scheduling (legacy — scheduled_tasks) ──
   getScheduledTasks(agentId: number): Promise<ScheduledTask[]>;
   createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone?: string): Promise<number>;

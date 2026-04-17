@@ -375,6 +375,26 @@ export class PostgresHost implements Host {
     await this.pool.query(`UPDATE scheduled_tasks SET last_run_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
   }
 
+  // Layer 1 tool routing: extract tool names from recent audit log output.tool_calls
+  async getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `SELECT output->'tool_calls' AS tool_calls FROM audit_logs
+       WHERE agent_id = $1 AND output->'tool_calls' IS NOT NULL
+       ORDER BY id DESC LIMIT $2`,
+      [agentId, limit],
+    );
+    const names: string[] = [];
+    for (const row of rows) {
+      const calls = row.tool_calls;
+      if (Array.isArray(calls)) {
+        for (const tc of calls) {
+          if (tc.name) names.push(tc.name);
+        }
+      }
+    }
+    return names;
+  }
+
   // ── Step 5: scheduled_work (unified) ──
 
   async getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]> {
