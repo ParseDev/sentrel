@@ -14,11 +14,13 @@ import type {
   ConversationSummary,
   Message,
   ScheduledTask,
+  ScheduledWorkItem,
   SubAgent,
 } from "../types.js";
 import type {
   ActivityResult,
   AgentSkill,
+  AuditLogExtra,
   BlobUploadResult,
   ChannelConfig,
   Host,
@@ -32,7 +34,12 @@ export class PostgresHost implements Host {
   private pool: pg.Pool;
 
   constructor() {
-    this.pool = new pg.Pool({ connectionString: config.databaseUrl });
+    // Force UTC session timezone via options parameter — Rails reads
+    // `timestamp without time zone` columns as UTC, so NOW() must produce UTC.
+    this.pool = new pg.Pool({
+      connectionString: config.databaseUrl,
+      options: "-c timezone=UTC",
+    });
   }
 
   // ── Identity & config ──
@@ -258,10 +265,15 @@ export class PostgresHost implements Host {
     input?: unknown,
     output?: unknown,
     status?: string,
+    extra?: AuditLogExtra,
   ): Promise<void> {
     await this.pool.query(
-      `INSERT INTO audit_logs (organization_id, agent_id, action, tool_name, input, output, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+      `INSERT INTO audit_logs (
+        organization_id, agent_id, action, tool_name, input, output, status,
+        routed_toolkits, task_id, was_resume,
+        cache_read_input_tokens, cache_creation_input_tokens,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())`,
       [
         orgId,
         agentId,
@@ -270,6 +282,11 @@ export class PostgresHost implements Host {
         JSON.stringify(input || {}),
         JSON.stringify(output || {}),
         status || null,
+        JSON.stringify(extra?.routedToolkits || []),
+        extra?.taskId ?? null,
+        extra?.wasResume ?? false,
+        extra?.cacheReadInputTokens ?? null,
+        extra?.cacheCreationInputTokens ?? null,
       ],
     );
   }
@@ -358,6 +375,60 @@ export class PostgresHost implements Host {
     await this.pool.query(`UPDATE scheduled_tasks SET last_run_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
   }
 
+  // ── Step 5: scheduled_work (unified) ──
+
+  async getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, mode, name, instruction, cron_expression, timezone, fire_at, interval_seconds, active, last_run_at, next_run_at, payload_extra
+       FROM scheduled_work WHERE agent_id = $1 AND active = true ORDER BY created_at`,
+      [agentId],
+    );
+    return rows.map((r: any) => ({
+      id: r.id,
+      mode: r.mode,
+      name: r.name,
+      instruction: r.instruction,
+      cron_expression: r.cron_expression,
+      timezone: r.timezone || "UTC",
+      fire_at: r.fire_at?.toISOString() ?? null,
+      interval_seconds: r.interval_seconds,
+      active: r.active,
+      last_run_at: r.last_run_at?.toISOString() ?? null,
+      next_run_at: r.next_run_at?.toISOString() ?? null,
+      payload_extra: r.payload_extra || {},
+    }));
+  }
+
+  async createScheduledWork(orgId: number, agentId: number, item: Omit<ScheduledWorkItem, "id" | "last_run_at" | "next_run_at">): Promise<number> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO scheduled_work (organization_id, agent_id, mode, name, instruction, cron_expression, timezone, fire_at, interval_seconds, active, payload_extra, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING id`,
+      [orgId, agentId, item.mode, item.name, item.instruction, item.cron_expression, item.timezone, item.fire_at, item.interval_seconds, item.active, JSON.stringify(item.payload_extra || {})],
+    );
+    return rows[0].id;
+  }
+
+  async updateScheduledWork(id: number, updates: Partial<Pick<ScheduledWorkItem, "name" | "instruction" | "cron_expression" | "timezone" | "fire_at" | "interval_seconds" | "active">>): Promise<void> {
+    const sets: string[] = ["updated_at = NOW()"];
+    const params: unknown[] = [];
+    for (const [key, val] of Object.entries(updates)) {
+      if (val !== undefined) {
+        params.push(val);
+        sets.push(`${key} = $${params.length}`);
+      }
+    }
+    params.push(id);
+    await this.pool.query(`UPDATE scheduled_work SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+  }
+
+  async deleteScheduledWork(id: number): Promise<void> {
+    await this.pool.query(`DELETE FROM scheduled_work WHERE id = $1`, [id]);
+  }
+
+  async updateScheduledWorkLastRun(id: number): Promise<void> {
+    await this.pool.query(`UPDATE scheduled_work SET last_run_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
+  }
+
   // ── Tasks ──
 
   async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number> {
@@ -383,7 +454,7 @@ export class PostgresHost implements Host {
     return rows;
   }
 
-  async updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown> }): Promise<void> {
+  async updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown>; progress_summary?: string }): Promise<void> {
     const sets: string[] = ["updated_at = NOW()"];
     const params: unknown[] = [];
     for (const [key, val] of Object.entries(updates)) {
@@ -394,9 +465,35 @@ export class PostgresHost implements Host {
     }
     // Auto-set timestamps
     if (updates.status === "in_progress") sets.push("started_at = NOW()");
-    if (updates.status === "done" || updates.status === "failed") sets.push("completed_at = NOW()");
+    if (updates.status === "done" || updates.status === "failed" || updates.status === "cancelled") sets.push("completed_at = NOW()");
     params.push(id);
     await this.pool.query(`UPDATE tasks SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+  }
+
+  async getTask(id: number): Promise<{ id: number; title: string; status: string; checkpoint: Record<string, unknown>; conversation_id: number | null } | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, title, status, checkpoint, conversation_id FROM tasks WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      checkpoint: r.checkpoint || {},
+      conversation_id: r.conversation_id,
+    };
+  }
+
+  // JSON-merge: preserves existing checkpoint keys not in the new payload.
+  // Agents call this frequently on long tasks to record "I'm at 40/100", so
+  // a full overwrite would lose intermediate state if they forget a key.
+  async writeTaskCheckpoint(id: number, checkpoint: Record<string, unknown>): Promise<void> {
+    await this.pool.query(
+      `UPDATE tasks SET checkpoint = COALESCE(checkpoint, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(checkpoint), id],
+    );
   }
 
   async addTaskComment(taskId: number, agentId: number, content: string): Promise<number> {

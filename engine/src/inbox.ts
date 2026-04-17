@@ -20,11 +20,17 @@ export function startInboxPoller(): void {
       if (result) {
         const [, raw] = result;
         const jobData: JobData = JSON.parse(raw);
-        await queue.add(jobData.type, jobData, {
+        // Extra M — use jobId as BullMQ jobId for dedup. If a Rails retry
+        // pushes the same event twice (same jobId), BullMQ silently ignores.
+        const bullmqOpts: Record<string, unknown> = {
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 50 },
-        });
-        logger.info(`Inbox: received ${jobData.type} job, queued for processing`);
+        };
+        if (jobData.jobId) {
+          bullmqOpts.jobId = jobData.jobId;
+        }
+        await queue.add(jobData.type, jobData, bullmqOpts);
+        logger.info(`Inbox: received ${jobData.type} job (${jobData.jobId || "no-id"}), queued`);
       }
     } catch (err) {
       logger.error("Inbox poll error", { error: (err as Error).message });

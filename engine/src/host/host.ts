@@ -9,7 +9,7 @@
 // directly, or know about Rails table names. The engine talks to `host.foo()`,
 // the Host implementation owns the schema.
 
-import type { Agent, Conversation, ConversationSummary, Message, ScheduledTask, SubAgent } from "../types.js";
+import type { Agent, Conversation, ConversationSummary, Message, ScheduledTask, ScheduledWorkItem, SubAgent } from "../types.js";
 
 export interface ChannelConfig {
   channel_type: string;
@@ -37,6 +37,16 @@ export interface AgentSkill {
   category: string;
   requires_connections: string[];
   enabled: boolean;
+}
+
+// Extra L — observability fields surfaced to audit_logs as columns so they
+// can be indexed, aggregated, and joined (task_id FK) cheaply.
+export interface AuditLogExtra {
+  routedToolkits?: string[];
+  taskId?: number | null;
+  wasResume?: boolean;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 // Sprint 1 — blob storage
@@ -149,6 +159,7 @@ export interface Host {
     input?: unknown,
     output?: unknown,
     status?: string,
+    extra?: AuditLogExtra,
   ): Promise<void>;
   updateAgentMemory(agentId: number, memoryMd: string): Promise<void>;
   updateAgentStatus(agentId: number, status: string): Promise<void>;
@@ -157,18 +168,28 @@ export interface Host {
   // ── Skills ──
   getAgentSkills(agentId: number): Promise<AgentSkill[]>;
 
-  // ── Scheduling ──
+  // ── Scheduling (legacy — scheduled_tasks) ──
   getScheduledTasks(agentId: number): Promise<ScheduledTask[]>;
   createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone?: string): Promise<number>;
   updateScheduledTask(id: number, updates: { name?: string; instruction?: string; cron_expression?: string; timezone?: string; active?: boolean }): Promise<void>;
   deleteScheduledTask(id: number): Promise<void>;
   updateScheduledTaskLastRun(id: number): Promise<void>;
 
+  // ── Scheduling (Step 5 — scheduled_work, unified) ──
+  getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]>;
+  createScheduledWork(orgId: number, agentId: number, item: Omit<ScheduledWorkItem, "id" | "last_run_at" | "next_run_at">): Promise<number>;
+  updateScheduledWork(id: number, updates: Partial<Pick<ScheduledWorkItem, "name" | "instruction" | "cron_expression" | "timezone" | "fire_at" | "interval_seconds" | "active">>): Promise<void>;
+  deleteScheduledWork(id: number): Promise<void>;
+  updateScheduledWorkLastRun(id: number): Promise<void>;
+
   // ── Tasks ──
   createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number>;
   listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>>;
-  updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown> }): Promise<void>;
+  updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown>; progress_summary?: string }): Promise<void>;
   addTaskComment(taskId: number, agentId: number, content: string): Promise<number>;
+  // Step 5.5 — long-running task primitives
+  getTask(id: number): Promise<{ id: number; title: string; status: string; checkpoint: Record<string, unknown>; conversation_id: number | null } | null>;
+  writeTaskCheckpoint(id: number, checkpoint: Record<string, unknown>): Promise<void>;
 
   // ── Cross-conversation message recall (Sprint 0e) ──
   // Returns messages matching the filters, scoped to organizationId.

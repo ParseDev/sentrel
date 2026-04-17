@@ -90,8 +90,28 @@ export interface ScheduledTask {
   active: boolean;
 }
 
+// Step 5 — unified scheduling: cron + once + interval in one table.
+export interface ScheduledWorkItem {
+  id: number;
+  mode: "cron" | "once" | "interval";
+  name: string;
+  instruction: string;
+  cron_expression: string | null;
+  timezone: string;
+  fire_at: string | null;         // ISO datetime for mode=once
+  interval_seconds: number | null; // for mode=interval
+  active: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  payload_extra: Record<string, unknown>;
+}
+
 export interface JobData {
   type: "inbound_message" | "heartbeat" | "scheduled_task" | "task_assignment";
+  // Correlation ID for routing the agent's emitDone back to the right channel
+  // handler. Generated at enqueue time (Telegram poller / Rails AgentEventBus).
+  // If missing, engine synthesizes one and logs a warning.
+  jobId?: string;
   conversationId?: number;
   agentId: string;
   orgId?: number;
@@ -106,6 +126,7 @@ export interface JobData {
     instruction?: string;
     taskId?: number;
     isReminder?: boolean;
+    skipAutoComplete?: boolean;
     // Sprint 1 — inbound media
     attachment_ids?: string[];
     // Channel-specific metadata (chat_id, bot_token, message_sid, etc.)

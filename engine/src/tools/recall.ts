@@ -10,6 +10,11 @@ import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { host } from "../host/index.js";
 import { logger } from "../logger.js";
+import { summarizeWithHaiku } from "../summarizer.js";
+
+// Extra K — when a search returns a lot of hits, compress with Haiku before
+// handing the list to the main agent. Threshold tunable via env.
+const SUMMARIZE_THRESHOLD = Number(process.env.SEARCH_SUMMARIZE_THRESHOLD || 5);
 
 // Build a per-agent recall MCP server. Called from agent-runner during
 // buildQueryOptions, once per agent run. The orgId closure ensures the tool
@@ -80,19 +85,35 @@ export function buildRecallMcpServer(organizationId: number) {
           };
         }
 
-        const formatted = results
-          .map((r, i) => {
-            const who = r.contact_name || r.contact_identifier || "unknown";
-            const when = new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ");
-            const direction = r.role === "user" ? `${who} →` : `→ ${who}`;
-            const channel = r.channel ? `[${r.channel}]` : "";
-            return (
-              `${i + 1}. ${when} ${channel} ${direction} (conv ${r.conversation_id})\n` +
-              `   ${r.content}`
-            );
-          })
-          .join("\n\n");
+        const lines = results.map((r) => {
+          const who = r.contact_name || r.contact_identifier || "unknown";
+          const when = new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ");
+          const direction = r.role === "user" ? `${who} →` : `→ ${who}`;
+          const channel = r.channel ? `[${r.channel}]` : "";
+          return `${when} ${channel} ${direction} (conv ${r.conversation_id}): ${r.content}`;
+        });
 
+        logger.info(`search_messages: ${results.length} results (threshold: ${SUMMARIZE_THRESHOLD})`);
+
+        // Large result set — summarize with Haiku to keep the main agent's context lean.
+        if (results.length > SUMMARIZE_THRESHOLD) {
+          logger.info(`search_messages: triggering Haiku summarization for ${results.length} results`);
+          const summary = await summarizeWithHaiku(lines, {
+            topic: args.query || args.contact || "recent messages",
+            purpose: "answering a user's recall question",
+          });
+          if (summary) {
+            return {
+              content: [{
+                type: "text",
+                text: `Found ${results.length} messages. Haiku summary:\n\n${summary}\n\n(Call with a narrower filter to see raw hits.)`,
+              }],
+            };
+          }
+          // fall through to raw listing on summarizer failure
+        }
+
+        const formatted = lines.map((l, i) => `${i + 1}. ${l}`).join("\n\n");
         return {
           content: [
             {
@@ -172,17 +193,31 @@ export function buildRecallMcpServer(organizationId: number) {
           };
         }
 
-        const formatted = results
-          .map((r, i) => {
-            const when = new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ");
-            const agent = r.agent_name || `agent#${r.agent_id}`;
-            const detailStr = Object.keys(r.details).length > 0
-              ? `\n   ${JSON.stringify(r.details).slice(0, 300)}`
-              : "";
-            return `${i + 1}. ${when} [${r.type}] ${agent}: ${r.summary} (${r.status})${detailStr}`;
-          })
-          .join("\n\n");
+        const lines = results.map((r) => {
+          const when = new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ");
+          const agent = r.agent_name || `agent#${r.agent_id}`;
+          const detailStr = Object.keys(r.details).length > 0
+            ? ` ${JSON.stringify(r.details).slice(0, 200)}`
+            : "";
+          return `${when} [${r.type}] ${agent}: ${r.summary} (${r.status})${detailStr}`;
+        });
 
+        if (results.length > SUMMARIZE_THRESHOLD) {
+          const summary = await summarizeWithHaiku(lines, {
+            topic: args.query || args.type || "recent activity",
+            purpose: "answering a user's question about what the agent has done",
+          });
+          if (summary) {
+            return {
+              content: [{
+                type: "text",
+                text: `Found ${results.length} activities. Haiku summary:\n\n${summary}\n\n(Call with a narrower filter to see raw hits.)`,
+              }],
+            };
+          }
+        }
+
+        const formatted = lines.map((l, i) => `${i + 1}. ${l}`).join("\n\n");
         return {
           content: [
             {

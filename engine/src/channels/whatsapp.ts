@@ -3,7 +3,6 @@ import { host } from "../host/index.js";
 import { onDone } from "../gateway.js";
 import { logger } from "../logger.js";
 
-let pendingReply: { from: string } | null = null;
 let botNumber = "";
 
 export async function initWhatsApp(): Promise<void> {
@@ -16,19 +15,27 @@ export async function initWhatsApp(): Promise<void> {
   }
 
   botNumber = waConfig.config.phone_number as string;
-
-  onDone(async (content) => {
-    if (pendingReply) {
-      await sendMessage(pendingReply.from, content);
-      pendingReply = null;
-    }
-  });
-
   logger.info(`WhatsApp: initialized for ${botNumber}`);
 }
 
-export function setWhatsAppPendingReply(from: string): void {
-  pendingReply = { from: from.replace("whatsapp:", "") };
+// Register a one-shot listener for the current inbound WhatsApp job.
+// Called from agent-runner at the start of a WhatsApp job — keyed by jobId
+// so emitDone(jobId, ...) routes the reply back to this caller and no other.
+export function setWhatsAppPendingReply(jobId: string, from: string): void {
+  if (!botNumber) {
+    logger.warn("WhatsApp: setWhatsAppPendingReply called but channel not initialized");
+    return;
+  }
+  const to = from.replace("whatsapp:", "");
+  const cleanup = onDone(jobId, async (content) => {
+    try {
+      await sendMessage(to, content);
+    } catch (err) {
+      logger.error("WhatsApp: send failed in onDone listener", { error: (err as Error).message });
+    }
+  });
+  // Safety net: if no emitDone fires within 10 min, reclaim the slot.
+  setTimeout(() => cleanup(), 600_000);
 }
 
 async function sendMessage(to: string, body: string): Promise<void> {

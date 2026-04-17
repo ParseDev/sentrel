@@ -146,7 +146,9 @@ export function emitTextDelta(text: string): void {
 
 export function emitToolCall(tool: string, input: unknown): void {
   broadcast({ type: "tool_call", tool, input, timestamp: Date.now() });
-  for (const listener of toolCallListeners) {
+  // Notify all active per-job listeners. Inbox processes serially so there is
+  // typically one, but iterating is safe either way.
+  for (const listener of toolCallListeners.values()) {
     try { listener(tool); } catch {}
   }
 }
@@ -155,33 +157,39 @@ export function emitToolResult(tool: string, result: string): void {
   broadcast({ type: "tool_result", tool, result: result.slice(0, 500), timestamp: Date.now() });
 }
 
-// Listeners for agent events (channels like Telegram subscribe to these)
-const doneListeners: ((content: string) => void)[] = [];
-const toolCallListeners: ((tool: string) => void)[] = [];
+// Listeners for agent events (channels like Telegram subscribe to these).
+// Keyed by jobId (correlation ID) so a given job's response goes to exactly
+// the right channel handler — no FIFO hijacking, no stale-listener bugs.
+const doneListeners = new Map<string, (content: string) => void>();
+const toolCallListeners = new Map<string, (tool: string) => void>();
 
-export function onDone(listener: (content: string) => void): () => void {
-  doneListeners.push(listener);
-  // Return cleanup function
-  return () => {
-    const idx = doneListeners.indexOf(listener);
-    if (idx !== -1) doneListeners.splice(idx, 1);
-  };
+export function onDone(jobId: string, listener: (content: string) => void): () => void {
+  if (doneListeners.has(jobId)) {
+    logger.warn(`Gateway onDone: duplicate registration for jobId=${jobId}, overwriting`);
+  }
+  doneListeners.set(jobId, listener);
+  return () => { doneListeners.delete(jobId); };
 }
 
-export function onToolCall(listener: (tool: string) => void): () => void {
-  toolCallListeners.push(listener);
-  return () => {
-    const idx = toolCallListeners.indexOf(listener);
-    if (idx !== -1) toolCallListeners.splice(idx, 1);
-  };
+export function onToolCall(jobId: string, listener: (tool: string) => void): () => void {
+  toolCallListeners.set(jobId, listener);
+  return () => { toolCallListeners.delete(jobId); };
 }
 
-export function emitDone(content: string): void {
-  broadcast({ type: "done", content, timestamp: Date.now() });
-  // Fire the FIRST listener only (FIFO — each job registered in order)
-  const listener = doneListeners.shift();
+export function emitDone(jobId: string, content: string): void {
+  broadcast({ type: "done", jobId, content, timestamp: Date.now() });
+  const listener = doneListeners.get(jobId);
   if (listener) {
-    try { listener(content); } catch {}
+    // One-shot: remove first so a throw doesn't leave it registered
+    doneListeners.delete(jobId);
+    try {
+      listener(content);
+      logger.info(`Gateway emitDone: dispatched to jobId=${jobId} (${doneListeners.size} other listeners remain)`);
+    } catch (err) {
+      logger.error(`Gateway emitDone: listener threw`, { error: (err as Error).message });
+    }
+  } else {
+    logger.warn(`Gateway emitDone: no listener for jobId=${jobId} — message dropped (${doneListeners.size} listeners registered for other jobs)`);
   }
 }
 

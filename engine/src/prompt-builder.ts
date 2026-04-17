@@ -35,6 +35,7 @@ export function buildPrompt(
   history: Message[],
   conversation?: Conversation | null,
   processedAttachments?: ProcessedAttachment[],
+  taskCheckpoint?: Record<string, unknown> | null,
 ): BuiltPrompt {
   const parts: string[] = [];
 
@@ -74,14 +75,41 @@ export function buildPrompt(
       parts.push(...buildInboundMessageContext(job));
       break;
     case "heartbeat":
-      parts.push(job.payload?.instruction || "Heartbeat check — anything need attention?");
+      parts.push(
+        `## Heartbeat check (automated — not a user message)\n` +
+        `Do NOT greet the user or ask what they need. ` +
+        `This is an automated check — execute the instruction directly:\n\n` +
+        `${job.payload?.instruction || "Check if anything needs your attention — pending tasks, unread messages, due follow-ups."}`,
+      );
       break;
-    case "scheduled_task":
-      parts.push(`Scheduled task: ${job.payload?.instruction || "Execute your scheduled task."}`);
+    case "scheduled_task": {
+      // Strip the [SILENT] routing prefix so the agent only sees the actual instruction.
+      let schedInstruction = job.payload?.instruction || "Execute your scheduled task.";
+      schedInstruction = schedInstruction.replace(/^\[SILENT\]\s*/i, "");
+      parts.push(
+        `## Scheduled task (automated — not a user message)\n` +
+        `Execute the following instruction. Do NOT greet the user or ask what they need. ` +
+        `This is an automated scheduled job — go directly to the task:\n\n${schedInstruction}`,
+      );
       break;
+    }
     case "task_assignment":
-      parts.push(`You have been assigned a task:\n${job.payload?.instruction || ""}`);
-      parts.push("\nComplete this task thoroughly and report your results.");
+      parts.push(`You have been assigned a task (ID: ${job.payload?.taskId}):\n${job.payload?.instruction || ""}`);
+      if (taskCheckpoint && Object.keys(taskCheckpoint).length > 0) {
+        // Step 5.5 — resume from prior progress if the agent checkpointed it.
+        parts.push("");
+        parts.push("## Resuming task — prior checkpoint:");
+        parts.push("```json");
+        parts.push(JSON.stringify(taskCheckpoint, null, 2));
+        parts.push("```");
+        parts.push("Continue from this state. Call write_checkpoint every 10-20 steps so you don't lose progress if interrupted.");
+      }
+      parts.push(
+        "\nComplete this task thoroughly." +
+        "\n- Save progress with write_checkpoint after each major phase or every 10-20 steps — this is automatic, don't wait to be asked." +
+        "\n- If you need clarification, call ask_user — your turn ends and the user's reply re-engages you." +
+        "\n- When fully done, use comment_on_task({ task_id: " + (job.payload?.taskId || "ID") + ", content: \"your findings\" }) to post your results.",
+      );
       break;
   }
 

@@ -89,3 +89,52 @@ export async function summarizeConversation(
     summary: summaryText.trim(),
   };
 }
+
+// Extra K — compress a list of search hits into a short bulleted summary
+// using Haiku (fast + cheap). Lets the main agent (Sonnet/Opus) reason over
+// the summary instead of the raw hit list — big token savings on queries
+// that return 10+ matches.
+//
+// Returns null on failure so callers can fall back to the raw list.
+export async function summarizeWithHaiku(
+  items: string[],
+  context: { topic: string; purpose: string },
+): Promise<string | null> {
+  if (items.length === 0) return null;
+  const HAIKU_MODEL = process.env.SUMMARIZE_MODEL || "claude-haiku-4-5-20251001";
+
+  const systemPrompt =
+    "You compress search results into a short bulleted summary for another " +
+    "AI agent to read. Preserve concrete facts (names, dates, numbers, links), " +
+    "drop noise. Use 3-8 bullets, one line each. No preamble, no meta-commentary.";
+
+  const userPrompt =
+    `Topic: ${context.topic}\nUsing these results to: ${context.purpose}\n\n` +
+    `Results (${items.length}):\n${items.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+
+  const options: Record<string, unknown> = {
+    cwd: config.dataDir,
+    systemPrompt,
+    allowedTools: [],
+    permissionMode: "bypassPermissions",
+    model: HAIKU_MODEL,
+  };
+
+  let out = "";
+  try {
+    for await (const message of query({ prompt: userPrompt, options: options as any })) {
+      const msg = message as any;
+      if (msg.message?.content) {
+        for (const block of msg.message.content) {
+          if (block.type === "text" && block.text) out = block.text;
+        }
+      }
+      if (msg.result) out = msg.result;
+    }
+  } catch (err) {
+    logger.warn(`summarizeWithHaiku failed`, { error: (err as Error).message, topic: context.topic });
+    return null;
+  }
+
+  return out.trim() || null;
+}

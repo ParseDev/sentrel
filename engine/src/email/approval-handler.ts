@@ -8,7 +8,7 @@ const APPROVAL_KEYWORDS = new Set(["YES", "NO", "APPROVE", "REJECT"]);
 // Detects YES/NO/APPROVE/REJECT replies on non-web channels and processes
 // the most recent pending approval. Returns true if the message was an
 // approval response and was handled (caller should not run the agent).
-export async function maybeHandleApprovalResponse(agent: Agent, job: JobData): Promise<boolean> {
+export async function maybeHandleApprovalResponse(agent: Agent, job: JobData, jobId: string): Promise<boolean> {
   if (job.type !== "inbound_message") return false;
   if (!job.channel || job.channel === "web") return false;
 
@@ -16,10 +16,10 @@ export async function maybeHandleApprovalResponse(agent: Agent, job: JobData): P
   if (!APPROVAL_KEYWORDS.has(body)) return false;
 
   const isApproved = body === "YES" || body === "APPROVE";
-  return await applyApproval(agent, job, isApproved);
+  return await applyApproval(agent, job, jobId, isApproved);
 }
 
-async function applyApproval(agent: Agent, job: JobData, isApproved: boolean): Promise<boolean> {
+async function applyApproval(agent: Agent, job: JobData, jobId: string, isApproved: boolean): Promise<boolean> {
   const approval = await host.getLatestPendingApproval(agent.id);
   if (!approval) return false;
 
@@ -37,7 +37,7 @@ async function applyApproval(agent: Agent, job: JobData, isApproved: boolean): P
     ? `✅ Email approved and sending to ${recipient}`
     : `❌ Email cancelled.`;
 
-  emitDone(confirmMsg);
+  emitDone(jobId, confirmMsg);
   logger.info(`Approval #${approval.id} ${newStatus} via ${job.channel}`);
   return true;
 }

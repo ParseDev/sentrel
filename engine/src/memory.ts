@@ -97,9 +97,23 @@ export function getMemoryUsage(): string {
 
 export async function syncMemoryToDb(agentId: number): Promise<void> {
   const memoryMd = readMemoryMd();
-  if (memoryMd) {
-    await host.updateAgentMemory(agentId, memoryMd);
+  if (!memoryMd) return;
+
+  // Extra I — scan agent-authored memory for prompt-injection patterns before
+  // persisting. Memory is read into the system prompt next turn, so a
+  // poisoned memory.md would persist across every future session.
+  const threats = scanForInjection(memoryMd, `memory.md (agent ${agentId})`);
+  if (threats.length > 0) {
+    logger.error(
+      `syncMemoryToDb: REJECTED memory write for agent ${agentId} — ${threats.length} threat(s): ` +
+      threats.map((t) => t.category).join(", "),
+    );
+    // Soft fail: don't write, but don't throw — agent's current run continues.
+    // Next turn will read the previous clean memory from disk + DB.
+    return;
   }
+
+  await host.updateAgentMemory(agentId, memoryMd);
 }
 
 export function syncWorkspace(agent: Agent): void {

@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "crypto";
 import { config } from "./config.js";
 import { host } from "./host/index.js";
 import { syncMemoryToDb } from "./memory.js";
@@ -12,7 +13,8 @@ import { buildRecallMcpServer } from "./tools/recall.js";
 import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
-import { getComposioMcpServer } from "./integrations/composio.js";
+import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
+import { routeToolkits } from "./integrations/router.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
 import { recordApproval } from "./security/approval-interceptor.js";
@@ -41,17 +43,60 @@ const SESSION_TIME_GAP_HOURS = 24;
 // Claude Agent SDK loop. Heavy lifting (prompt, outbox, approvals, summarization)
 // lives in dedicated modules.
 export async function runAgent(agent: Agent, job: JobData): Promise<void> {
-  if (job.channel === "whatsapp" && job.payload?.from) {
-    setWhatsAppPendingReply(job.payload.from);
+  const startTime = Date.now();
+
+  // Correlation ID — generated at enqueue time by channel handlers so they can
+  // pre-register an onDone listener keyed to this job. If missing (older
+  // enqueue paths), synthesize one; the job will still run, but no channel
+  // listener exists for it, so emitDone will log a drop warning.
+  if (!job.jobId) {
+    job.jobId = randomUUID();
+    logger.warn(`runAgent: job arrived without jobId, synthesized ${job.jobId} — response won't be dispatched to a channel listener`);
   }
-  logger.info(`Running agent: ${agent.name} (${agent.role})`, { jobType: job.type });
+  const jobId = job.jobId;
+
+  if (job.channel === "whatsapp" && job.payload?.from) {
+    setWhatsAppPendingReply(jobId, job.payload.from);
+  }
+  logger.info(`Running agent: ${agent.name} (${agent.role})`, { jobType: job.type, jobId });
 
   // Short-circuit: YES/NO replies on non-web channels are approval responses,
   // not new prompts. Handle them and skip the agent run entirely.
-  if (await maybeHandleApprovalResponse(agent, job)) return;
+  if (await maybeHandleApprovalResponse(agent, job, jobId)) return;
 
-  // ── Conversation lookup (only inbound_message jobs have conversations) ──
+  // ── Task assignment: mark as in_progress immediately (unless explicitly skipped) ──
+  if (job.type === "task_assignment" && job.payload?.taskId && !job.payload?.skipAutoComplete) {
+    await host.updateTask(job.payload.taskId, { status: "in_progress" }).catch(() => {});
+  }
+
+  // ── Heartbeat: inject pending tasks or skip if nothing to do ──
+  if (job.type === "heartbeat") {
+    const pendingTasks = await host.listTasks(agent.id, "todo");
+    if (pendingTasks.length === 0) {
+      await host.saveAuditLog(agent.organization_id, agent.id, "heartbeat", undefined, { skipped: true }, { response: "HEARTBEAT_OK" }, "success");
+      logger.info("Heartbeat: nothing pending, skipped agent call");
+      return;
+    }
+    const taskList = pendingTasks.map((t, i) =>
+      `  ${i + 1}. [${t.priority}] "${t.title}" (ID: ${t.id})${t.due_at ? ` — due ${new Date(t.due_at).toLocaleDateString()}` : ""}`
+    ).join("\n");
+    job = {
+      ...job,
+      payload: {
+        ...job.payload,
+        instruction: (job.payload?.instruction || "") +
+          `\n\nYou have ${pendingTasks.length} pending task(s):\n${taskList}\n\n` +
+          `For each task, call update_task to set status to "in_progress", work on it, then set status to "done" and use comment_on_task with your findings.`,
+      },
+    };
+  }
+
+  // ── Conversation lookup ──
+  // inbound_message: find-or-create by contact identity (if no conversationId)
+  // task_assignment: always has a conversationId now (Step 4 — Rails creates
+  //   the conversation + seeds the first user message on task create/comment)
   const isInbound = job.type === "inbound_message";
+  const isTaskAssignment = job.type === "task_assignment";
   let conversation: Conversation | null = null;
   if (job.conversationId) {
     conversation = await host.getConversation(job.conversationId);
@@ -73,14 +118,21 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   let resumeSessionId: string | null = null;
   let priorTurnCount = 0;
 
-  // TODO: SDK session resume is disabled. The SDK loads the ENTIRE previous
-  // session transcript (including all tool calls), which can balloon context
-  // and cause multi-minute hangs. The DB history injection (last 20 messages
-  // + summaries) provides continuity without this overhead. Re-enable once
-  // we understand the SDK's session size characteristics.
-  const RESUME_ENABLED = false;
+  // Session resume uses SDK's native `options.resume = sessionId`, which
+  // loads the transcript from ~/.claude/projects/<dir>/<sessionId>.jsonl and
+  // continues. Session rotation (30 turns / 24h) keeps transcripts small so
+  // resume is fast. Prompt cache hits on resumed sessions.
+  //
+  // If resume hangs (large transcript, SDK bug), the RESUME_TIMEOUT_MS below
+  // aborts and falls back to a fresh session.
+  const RESUME_ENABLED = process.env.RESUME_ENABLED !== "false"; // default true
 
-  if (isInbound && conversation) {
+  // Both inbound_message and task_assignment jobs that have a conversation
+  // benefit from session resume — back-and-forth task comments hit the
+  // prompt cache the same way user replies on Telegram do.
+  const usesConversation = (isInbound || isTaskAssignment) && !!conversation;
+
+  if (usesConversation && conversation) {
     if (shouldResumeSession(conversation)) {
       // Session is still valid (within turn cap + time gap) — continue it
       priorTurnCount = conversation.claude_session_turn_count ?? 0;
@@ -156,19 +208,37 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // ── Build prompt with refreshed history + summaries + processed media ──
   const conversationId = conversation?.id;
   const history = conversationId ? await host.getConversationHistory(conversationId, 20) : [];
-  const built = buildPrompt(agent, job, history, conversation, processedMedia);
 
-  const options = await buildQueryOptions(agent, job);
-  options.systemPrompt = buildSystemPrompt(agent, skills);
+  // Step 5.5 — if this is a task_assignment with prior checkpoint state, read
+  // it so prompt-builder can inject a "Resuming task" block. Lets agents pick
+  // up multi-day work from where they left off.
+  let taskCheckpoint: Record<string, unknown> | null = null;
+  if (isTaskAssignment && job.payload?.taskId) {
+    const t = await host.getTask(job.payload.taskId);
+    if (t && Object.keys(t.checkpoint).length > 0) taskCheckpoint = t.checkpoint;
+  }
+
+  const built = buildPrompt(agent, job, history, conversation, processedMedia, taskCheckpoint);
+
+  const { options, relevantToolkits } = await buildQueryOptions(agent, job, history);
+  // System prompt advertises all connected toolkits (not just the routed subset)
+  // so the agent knows what's available if it wants to call search_integrations.
+  const allConnectedToolkits = await getActiveToolkits(agent.organization_id);
+  options.systemPrompt = buildSystemPrompt(agent, skills, allConnectedToolkits);
   if (resumeSessionId) {
     options.resume = resumeSessionId;
   }
 
   try {
+    // SDK handles resume natively. Session rotation keeps transcripts small
+    // (30-turn cap), so load times stay reasonable. BullMQ's job lock (10 min)
+    // catches pathological hangs.
     const result = await runAgentLoop(built.promptText, options);
 
     // ── Persist captured session ID for future resumption ──
-    if (isInbound && conversation && result.capturedSessionId) {
+    // Covers both inbound_message and task_assignment (Step 4) — back-and-forth
+    // task comments reuse the same Claude session, hitting the prompt cache.
+    if (usesConversation && conversation && result.capturedSessionId) {
       const newTurnCount = resumeSessionId ? priorTurnCount + 1 : 1;
       await host.updateConversationSessionId(
         conversation.id,
@@ -201,6 +271,12 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
           : undefined,
       );
       savedMessageId = saved.id;
+
+      // Step 6 — if this is a task conversation, broadcast the new message
+      // to the Rails ActionCable TaskChannel so the UI updates in real-time.
+      if (isTaskAssignment && job.payload?.taskId && savedMessageId) {
+        notifyTaskEvent(job.payload.taskId, savedMessageId).catch(() => {});
+      }
     }
 
     // Process any emails the agent drafted (outbox files + intercepted Write calls)
@@ -243,13 +319,21 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     }
 
     // Only emit done for inbound messages — heartbeats and scheduled tasks
-    // are background jobs that shouldn't trigger Telegram/channel responses
-    if (isInbound) {
-      emitDone(finalResponse);
+    // are background jobs that shouldn't trigger Telegram/channel responses.
+    // The [SILENT] prefix lets scheduled/one-off jobs with an instruction
+    // suppress the final reply (e.g. "[SILENT] check inbox for urgent items;
+    // only notify if something found"). Agent can still use send_email /
+    // send_message tools explicitly inside a silent run.
+    const isSilent = job.payload?.instruction?.trim().startsWith("[SILENT]") ?? false;
+    if (isInbound && !isSilent) {
+      emitDone(jobId, finalResponse);
+    } else if (isSilent) {
+      logger.info(`[SILENT] job ${jobId} — suppressing emitDone (${finalResponse.length} chars)`);
     }
 
-    // Update last_run_at for scheduled tasks
+    // Update last_run_at for scheduled tasks (write to both tables during rollout)
     if (job.type === "scheduled_task" && job.payload?.taskId) {
+      await host.updateScheduledWorkLastRun(job.payload.taskId).catch(() => {});
       await host.updateScheduledTaskLastRun(job.payload.taskId).catch(() => {});
     }
 
@@ -275,24 +359,61 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       agent.id,
       job.type,
       undefined,
-      { prompt: built.promptText.slice(0, 500) },
-      { response: finalResponse.slice(0, 500), session_id: result.capturedSessionId, resumed: resumeSessionId !== null },
+      { prompt: built.promptText.slice(0, 500), taskId: job.payload?.taskId || null, jobId },
+      {
+        response: finalResponse.slice(0, 2000),
+        duration_ms: Date.now() - startTime,
+        tool_calls: result.interceptor.capturedToolCalls(),
+        session_id: result.capturedSessionId,
+      },
       "success",
+      {
+        routedToolkits: relevantToolkits,
+        // Only write a real task FK — scheduled_work IDs also arrive as payload.taskId
+        // but they're not in the tasks table, so writing them violates the FK constraint.
+        taskId: isTaskAssignment ? (job.payload?.taskId ?? null) : null,
+        wasResume: resumeSessionId !== null,
+        cacheReadInputTokens: result.cacheReadTokens,
+        cacheCreationInputTokens: result.cacheCreationTokens,
+      },
     );
+
+    // Log cache hit rate for observability
+    if (result.cacheReadTokens > 0 || result.cacheCreationTokens > 0) {
+      logger.info(
+        `Cache: read=${result.cacheReadTokens}, created=${result.cacheCreationTokens}, resumed=${resumeSessionId !== null}`,
+      );
+    }
+
+    // Mark task as done on successful completion (unless skipAutoComplete — e.g. reopened task)
+    if (job.type === "task_assignment" && job.payload?.taskId && !job.payload?.skipAutoComplete) {
+      await host.updateTask(job.payload.taskId, { status: "done", result: { response: finalResponse.slice(0, 10000) } }).catch(() => {});
+    }
 
     await syncMemoryToDb(agent.id);
     logger.info(`Agent run completed (${finalResponse.length} chars)`);
   } catch (err) {
     emitError(redactSecrets((err as Error).message));
     logger.error(`Agent run failed`, { error: redactSecrets((err as Error).message) });
+
+    // Mark task as failed
+    if (job.type === "task_assignment" && job.payload?.taskId) {
+      await host.updateTask(job.payload.taskId, { status: "failed" }).catch(() => {});
+    }
+
     await host.saveAuditLog(
       agent.organization_id,
       agent.id,
       job.type,
       undefined,
-      { prompt: built.promptText.slice(0, 500) },
+      { prompt: built.promptText?.slice(0, 500), jobId },
       { error: (err as Error).message },
       "failed",
+      {
+        routedToolkits: relevantToolkits,
+        taskId: isTaskAssignment ? (job.payload?.taskId ?? null) : null,
+        wasResume: resumeSessionId !== null,
+      },
     );
     throw err;
   }
@@ -317,6 +438,8 @@ interface QueryResult {
   responseContent: string;
   interceptor: ToolInterceptor;
   capturedSessionId: string | null;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
 }
 
 async function runAgentLoop(
@@ -326,6 +449,8 @@ async function runAgentLoop(
   const interceptor = new ToolInterceptor();
   let responseContent = "";
   let capturedSessionId: string | null = null;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
 
   emitThinking();
 
@@ -364,15 +489,27 @@ async function runAgentLoop(
     if (msg.result) {
       responseContent = msg.result;
     }
+
+    // Capture usage on the result message (end-of-turn summary)
+    if (msg.type === "result" && msg.usage) {
+      cacheReadTokens = msg.usage.cache_read_input_tokens || 0;
+      cacheCreationTokens = msg.usage.cache_creation_input_tokens || 0;
+    }
   }
 
-  return { responseContent, interceptor, capturedSessionId };
+  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens };
+}
+
+interface BuiltQueryOptions {
+  options: Record<string, unknown>;
+  relevantToolkits: string[];
 }
 
 async function buildQueryOptions(
   agent: Agent,
   job: JobData,
-): Promise<Record<string, unknown>> {
+  history: Message[] = [],
+): Promise<BuiltQueryOptions> {
   const subAgents = await buildSubAgentDefinitions(agent);
 
   if (config.anthropicBaseUrl) {
@@ -393,8 +530,32 @@ async function buildQueryOptions(
   };
   const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
 
-  // Sprint 6 — Composio integration (1000+ app tools)
-  const composioServer = await getComposioMcpServer(agent.organization_id);
+  // Step 2 — Context-aware tool loading.
+  // Route based on current message text + recent conversation context.
+  // If the user says "try again" after a Google Sheets conversation, we
+  // should keep those tools loaded — not force them to re-mention "sheets".
+  const jobText = [
+    job.payload?.instruction || "",
+    job.payload?.body || "",
+    job.payload?.subject || "",
+  ].join(" ");
+  // Also scan recent history so follow-up messages inherit toolkit context
+  const recentContext = history.slice(-5).map((m) => m.content).join(" ");
+  const routingText = `${jobText} ${recentContext}`;
+
+  const availableToolkits = await getActiveToolkits(agent.organization_id);
+  const toolRouting = process.env.TOOL_ROUTING || "keyword";
+  const relevantToolkits = toolRouting === "all"
+    ? availableToolkits
+    : routeToolkits(routingText, availableToolkits);
+  logger.info(
+    `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} (available: ${availableToolkits.join(", ") || "none"})`,
+  );
+
+  const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits);
+  const composioServer = composioResult?.server;
+  const connectedToolkits = composioResult?.toolkits || [];
+  const composioToolNames = composioResult?.toolNames || [];
 
   // Post-V1 #2 — scheduling + task management tools
   const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
@@ -428,8 +589,8 @@ async function buildQueryOptions(
       "mcp__send-media__send_voice",
       "mcp__send-media__send_image",
       "mcp__send-media__send_file",
-      // Composio tools: allow all (wildcard)
-      ...(composioServer ? ["mcp__composio__*"] : []),
+      // Composio tools: explicit list (wildcards may not match)
+      ...composioToolNames.map((name) => `mcp__composio__${name}`),
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
@@ -529,5 +690,22 @@ async function buildQueryOptions(
     options.agents = subAgents;
   }
 
-  return options;
+  return { options, relevantToolkits };
+}
+
+// Step 6 — notify Rails to broadcast via ActionCable when a task conversation
+// gets a new message. Uses the same engine-secret auth as /api/blobs.
+async function notifyTaskEvent(taskId: number, messageId: number): Promise<void> {
+  const railsUrl = process.env.RAILS_INTERNAL_URL || "http://localhost:3000";
+  const secret = process.env.ENGINE_API_SECRET;
+  if (!secret) return;
+
+  await fetch(`${railsUrl}/api/task_events`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Engine-Secret": secret,
+    },
+    body: JSON.stringify({ task_id: taskId, message_id: messageId }),
+  });
 }

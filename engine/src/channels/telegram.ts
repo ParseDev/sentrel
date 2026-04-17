@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { config } from "../config.js";
 import { redis } from "../queue.js";
 import { host } from "../host/index.js";
@@ -168,9 +169,15 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   // Body falls back to caption if there's no text but there is media
   const body = message.text || message.caption || "";
 
+  // Generate correlation ID BEFORE lpush so we can register our onDone
+  // listener keyed to this exact job. Engine reads jobId from JobData and
+  // calls emitDone(jobId, content) — routing directly to the listener below.
+  const jobId = randomUUID();
+
   // Push to agent inbox
   await redis.lpush(`agent-inbox-${config.employeeId}`, JSON.stringify({
     type: "inbound_message",
+    jobId,
     agentId: config.employeeId,
     orgId,
     channel: "telegram",
@@ -228,28 +235,35 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
     } catch {}
   };
 
-  onToolCall(toolListener);
+  const unsubscribeToolCalls = onToolCall(jobId, toolListener);
 
-  const response = await waitForResponse(600_000);
+  try {
+    const response = await waitForResponse(jobId, 600_000);
 
-  clearInterval(typingInterval);
+    clearInterval(typingInterval);
 
-  // Delete the status message and send the real response
-  if (statusMsgId) {
-    try {
-      await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId }),
-      });
-    } catch {}
-  }
+    // Delete the status message and send the real response
+    if (statusMsgId) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId }),
+        });
+      } catch {}
+    }
 
-  if (response) {
-    await sendMessage(botToken, chatId, response);
-  } else {
-    // Timeout — send what we know
-    await sendMessage(botToken, chatId, "⚠️ Still processing — check the dashboard for the full response.");
+    if (response) {
+      await sendMessage(botToken, chatId, response);
+    } else {
+      // Timeout — send what we know
+      await sendMessage(botToken, chatId, "⚠️ Still processing — check the dashboard for the full response.");
+    }
+  } finally {
+    // Always detach the tool listener so it doesn't leak across runs and
+    // fire status edits on a deleted statusMsgId.
+    clearInterval(typingInterval);
+    unsubscribeToolCalls();
   }
 }
 
@@ -469,22 +483,26 @@ function splitMessage(text: string, maxLen: number): string[] {
   return chunks;
 }
 
-function waitForResponse(timeoutMs: number): Promise<string | null> {
+function waitForResponse(jobId: string, timeoutMs: number): Promise<string | null> {
   return new Promise((resolve) => {
     let resolved = false;
+    let cleanup: (() => void) | null = null;
 
     const listener = (content: string) => {
       if (!resolved) {
         resolved = true;
+        cleanup?.();
         resolve(content);
       }
     };
 
-    onDone(listener);
+    cleanup = onDone(jobId, listener);
 
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
+        // Remove the listener so it doesn't linger in the Map past timeout.
+        cleanup?.();
         resolve(null);
       }
     }, timeoutMs);
