@@ -1,4 +1,5 @@
 import { Head, useForm, router, Link } from "@inertiajs/react"
+import { createConsumer } from "@rails/actioncable"
 import { Plus, CheckSquare, MoreHorizontal, Pencil, Trash2, ArrowRight, MessageSquare, Clock, User, Bot, Send, X } from "lucide-react"
 import {
   DndContext,
@@ -491,15 +492,30 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
     }
   }, [localComments.length])
 
-  async function refreshComments() {
-    try {
-      const res = await fetch(`/tasks/${task.id}.json`, { headers: { "Accept": "application/json" } })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.comments) setLocalComments(data.comments)
-      }
-    } catch {}
-  }
+  // Step 6 — ActionCable subscription for real-time comment updates.
+  // Replaces the old setTimeout polling. Comments from other users and
+  // agent responses appear instantly without manual refresh.
+  useEffect(() => {
+    const consumer = createConsumer()
+    const subscription = consumer.subscriptions.create(
+      { channel: "TaskChannel", task_id: task.id },
+      {
+        received(data: Comment) {
+          setLocalComments((prev) => {
+            // Dedupe: skip if we already have this comment (optimistic insert or duplicate broadcast)
+            if (prev.some((c) => c.content === data.content && Math.abs(new Date(c.created_at).getTime() - new Date(data.created_at).getTime()) < 5000)) {
+              return prev
+            }
+            return [...prev, data]
+          })
+        },
+      },
+    )
+    return () => {
+      subscription.unsubscribe()
+      consumer.disconnect()
+    }
+  }, [task.id])
 
   async function handleAddComment() {
     if (!newComment.trim() || submitting) return
@@ -515,12 +531,6 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
     }])
     setNewComment("")
     setSubmitting(false)
-
-    // Poll for agent's response (user comments trigger task_assignment)
-    setTimeout(refreshComments, 5000)
-    setTimeout(refreshComments, 15000)
-    setTimeout(refreshComments, 30000)
-    setTimeout(refreshComments, 60000)
   }
 
   async function handleCancel() {

@@ -100,10 +100,13 @@ export interface ScheduledTask {
   id: number
   name: string
   instruction?: string
-  cron_expression: string
+  cron_expression: string | null
   timezone?: string
   active: boolean
   last_run_at: string | null
+  mode?: "cron" | "once" | "interval"
+  fire_at?: string | null
+  interval_seconds?: number | null
   recent_runs?: ScheduledTaskRun[]
 }
 

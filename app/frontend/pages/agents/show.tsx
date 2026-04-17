@@ -960,7 +960,18 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className={`size-2 rounded-full shrink-0 ${st.active ? "bg-emerald-500" : "bg-zinc-400"}`} />
                   <span className="font-medium text-sm truncate">{st.name}</span>
-                  <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">{st.cron_expression}</code>
+                  {st.mode && st.mode !== "cron" && (
+                    <Badge variant="outline" className="text-[9px] shrink-0">
+                      {st.mode === "once" ? "One-time" : "Interval"}
+                    </Badge>
+                  )}
+                  <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">
+                    {st.mode === "once" && st.fire_at
+                      ? new Date(st.fire_at).toLocaleString()
+                      : st.mode === "interval" && st.interval_seconds
+                        ? `every ${st.interval_seconds >= 3600 ? `${Math.round(st.interval_seconds / 3600)}h` : `${Math.round(st.interval_seconds / 60)}m`}`
+                        : st.cron_expression}
+                  </code>
                 </div>
                 <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => handleToggle(st.id, st.active)} className="p-1 rounded hover:bg-muted" title={st.active ? "Pause" : "Resume"}>
