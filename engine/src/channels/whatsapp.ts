@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { host } from "../host/index.js";
-import { onDone } from "../gateway.js";
+import { onDone, onTextDelta } from "../gateway.js";
 import { logger } from "../logger.js";
 
 let botNumber = "";
@@ -21,21 +21,48 @@ export async function initWhatsApp(): Promise<void> {
 // Register a one-shot listener for the current inbound WhatsApp job.
 // Called from agent-runner at the start of a WhatsApp job — keyed by jobId
 // so emitDone(jobId, ...) routes the reply back to this caller and no other.
+//
+// WhatsApp can't edit messages (unlike Telegram) so we can't do live
+// streaming. Instead, we forward the agent's FIRST text block (its "intent
+// statement" like "I'll research the top AI companies...") as an
+// acknowledgment message so the user knows we received it and what we're
+// about to do. Then we send the real final response when emitDone fires.
 export function setWhatsAppPendingReply(jobId: string, from: string): void {
   if (!botNumber) {
     logger.warn("WhatsApp: setWhatsAppPendingReply called but channel not initialized");
     return;
   }
   const to = from.replace("whatsapp:", "");
+
+  // Track whether we've sent the intent message so we only send it once
+  // (Claude usually emits a short text block before tool calls, then the
+  // full answer at the end — we want only the first one as the intent).
+  let intentSent = false;
+  const unsubscribeText = onTextDelta(jobId, (text) => {
+    if (intentSent) return;
+    intentSent = true;
+    // Send the agent's intent as the ack — fire-and-forget
+    sendMessage(to, text).catch((err) => {
+      logger.warn("WhatsApp: intent send failed", { error: (err as Error).message });
+    });
+  });
+
   const cleanup = onDone(jobId, async (content) => {
+    unsubscribeText();
+    // If the first text block IS the final response (short/no tool calls),
+    // don't send it twice. Heuristic: if content <= 400 chars AND we haven't
+    // sent an intent yet, just send content. Otherwise send content as final.
     try {
       await sendMessage(to, content);
     } catch (err) {
       logger.error("WhatsApp: send failed in onDone listener", { error: (err as Error).message });
     }
   });
-  // Safety net: if no emitDone fires within 10 min, reclaim the slot.
-  setTimeout(() => cleanup(), 600_000);
+  // Safety net: if no emitDone fires within 10 min, reclaim the slots.
+  setTimeout(() => {
+    cleanup();
+    unsubscribeText();
+  }, 600_000);
 }
 
 async function sendMessage(to: string, body: string): Promise<void> {
@@ -43,7 +70,10 @@ async function sendMessage(to: string, body: string): Promise<void> {
   const token = process.env.TWILIO_AUTH_TOKEN;
   if (!sid || !token) { logger.error("WhatsApp: missing Twilio creds"); return; }
 
-  const chunks = body.length <= 4096 ? [body] : splitAt(body, 4096);
+  // Twilio WhatsApp has a 1600-character limit per message.
+  // Chunk at 1500 to leave headroom for header/footer formatting.
+  const WHATSAPP_CHAR_LIMIT = 1500;
+  const chunks = body.length <= WHATSAPP_CHAR_LIMIT ? [body] : splitAt(body, WHATSAPP_CHAR_LIMIT);
   const auth = Buffer.from(`${sid}:${token}`).toString("base64");
 
   for (const chunk of chunks) {

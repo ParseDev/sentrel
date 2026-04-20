@@ -140,10 +140,17 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connected
       `The ONLY time you should write a local file for data output is when:\n` +
       `- The user explicitly asks for a file ("give me a CSV", "export as JSON").\n` +
       `- No integration exists for what they want (search_integrations returned nothing relevant AND the user didn't name a specific app).\n\n` +
+      `## Spreadsheet workflow (Google Sheets, Airtable, etc):\n` +
+      `Creating a spreadsheet is a TWO-STEP process — don't stop after step 1:\n` +
+      `1. **Create the sheet** (e.g. GOOGLESHEETS_CREATE_GOOGLE_SHEET1) — this creates an EMPTY sheet and returns the spreadsheet_id.\n` +
+      `2. **Populate it with data** (e.g. GOOGLESHEETS_BATCH_UPDATE) — this writes rows/cells to the sheet using the spreadsheet_id.\n` +
+      `If you skip step 2, you deliver an empty sheet — that's a failure. Always populate the sheet with the data you gathered before returning the URL to the user.\n\n` +
+      `Only create ONE sheet per user request. If you're already holding a spreadsheet_id from a previous CREATE call, use it — don't create a second sheet.\n\n` +
       `## Other rules:\n` +
       `- If an integration tool call fails with an auth error, say "the connection has expired — reconnect at /integrations". ONLY after attempting the call.\n` +
       `- Never suggest "/mcp" or "authenticate" — connections are already active.\n` +
-      `- If the user mentions an app not in the list above, try search_integrations anyway — the connection list may be out of date.`
+      `- If the user mentions an app not in the list above, try search_integrations anyway — the connection list may be out of date.\n` +
+      `- Don't call the same integration tool twice with the same arguments. If a call succeeded, use its result — don't retry.`
     );
   }
 

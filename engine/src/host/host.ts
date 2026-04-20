@@ -47,6 +47,16 @@ export interface AuditLogExtra {
   wasResume?: boolean;
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
+  // Observability dashboard fields
+  spans?: unknown[];
+  totalCostUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  durationMs?: number;
+  firstTokenMs?: number | null;
+  modelId?: string | null;
+  jobId?: string;
+  conversationIdRef?: string | null;
 }
 
 // Sprint 1 — blob storage

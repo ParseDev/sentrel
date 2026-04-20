@@ -15,6 +15,7 @@ import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
+import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
 import { recordApproval } from "./security/approval-interceptor.js";
@@ -45,6 +46,8 @@ const SESSION_TIME_GAP_HOURS = 24;
 // lives in dedicated modules.
 export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const startTime = Date.now();
+  const spans = new SpanCollector();
+  const rootSpan = spans.start("runAgent", { jobType: job.type, agentId: agent.id });
 
   // Correlation ID — generated at enqueue time by channel handlers so they can
   // pre-register an onDone listener keyed to this job. If missing (older
@@ -242,7 +245,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // SDK handles resume natively. Session rotation keeps transcripts small
     // (30-turn cap), so load times stay reasonable. BullMQ's job lock (10 min)
     // catches pathological hangs.
-    const result = await runAgentLoop(built.promptText, options, queryState);
+    const modelTurnSpan = spans.start("agent_loop", { resumed: !!resumeSessionId });
+    const result = await runAgentLoop(built.promptText, options, queryState, spans);
+    spans.end(modelTurnSpan, { response_length: result.responseContent.length });
 
     // ── Persist captured session ID for future resumption ──
     // Covers both inbound_message and task_assignment (Step 4) — back-and-forth
@@ -363,6 +368,17 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       }
     }
 
+    spans.end(rootSpan, { status: "success" });
+    spans.finalize();
+    const modelId = agent.ai_config?.model_id || null;
+    const totalCost = computeCostUSD(
+      modelId,
+      result.inputTokens,
+      result.outputTokens,
+      result.cacheReadTokens,
+      result.cacheCreationTokens,
+    );
+
     await host.saveAuditLog(
       agent.organization_id,
       agent.id,
@@ -384,6 +400,15 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         wasResume: resumeSessionId !== null,
         cacheReadInputTokens: result.cacheReadTokens,
         cacheCreationInputTokens: result.cacheCreationTokens,
+        spans: spans.serialize(),
+        totalCostUsd: totalCost,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        durationMs: Date.now() - startTime,
+        firstTokenMs: spans.firstTokenMs(),
+        modelId,
+        jobId,
+        conversationIdRef: conversation?.id?.toString() || null,
       },
     );
 
@@ -413,6 +438,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     await syncMemoryToDb(agent.id);
     logger.info(`Agent run completed (${finalResponse.length} chars)`);
   } catch (err) {
+    spans.event("error", { message: (err as Error).message });
+    spans.end(rootSpan, { status: "failed" });
+    spans.finalize();
     emitError(redactSecrets((err as Error).message));
     logger.error(`Agent run failed`, { error: redactSecrets((err as Error).message) });
 
@@ -433,6 +461,10 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         routedToolkits: relevantToolkits,
         taskId: isTaskAssignment ? (job.payload?.taskId ?? null) : null,
         wasResume: resumeSessionId !== null,
+        spans: spans.serialize(),
+        durationMs: Date.now() - startTime,
+        jobId,
+        conversationIdRef: conversation?.id?.toString() || null,
       },
     );
     throw err;
@@ -460,18 +492,23 @@ interface QueryResult {
   capturedSessionId: string | null;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 async function runAgentLoop(
   promptText: string,
   options: Record<string, unknown>,
   queryState: QueryState,
+  spans?: SpanCollector,
 ): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
   let responseContent = "";
   let capturedSessionId: string | null = null;
   let cacheReadTokens = 0;
   let cacheCreationTokens = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
 
   emitThinking();
 
@@ -495,6 +532,9 @@ async function runAgentLoop(
   const q = query({ prompt: userMessageStream(), options: options as any });
   queryState.current = q;
 
+  // Track open tool_use spans so we can close them when matching tool_result arrives
+  const toolUseSpans = new Map<string, number>();
+
   for await (const message of q) {
     const msg = message as any;
 
@@ -517,14 +557,33 @@ async function runAgentLoop(
         if (block.type === "text" && block.text) {
           responseContent = block.text;
           emitTextDelta(block.text);
+          spans?.event("text_block", { length: block.text.length });
         }
         if (block.type === "tool_use") {
           emitToolCall(block.name, block.input);
           interceptor.observe(block);
+          // Start a span for the tool call — duration = time until tool_result comes back
+          if (spans && block.id) {
+            const spanId = spans.start(`tool_use:${block.name}`, {
+              tool_name: block.name,
+              input_preview: JSON.stringify(block.input || {}).slice(0, 200),
+            });
+            toolUseSpans.set(block.id, spanId);
+          }
         }
         if (block.type === "tool_result") {
           const content = typeof block.content === "string" ? block.content : "done";
           emitToolResult(block.name || "tool", content);
+          // Close the matching tool_use span
+          if (spans && block.tool_use_id) {
+            const spanId = toolUseSpans.get(block.tool_use_id);
+            if (spanId != null) {
+              spans.end(spanId, {
+                result_length: typeof block.content === "string" ? block.content.length : 0,
+              });
+              toolUseSpans.delete(block.tool_use_id);
+            }
+          }
         }
       }
     }
@@ -551,6 +610,8 @@ async function runAgentLoop(
       if (msg.usage) {
         cacheReadTokens = msg.usage.cache_read_input_tokens || 0;
         cacheCreationTokens = msg.usage.cache_creation_input_tokens || 0;
+        inputTokens = msg.usage.input_tokens || 0;
+        outputTokens = msg.usage.output_tokens || 0;
       }
       // Streaming input mode: the for-await loop doesn't exit on its own —
       // the SDK expects more user messages. Close the input stream on result
@@ -568,7 +629,7 @@ async function runAgentLoop(
   if (closeInputStream) (closeInputStream as () => void)();
   queryState.current = null;
 
-  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens };
+  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens };
 }
 
 interface BuiltQueryOptions {
