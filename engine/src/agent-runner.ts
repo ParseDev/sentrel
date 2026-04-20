@@ -14,7 +14,7 @@ import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
-import { routeToolkits } from "./integrations/router.js";
+import { buildIntegrationSearchMcpServer } from "./tools/integrations.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
 import { recordApproval } from "./security/approval-interceptor.js";
@@ -556,32 +556,24 @@ async function buildQueryOptions(
   const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
 
   // Step 2 — Context-aware tool loading (3-layer cascade).
-  // Layer 1: Check recent audit logs for Composio tool usage — if the agent
-  //   used Google Sheets tools last turn, keep them loaded for "try again".
-  // Layer 2: Keyword regex on current message + conversation history.
-  // Layer 3: Agent calls COMPOSIO_SEARCH_TOOLS at runtime (always available).
-  const jobText = [
-    job.payload?.instruction || "",
-    job.payload?.body || "",
-    job.payload?.subject || "",
-  ].join(" ");
-  const recentContext = history.slice(-5).map((m) => m.content).join(" ");
-  const routingText = `${jobText} ${recentContext}`;
-
+  // Layer 1: Audit log tool history (automatic) — keep toolkits the agent
+  //   used recently, so "try again" works without re-searching.
+  // Layer 2: search_integrations MCP tool (LLM-driven) — agent calls it
+  //   when it needs to find integrations. Uses local embeddings.
+  // Layer 3: COMPOSIO_SEARCH_TOOLS (Composio API fallback).
+  //
+  // No regex. The LLM decides when to search and what to search for.
   const availableToolkits = await getActiveToolkits(agent.organization_id);
-  const toolRouting = process.env.TOOL_ROUTING || "keyword";
+  const toolRouting = process.env.TOOL_ROUTING || "smart";
 
-  // Layer 1: extract toolkit slugs from recent tool calls in audit log
+  // Layer 1: keep toolkits the agent used in recent runs
   const recentToolkitsFromHistory = await getRecentComposioToolkits(agent.id);
-
   const relevantToolkits = toolRouting === "all"
     ? availableToolkits
-    : [...new Set([
-        ...recentToolkitsFromHistory.filter((t) => availableToolkits.includes(t)),
-        ...routeToolkits(routingText, availableToolkits),
-      ])];
+    : recentToolkitsFromHistory.filter((t) => availableToolkits.includes(t));
+
   logger.info(
-    `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} (available: ${availableToolkits.join(", ") || "none"})`,
+    `Tool routing: ${relevantToolkits.length === 0 ? "search-only (LLM will search_integrations on demand)" : relevantToolkits.join(", ")} (available: ${availableToolkits.join(", ") || "none"})`,
   );
 
   const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits);
@@ -592,12 +584,14 @@ async function buildQueryOptions(
   // Post-V1 #2 — scheduling + task management tools
   const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
   const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
+  const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id);
 
   const mcpServers: Record<string, unknown> = {
     recall: recallServer,
     "send-media": sendMediaServer,
     scheduling: schedulingServer,
     tasks: tasksServer,
+    integrations: integrationsServer,
   };
   if (composioServer) {
     mcpServers.composio = composioServer;

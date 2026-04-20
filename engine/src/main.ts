@@ -7,6 +7,7 @@ import { provisionSkills } from "./skills.js";
 import { startHeartbeat } from "./heartbeat.js";
 import { startScheduler } from "./scheduler.js";
 import { startWorkScheduler } from "./work-scheduler.js";
+import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
 import { startGateway, setSyncHandler } from "./gateway.js";
@@ -40,7 +41,10 @@ async function main() {
   // 3. Provision role-based skills
   provisionSkills(agent);
 
-  // 4. Update agent status
+  // 4. Init tool embeddings for semantic search (non-blocking)
+  initToolEmbeddings().catch((err) => logger.warn("Tool embeddings init failed, using fallbacks", { error: err.message }));
+
+  // 5. Update agent status
   await host.updateAgentStatus(agent.id, "running");
 
   // 5. Start worker
