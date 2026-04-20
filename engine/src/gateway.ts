@@ -142,6 +142,11 @@ export function emitThinking(): void {
 
 export function emitTextDelta(text: string): void {
   broadcast({ type: "text_delta", text, timestamp: Date.now() });
+  // Fire per-job listeners so channels (Telegram, WhatsApp) can stream
+  // text as it's produced — no more 2-minute silent waits.
+  for (const listener of textDeltaListeners.values()) {
+    try { listener(text); } catch {}
+  }
 }
 
 // Human-readable labels for tool calls. Used by Telegram status messages,
@@ -214,6 +219,7 @@ export function emitToolResult(tool: string, result: string): void {
 // the right channel handler — no FIFO hijacking, no stale-listener bugs.
 const doneListeners = new Map<string, (content: string) => void>();
 const toolCallListeners = new Map<string, (tool: string) => void>();
+const textDeltaListeners = new Map<string, (text: string) => void>();
 
 export function onDone(jobId: string, listener: (content: string) => void): () => void {
   if (doneListeners.has(jobId)) {
@@ -226,6 +232,14 @@ export function onDone(jobId: string, listener: (content: string) => void): () =
 export function onToolCall(jobId: string, listener: (tool: string) => void): () => void {
   toolCallListeners.set(jobId, listener);
   return () => { toolCallListeners.delete(jobId); };
+}
+
+// Subscribe to text deltas as the agent produces response text. Fires
+// multiple times per run. Channels use this to stream (edit messages
+// progressively) instead of waiting for the final emitDone.
+export function onTextDelta(jobId: string, listener: (text: string) => void): () => void {
+  textDeltaListeners.set(jobId, listener);
+  return () => { textDeltaListeners.delete(jobId); };
 }
 
 export function emitDone(jobId: string, content: string): void {

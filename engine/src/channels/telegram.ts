@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { config } from "../config.js";
 import { redis } from "../queue.js";
 import { host } from "../host/index.js";
-import { onDone, onToolCall, getToolLabel } from "../gateway.js";
+import { onDone, onToolCall, onTextDelta, getToolLabel } from "../gateway.js";
 import { logger } from "../logger.js";
 
 // Sprint 1a — Telegram media types we accept (best-largest size for photos,
@@ -225,12 +225,67 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
 
   const unsubscribeToolCalls = onToolCall(jobId, toolListener);
 
+  // Streaming response — edit the status message with accumulating text as
+  // the agent produces its answer. User sees text arriving live instead of
+  // waiting 2+ minutes for the final blob. Throttled to 1 edit/1.5s to
+  // respect Telegram's rate limits (~30 edits/min per chat).
+  let streamedText = "";
+  let lastEditAt = 0;
+  let pendingEdit: NodeJS.Timeout | null = null;
+  const EDIT_INTERVAL_MS = 1500;
+  const MAX_STREAM_CHARS = 3800; // below Telegram's 4096 hard cap
+
+  async function flushStreamEdit() {
+    if (!statusMsgId || !streamedText) return;
+    const text = streamedText.slice(-MAX_STREAM_CHARS);
+    try {
+      await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId, text }),
+      });
+      lastEditAt = Date.now();
+    } catch {}
+  }
+
+  const textListener = (delta: string) => {
+    streamedText += delta;
+    // If we have a status message, edit it. Otherwise create one.
+    if (!statusMsgId) {
+      // Lazy-create the message on first delta
+      fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: streamedText.slice(0, MAX_STREAM_CHARS) || "..." }),
+      }).then(async (res) => {
+        const data = await res.json() as { ok: boolean; result?: { message_id: number } };
+        statusMsgId = data.result?.message_id ?? null;
+        lastEditAt = Date.now();
+      }).catch(() => {});
+      return;
+    }
+    // Throttle edits
+    const elapsed = Date.now() - lastEditAt;
+    if (elapsed >= EDIT_INTERVAL_MS) {
+      flushStreamEdit();
+    } else if (!pendingEdit) {
+      pendingEdit = setTimeout(() => {
+        pendingEdit = null;
+        flushStreamEdit();
+      }, EDIT_INTERVAL_MS - elapsed);
+    }
+  };
+
+  const unsubscribeTextDelta = onTextDelta(jobId, textListener);
+
   try {
     const response = await waitForResponse(jobId, 600_000);
 
     clearInterval(typingInterval);
+    if (pendingEdit) { clearTimeout(pendingEdit); pendingEdit = null; }
 
-    // Delete the status message and send the real response
+    // Finalize: delete the streaming status message (we're about to send
+    // the full response as a fresh message with proper markdown formatting).
     if (statusMsgId) {
       try {
         await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
@@ -248,10 +303,11 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
       await sendMessage(botToken, chatId, "⚠️ Still processing — check the dashboard for the full response.");
     }
   } finally {
-    // Always detach the tool listener so it doesn't leak across runs and
-    // fire status edits on a deleted statusMsgId.
+    // Always detach listeners so they don't leak across runs.
     clearInterval(typingInterval);
+    if (pendingEdit) clearTimeout(pendingEdit);
     unsubscribeToolCalls();
+    unsubscribeTextDelta();
   }
 }
 
