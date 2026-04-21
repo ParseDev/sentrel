@@ -11,8 +11,13 @@ class AgentsController < ApplicationController
   end
 
   def show
-    # Find internal chat conversation (boss ↔ agent)
-    chat_conversation = @agent.conversations.find_by(kind: "internal", user: current_user)
+    # Find internal chat conversation (boss ↔ agent). Multiple internal convs
+    # exist for historical reasons — pick the most recently active one, and
+    # prefer the one tied to this specific user.
+    chat_conversation = @agent.conversations
+      .where(kind: "internal", user: current_user)
+      .order(updated_at: :desc)
+      .first
     chat_messages = chat_conversation ? chat_conversation.messages.order(id: :asc).as_json(
       only: [:id, :role, :content, :channel, :metadata, :created_at]
     ) : []

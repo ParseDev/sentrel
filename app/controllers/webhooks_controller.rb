@@ -128,16 +128,22 @@ class WebhooksController < ApplicationController
     agent = Agent.find(params[:agent_id])
     return head :not_found unless agent
 
-    conversation = agent.conversations.find_or_create_by!(
+    # Use the most recently active internal conv for this user — avoids
+    # fragmenting chat history across multiple conversations when old rows
+    # exist with different contact_identifier values.
+    conversation = agent.conversations
+      .where(kind: "internal", user: current_user)
+      .order(updated_at: :desc)
+      .first
+    conversation ||= agent.conversations.create!(
       organization: agent.organization,
       kind: "internal",
       user: current_user,
       contact_identifier: current_user.email,
-    ) do |c|
-      c.contact_name = current_user.name
-      c.contact_email = current_user.email
-      c.status = "active"
-    end
+      contact_name: current_user.name,
+      contact_email: current_user.email,
+      status: "active",
+    )
 
     # Sprint 1c (direct upload) — files were already uploaded by the browser
     # via @rails/activestorage DirectUpload. We just receive the signed_ids
