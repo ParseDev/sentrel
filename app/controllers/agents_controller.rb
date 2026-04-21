@@ -123,6 +123,7 @@ class AgentsController < ApplicationController
   def update
     if @agent.update(agent_params)
       @agent.ai_config&.update(ai_config_params) if params[:ai_config].present?
+      EngineSync.trigger(@agent)
       redirect_to agent_path(@agent), notice: "Agent updated"
     else
       redirect_back fallback_location: edit_agent_path(@agent), alert: @agent.errors.full_messages.join(", ")

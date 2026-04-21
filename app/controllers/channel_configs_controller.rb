@@ -52,6 +52,7 @@ class ChannelConfigsController < ApplicationController
     end
 
     if config.save
+      EngineSync.trigger(@agent)
       redirect_to agent_channel_configs_path(@agent), notice: "#{config.channel_type.capitalize} connected"
     else
       redirect_back fallback_location: agent_channel_configs_path(@agent), alert: config.errors.full_messages.join(", ")
@@ -61,6 +62,7 @@ class ChannelConfigsController < ApplicationController
   def update
     config = @agent.channel_configs.find(params[:id])
     if config.update(channel_config_params)
+      EngineSync.trigger(@agent)
       redirect_to agent_channel_configs_path(@agent), notice: "Channel updated"
     else
       redirect_back fallback_location: agent_channel_configs_path(@agent), alert: config.errors.full_messages.join(", ")
@@ -81,6 +83,7 @@ class ChannelConfigsController < ApplicationController
     end
 
     config.destroy
+    EngineSync.trigger(@agent)
     redirect_to agent_channel_configs_path(@agent), notice: "Channel disconnected"
   end
 
