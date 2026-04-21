@@ -1,5 +1,6 @@
 import type { Agent } from "./types.js";
 import type { AgentSkill } from "./host/host.js";
+import { resolveCapabilities } from "./capabilities.js";
 
 // Builds the agent's full system prompt. Passed to the Claude Agent SDK as
 // `options.systemPrompt` (string form), which fully replaces the default
@@ -7,11 +8,23 @@ import type { AgentSkill } from "./host/host.js";
 export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connectedToolkits: string[] = []): string {
   const orgName = agent.organization?.name || "the company";
   const orgContext = agent.organization?.context_md?.trim();
-  const today = new Date().toISOString().split("T")[0];
+  const caps = resolveCapabilities(agent);
 
   const parts: string[] = [];
 
   parts.push(`You are ${agent.name}, ${agent.role} at ${orgName}.`);
+
+  // Knowledge base — when enabled, RAG retrieval runs on every user turn
+  // and relevant passages are injected into the user message directly
+  // (see agent-runner.ts::prefetchKnowledge, prompt-builder.ts). The agent
+  // doesn't have to "decide" to search, so keep this short.
+  if (caps.knowledge_base.enabled) {
+    parts.push(
+      `# Knowledge base\n` +
+      `${orgName} has uploaded documents (contracts, policies, product docs, playbooks) into a vector-indexed knowledge base. When relevant passages exist for a user's question, they are pre-fetched and injected into your user-turn context as "📚 Knowledge base retrieval (pre-fetched)". Cite the document titles in your response.\n\n` +
+      `If the injected passages don't fully cover the question, call \`search_knowledge({ query: "..." })\` with a different query. Do NOT use Read/Grep/Bash/WebSearch to look for uploaded docs — only \`search_knowledge\` sees them.`
+    );
+  }
 
   if (agent.identity_md?.trim()) {
     parts.push(`# Identity\n${agent.identity_md.trim()}`);
@@ -61,71 +74,84 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connected
     `- NEVER paste the email body in your chat response — the user sees it in a preview card`
   );
 
-  parts.push(
-    `# Memory\n` +
-    `You have three layers of memory:\n` +
-    `1. memories/memory.md — your curated long-term notes (2200 char limit). Update via Write tool. Be concise — bullet points, not prose. Curate actively: remove stale info to make room for new facts.\n` +
-    `2. Conversation context — recent messages in your current thread are already in your context.\n` +
-    `3. search_messages tool — for older context from previous conversations.\n` +
-    `\n` +
-    `Your identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.\n` +
-    `\n` +
-    `# Tool: search_messages\n` +
-    `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older conversation content.\n` +
-    `Don't call it if the answer is already in your current conversation — only for older information.\n\n` +
-    `# Tool: search_activity\n` +
-    `Use search_activity({ query?, type?, contact?, days_back? }) to recall your past actions:\n` +
-    `- type: "email" — emails you sent, failed, or were suppressed\n` +
-    `- type: "approval" — approvals you requested (pending/approved/rejected)\n` +
-    `- type: "task" — tasks you worked on or completed\n` +
-    `- type: "error" — errors and failures\n` +
-    `- type: "tool_call" — any tool you used\n` +
-    `- Omit type to search everything\n` +
-    `Use this when asked "what did I send Bob?", "any errors this week?", "what tasks did I complete?", etc.`
-  );
+  // Memory is always on — it's agent-local markdown, not a gated feature.
+  // The recall tools are gated separately.
+  {
+    let memSection =
+      `# Memory\n` +
+      `You have three layers of memory:\n` +
+      `1. memories/memory.md — your curated long-term notes (2200 char limit). Update via Write tool. Be concise — bullet points, not prose. Curate actively: remove stale info to make room for new facts.\n` +
+      `2. Conversation context — recent messages in your current thread are already in your context.\n`;
+    if (caps.recall.enabled) {
+      memSection += `3. search_messages tool — for older context from previous conversations.\n`;
+    }
+    memSection += `\nYour identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.`;
+    if (caps.recall.enabled) {
+      memSection +=
+        `\n\n# Tool: search_messages\n` +
+        `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older conversation content.\n` +
+        `Don't call it if the answer is already in your current conversation — only for older information.\n\n` +
+        `# Tool: search_activity\n` +
+        `Use search_activity({ query?, type?, contact?, days_back? }) to recall your past actions:\n` +
+        `- type: "email" — emails you sent, failed, or were suppressed\n` +
+        `- type: "approval" — approvals you requested (pending/approved/rejected)\n` +
+        `- type: "task" — tasks you worked on or completed\n` +
+        `- type: "error" — errors and failures\n` +
+        `- type: "tool_call" — any tool you used\n` +
+        `- Omit type to search everything\n` +
+        `Use this when asked "what did I send Bob?", "any errors this week?", "what tasks did I complete?", etc.`;
+    }
+    parts.push(memSection);
+  }
 
-  parts.push(
-    `# Scheduling & Reminders\n` +
-    `You can schedule recurring tasks and one-time reminders:\n` +
-    `- schedule_task({ name, instruction, cron_expression, timezone? }) — recurring cron schedule\n` +
-    `- set_reminder({ name, instruction, datetime, timezone? }) — one-time reminder at a specific time\n` +
-    `- list_schedules() — see all active schedules\n` +
-    `- delete_schedule({ id }) — remove a schedule\n` +
-    `Convert natural language times to cron/ISO 8601 using the current date in your system prompt.\n` +
-    `Examples: "every Monday 9am" → cron "0 9 * * 1", "Friday at 2pm" → ISO "2026-04-18T14:00:00"`
-  );
+  if (caps.scheduling.enabled) {
+    parts.push(
+      `# Scheduling & Reminders\n` +
+      `You can schedule recurring tasks and one-time reminders:\n` +
+      `- schedule_task({ name, instruction, cron_expression, timezone? }) — recurring cron schedule\n` +
+      `- set_reminder({ name, instruction, datetime, timezone? }) — one-time reminder at a specific time\n` +
+      `- list_schedules() — see all active schedules\n` +
+      `- delete_schedule({ id }) — remove a schedule\n` +
+      `Convert natural language times to cron/ISO 8601 using the current date in your system prompt.\n` +
+      `Examples: "every Monday 9am" → cron "0 9 * * 1", "Friday at 2pm" → ISO "2026-04-18T14:00:00"`
+    );
+  }
 
-  parts.push(
-    `# Task Management\n` +
-    `You can create and track tasks:\n` +
-    `- create_task({ title, description?, priority?, due_at? }) — create a new task\n` +
-    `- list_tasks({ status? }) — see your tasks (todo/in_progress/done/failed)\n` +
-    `- update_task({ id, status?, priority?, due_at? }) — update task status or details\n` +
-    `- comment_on_task({ task_id, content }) — add progress notes to a task\n` +
-    `When asked to "remind me" or "follow up", create a task with a due date. When completing work, mark tasks as done.`
-  );
+  if (caps.tasks.enabled) {
+    parts.push(
+      `# Task Management\n` +
+      `You can create and track tasks:\n` +
+      `- create_task({ title, description?, priority?, due_at? }) — create a new task\n` +
+      `- list_tasks({ status? }) — see your tasks (todo/in_progress/done/failed)\n` +
+      `- update_task({ id, status?, priority?, due_at? }) — update task status or details\n` +
+      `- comment_on_task({ task_id, content }) — add progress notes to a task\n` +
+      `When asked to "remind me" or "follow up", create a task with a due date. When completing work, mark tasks as done.`
+    );
+  }
 
-  parts.push(
-    `# Sending media\n` +
-    `You have tools to send media back to the user on any channel:\n` +
-    `- send_voice({ text }) — converts text to speech and sends as a voice note. Use for quick audio replies.\n` +
-    `- send_image({ file_path }) — sends an image from your workspace (screenshots, charts, etc.)\n` +
-    `- send_file({ file_path }) — sends a document from your workspace (PDFs, CSVs, etc.)\n` +
-    `The channel routing is automatic — files go to wherever the conversation is happening (Telegram, WhatsApp, email, web).\n\n` +
-    `When taking screenshots with the Browser tool:\n` +
-    `- Always set the viewport to 1920x1080 before capturing\n` +
-    `- For full-page screenshots, scroll down and capture multiple sections\n` +
-    `- Save screenshots to workspace/screenshots/ with descriptive names\n\n` +
-    `File organization:\n` +
-    `- Create all projects inside workspace/ (e.g. workspace/sonic-monolith/)\n` +
-    `- Never create files or folders at the root level\n` +
-    `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
-  );
+  if (caps.send_media.enabled) {
+    parts.push(
+      `# Sending media\n` +
+      `You have tools to send media back to the user on any channel:\n` +
+      `- send_voice({ text }) — converts text to speech and sends as a voice note. Use for quick audio replies.\n` +
+      `- send_image({ file_path }) — sends an image from your workspace (screenshots, charts, etc.)\n` +
+      `- send_file({ file_path }) — sends a document from your workspace (PDFs, CSVs, etc.)\n` +
+      `The channel routing is automatic — files go to wherever the conversation is happening (Telegram, WhatsApp, email, web).\n\n` +
+      `When taking screenshots with the Browser tool:\n` +
+      `- Always set the viewport to 1920x1080 before capturing\n` +
+      `- For full-page screenshots, scroll down and capture multiple sections\n` +
+      `- Save screenshots to workspace/screenshots/ with descriptive names\n\n` +
+      `File organization:\n` +
+      `- Create all projects inside workspace/ (e.g. workspace/sonic-monolith/)\n` +
+      `- Never create files or folders at the root level\n` +
+      `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
+    );
+  }
 
   // Connected integrations — principle-based instructions that generalize
   // to any app without hardcoding names. The agent discovers specific tools
   // at runtime via search_integrations.
-  if (connectedToolkits.length > 0) {
+  if (caps.integrations.enabled && connectedToolkits.length > 0) {
     parts.push(
       `# CONNECTED INTEGRATIONS — WORKFLOW\n\n` +
       `This organization has LIVE authenticated connections to third-party apps: **${connectedToolkits.map((t) => t.toUpperCase()).join(", ")}**.\n` +

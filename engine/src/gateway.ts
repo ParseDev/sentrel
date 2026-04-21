@@ -51,6 +51,148 @@ export function startGateway(): void {
       return;
     }
 
+    // POST /rag/ingest — accepts raw uploads. Two modes:
+    //   1) multipart/form-data with a "file" part + fields (agent_id, title)
+    //      → engine extracts text based on filename/content-type, ingests.
+    //   2) application/json with { agent_id, title, content, source_url? }
+    //      → text was pre-extracted (URL fetch or pasted text).
+    if (req.method === "POST" && req.url === "/rag/ingest") {
+      const secret = process.env.ENGINE_API_SECRET;
+      if (!secret || req.headers["x-engine-secret"] !== secret) {
+        res.writeHead(401); res.end(); return;
+      }
+      try {
+        const ct = (req.headers["content-type"] || ""); // preserve case — boundary is case-sensitive
+        let result: any;
+
+        if (ct.toLowerCase().startsWith("multipart/form-data")) {
+          const { parseMultipart } = await import("./rag/multipart.js");
+          const { extractFromBytes } = await import("./rag/extractor.js");
+          const { ingestDocument } = await import("./rag/ingest.js");
+
+          const parsed = await parseMultipart(req, ct);
+          const file = parsed.files[0];
+          if (!file) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "No file part in upload" }));
+            return;
+          }
+          const agentId = parseInt(parsed.fields.agent_id || "0");
+          if (!agentId) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Missing agent_id" }));
+            return;
+          }
+          const title = parsed.fields.title || file.filename || "Untitled";
+          const extracted = await extractFromBytes(file.data, file.filename, file.contentType);
+          result = await ingestDocument({
+            agentId,
+            title,
+            sourceType: extracted.sourceType,
+            content: extracted.text,
+            metadata: {
+              original_filename: file.filename,
+              content_type: file.contentType,
+              size_bytes: file.data.length,
+            },
+          });
+        } else {
+          // JSON path — pre-extracted text (URL fetch, raw paste)
+          const body = await readJsonBody(req);
+          const { ingestDocument } = await import("./rag/ingest.js");
+          result = await ingestDocument({
+            agentId: body.agent_id,
+            title: body.title,
+            sourceType: body.source_type || "text",
+            sourceUrl: body.source_url,
+            content: body.content,
+            metadata: body.metadata,
+          });
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+        logger.error("RAG ingest failed", { error: (err as Error).message });
+      }
+      return;
+    }
+
+    // POST /rag/ingest/url — fetch a URL and ingest its content
+    if (req.method === "POST" && req.url === "/rag/ingest/url") {
+      const secret = process.env.ENGINE_API_SECRET;
+      if (!secret || req.headers["x-engine-secret"] !== secret) {
+        res.writeHead(401); res.end(); return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const urlRes = await fetch(body.url);
+        if (!urlRes.ok) throw new Error(`URL fetch failed: ${urlRes.status}`);
+        const bytes = Buffer.from(await urlRes.arrayBuffer());
+        const filename = body.url.split("/").pop() || "page.html";
+        const { extractFromBytes } = await import("./rag/extractor.js");
+        const { ingestDocument } = await import("./rag/ingest.js");
+        const extracted = await extractFromBytes(bytes, filename, urlRes.headers.get("content-type") || undefined);
+        const result = await ingestDocument({
+          agentId: parseInt(body.agent_id),
+          title: body.title || body.url,
+          sourceType: extracted.sourceType,
+          sourceUrl: body.url,
+          content: extracted.text,
+          metadata: { fetched_at: new Date().toISOString() },
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+        logger.error("RAG URL ingest failed", { error: (err as Error).message });
+      }
+      return;
+    }
+
+    // GET /rag/documents?agent_id=N — list indexed docs for an agent
+    if (req.method === "GET" && req.url?.startsWith("/rag/documents")) {
+      const secret = process.env.ENGINE_API_SECRET;
+      if (!secret || req.headers["x-engine-secret"] !== secret) {
+        res.writeHead(401); res.end(); return;
+      }
+      try {
+        const url = new URL(req.url, "http://localhost");
+        const agentId = parseInt(url.searchParams.get("agent_id") || "0");
+        const { listDocuments } = await import("./rag/store.js");
+        const docs = await listDocuments(agentId);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ documents: docs }));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+      return;
+    }
+
+    // DELETE /rag/documents/:id?agent_id=N
+    if (req.method === "DELETE" && req.url?.startsWith("/rag/documents/")) {
+      const secret = process.env.ENGINE_API_SECRET;
+      if (!secret || req.headers["x-engine-secret"] !== secret) {
+        res.writeHead(401); res.end(); return;
+      }
+      try {
+        const url = new URL(req.url, "http://localhost");
+        const agentId = parseInt(url.searchParams.get("agent_id") || "0");
+        const docId = parseInt(url.pathname.split("/").pop() || "0");
+        const { deleteDocument } = await import("./rag/store.js");
+        await deleteDocument(agentId, docId);
+        res.writeHead(204); res.end();
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+      return;
+    }
+
     // GET /health — engine health check
     if (req.method === "GET" && req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -298,4 +440,17 @@ export function consumePendingMedia() {
   const result = [...pendingMedia];
   pendingMedia = [];
   return result;
+}
+
+// Helper for HTTP JSON bodies (RAG ingest/management endpoints)
+async function readJsonBody(req: http.IncomingMessage): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => { data += chunk; });
+    req.on("end", () => {
+      try { resolve(data ? JSON.parse(data) : {}); }
+      catch (err) { reject(err); }
+    });
+    req.on("error", reject);
+  });
 }

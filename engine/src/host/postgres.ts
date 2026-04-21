@@ -347,6 +347,23 @@ export class PostgresHost implements Host {
     );
   }
 
+  async enableCapability(agentId: number, key: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      `UPDATE agents
+       SET capabilities = jsonb_set(
+         coalesce(capabilities, '{}'::jsonb),
+         ARRAY[$2, 'enabled'],
+         'true'::jsonb,
+         true
+       ),
+       updated_at = NOW()
+       WHERE id = $1
+         AND coalesce(capabilities #> ARRAY[$2, 'enabled'], 'false'::jsonb) <> 'true'::jsonb`,
+      [agentId, key],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   // ── Scheduling ──
 
   async getScheduledTasks(agentId: number): Promise<ScheduledTask[]> {

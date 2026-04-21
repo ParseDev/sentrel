@@ -29,6 +29,17 @@ export interface BuiltPrompt {
   promptText: string;
 }
 
+export interface KnowledgePrefetch {
+  query: string;
+  passages: Array<{
+    document_title: string;
+    chunk_index: number;
+    content: string;
+    context: string | null;
+    distance: number;
+  }>;
+}
+
 export function buildPrompt(
   agent: Agent,
   job: JobData,
@@ -36,8 +47,29 @@ export function buildPrompt(
   conversation?: Conversation | null,
   processedAttachments?: ProcessedAttachment[],
   taskCheckpoint?: Record<string, unknown> | null,
+  knowledgePrefetch?: KnowledgePrefetch | null,
 ): BuiltPrompt {
   const parts: string[] = [];
+
+  // If we pre-ran search_knowledge deterministically (because the user's
+  // message clearly references uploaded docs), inject the results up-front
+  // so the agent doesn't have to "decide" to search. Eliminates the
+  // prompt-compliance risk where the agent uses Read/Grep instead.
+  if (knowledgePrefetch && knowledgePrefetch.passages.length > 0) {
+    parts.push("## 📚 Knowledge base retrieval (pre-fetched)");
+    parts.push(
+      `We ran \`search_knowledge({ query: "${knowledgePrefetch.query}" })\` on your behalf. ` +
+      `Use these passages to answer the user, and **cite the document titles** in your response. ` +
+      `If they don't fully answer the question, call \`search_knowledge\` again with a different query.`,
+    );
+    parts.push("");
+    for (const [i, p] of knowledgePrefetch.passages.entries()) {
+      parts.push(`### [${i + 1}] From "${p.document_title}" (chunk ${p.chunk_index + 1}, distance ${p.distance.toFixed(3)})`);
+      if (p.context) parts.push(`*Context: ${p.context}*`);
+      parts.push(p.content);
+      parts.push("");
+    }
+  }
 
   // Inject memory with usage indicator (bounded to 2200 chars)
   const memory = readMemoryMd();

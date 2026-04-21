@@ -15,6 +15,8 @@ import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
+import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
+import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
@@ -222,7 +224,13 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     if (t && Object.keys(t.checkpoint).length > 0) taskCheckpoint = t.checkpoint;
   }
 
-  const built = buildPrompt(agent, job, history, conversation, processedMedia, taskCheckpoint);
+  // Always-retrieve RAG (Mem0/Letta pattern): run the user's message
+  // through hybrid search, threshold-filter, inject passages into the
+  // prompt. No decision, no regex gate — the agent never has to "decide"
+  // to call search_knowledge for the common case.
+  const knowledgePrefetch = await prefetchKnowledge(agent, job);
+
+  const built = buildPrompt(agent, job, history, conversation, processedMedia, taskCheckpoint, knowledgePrefetch);
 
   // Shared state so the search_integrations tool can call setMcpServers()
   // to dynamically add Composio toolkits mid-session (same user interaction).
@@ -545,11 +553,16 @@ async function runAgentLoop(
       capturedSessionId = msg.session_id;
     }
 
-    // Log which Composio tools the agent has on init (for debugging tool loading)
+    // Log which tools the agent has on init (for debugging tool loading)
     if (msg.type === "system" && msg.subtype === "init" && msg.tools) {
       const toolNames = Array.isArray(msg.tools) ? msg.tools : Object.keys(msg.tools || {});
       const composioTools = toolNames.filter((t: string) => t.startsWith("mcp__composio__"));
-      logger.info(`SDK init: ${composioTools.length} Composio tools available`);
+      const mcpTools = toolNames.filter((t: string) => t.startsWith("mcp__") && !t.startsWith("mcp__composio__"));
+      const hasKnowledge = toolNames.includes("mcp__knowledge__search_knowledge");
+      logger.info(`SDK init: ${composioTools.length} Composio, ${mcpTools.length} other MCP, knowledge=${hasKnowledge ? "yes" : "NO"}`);
+      if (!hasKnowledge) {
+        logger.warn(`search_knowledge NOT in allowedTools! MCP tools seen: ${mcpTools.join(", ")}`);
+      }
     }
 
     if (msg.message?.content) {
@@ -649,86 +662,118 @@ async function buildQueryOptions(
     process.env.ANTHROPIC_BASE_URL = config.anthropicBaseUrl;
   }
 
-  // Sprint 0e — recall tool (tenant-scoped)
-  const recallServer = buildRecallMcpServer(agent.organization_id);
+  // Capability-gated MCP server registration. Agents only pay for tools
+  // they have enabled. See `capabilities.ts` for defaults.
+  const caps = resolveCapabilities(agent);
+  const mcpServers: Record<string, unknown> = {};
+  const baseMcpServers: Record<string, unknown> = {};
 
-  // Sprint 3 — send media tools (channel + metadata baked in)
-  // Read bot number from channel config so WhatsApp From number is correct
-  const channelConfigs = await host.getChannelConfigs(String(agent.id));
-  const waConfig = channelConfigs.find((c) => c.channel_type === "whatsapp");
-  const channelMeta = {
-    ...(job.payload?.metadata || {}),
-    from: job.payload?.from,
-    bot_number: waConfig?.config?.phone_number || process.env.WHATSAPP_BOT_NUMBER || "",
-  };
-  const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
+  if (caps.recall.enabled) {
+    const recallServer = buildRecallMcpServer(agent.organization_id);
+    mcpServers.recall = recallServer;
+    baseMcpServers.recall = recallServer;
+  }
 
-  // Step 2 — Context-aware tool loading (hybrid: pre-load + on-demand).
-  // Layer 1 (pre-query): Audit log tool history — keep toolkits the agent
-  //   used recently (handles "try again").
-  // Layer 2 (pre-query): Embedding match on user message — pre-load
-  //   toolkits the user is clearly asking for. Agent has tools from turn 1.
-  // Layer 3 (on-demand): search_integrations MCP tool — agent calls it to
-  //   load ADDITIONAL toolkits mid-session if needed.
-  // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
-  const availableToolkits = await getActiveToolkits(agent.organization_id);
-  const toolRouting = process.env.TOOL_ROUTING || "smart";
+  if (caps.send_media.enabled) {
+    // Read bot number from channel config so WhatsApp From number is correct
+    const channelConfigs = await host.getChannelConfigs(String(agent.id));
+    const waConfig = channelConfigs.find((c) => c.channel_type === "whatsapp");
+    const channelMeta = {
+      ...(job.payload?.metadata || {}),
+      from: job.payload?.from,
+      bot_number: waConfig?.config?.phone_number || process.env.WHATSAPP_BOT_NUMBER || "",
+    };
+    const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
+    mcpServers["send-media"] = sendMediaServer;
+    baseMcpServers["send-media"] = sendMediaServer;
+  }
 
-  // Layer 1: audit log history
-  const layer1 = await getRecentComposioToolkits(agent.id);
+  if (caps.scheduling.enabled) {
+    const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
+    mcpServers.scheduling = schedulingServer;
+    baseMcpServers.scheduling = schedulingServer;
+  }
 
-  // Layer 2: embedding match on user message + last 2 history turns
-  const routingText = [
-    job.payload?.instruction || "",
-    job.payload?.body || "",
-    job.payload?.subject || "",
-    ...history.slice(-2).map((m) => m.content),
-  ].join(" ");
-  const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
-  const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
+  if (caps.tasks.enabled) {
+    const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
+    mcpServers.tasks = tasksServer;
+    baseMcpServers.tasks = tasksServer;
+  }
 
-  const relevantToolkits = toolRouting === "all"
-    ? availableToolkits
-    : [...new Set([...layer1, ...layer2])].filter((t) => availableToolkits.includes(t));
+  if (caps.knowledge_base.enabled) {
+    const knowledgeServer = buildKnowledgeMcpServer(agent.id);
+    mcpServers.knowledge = knowledgeServer;
+    baseMcpServers.knowledge = knowledgeServer;
+  }
 
-  logger.info(
-    `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} ` +
-    `(layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
-  );
+  // Integrations capability gates both `integrations` (search) and
+  // `composio` (actual execution tools). Disable the capability to
+  // produce a pure-knowledge/internal agent with no external tool access.
+  let connectedToolkits: string[] = [];
+  let composioToolNames: string[] = [];
+  let relevantToolkits: string[] = [];
+  if (caps.integrations.enabled) {
+    const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState);
+    mcpServers.integrations = integrationsServer;
+    baseMcpServers.integrations = integrationsServer;
 
-  const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits);
-  const composioServer = composioResult?.server;
-  const connectedToolkits = composioResult?.toolkits || [];
-  const composioToolNames = composioResult?.toolNames || [];
+    // Step 2 — Context-aware tool loading (hybrid: pre-load + on-demand).
+    // Layer 1 (pre-query): Audit log tool history — keep toolkits the agent
+    //   used recently (handles "try again").
+    // Layer 2 (pre-query): Embedding match on user message — pre-load
+    //   toolkits the user is clearly asking for. Agent has tools from turn 1.
+    // Layer 3 (on-demand): search_integrations MCP tool — agent calls it to
+    //   load ADDITIONAL toolkits mid-session if needed.
+    // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
+    const availableToolkits = await getActiveToolkits(agent.organization_id);
+    const toolRouting = process.env.TOOL_ROUTING || "smart";
 
-  // Post-V1 #2 — scheduling + task management tools
-  const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
-  const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
-  const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState);
+    const layer1 = await getRecentComposioToolkits(agent.id);
 
-  const mcpServers: Record<string, unknown> = {
-    recall: recallServer,
-    "send-media": sendMediaServer,
-    scheduling: schedulingServer,
-    tasks: tasksServer,
-    integrations: integrationsServer,
-  };
-  if (composioServer) {
-    mcpServers.composio = composioServer;
+    const routingText = [
+      job.payload?.instruction || "",
+      job.payload?.body || "",
+      job.payload?.subject || "",
+      ...history.slice(-2).map((m) => m.content),
+    ].join(" ");
+    const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
+    const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
+
+    relevantToolkits = toolRouting === "all"
+      ? availableToolkits
+      : [...new Set([...layer1, ...layer2])].filter((t) => availableToolkits.includes(t));
+
+    logger.info(
+      `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} ` +
+      `(layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
+    );
+
+    const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits);
+    const composioServer = composioResult?.server;
+    connectedToolkits = composioResult?.toolkits || [];
+    composioToolNames = composioResult?.toolNames || [];
+
+    if (composioServer) {
+      mcpServers.composio = composioServer;
+      // Note: composio is NOT in baseMcpServers — search_integrations
+      // swaps composio servers via setMcpServers, but keeps the base set intact.
+    }
+  } else {
+    logger.info(`Tool routing: integrations capability disabled — no composio/integrations MCP servers`);
   }
 
   // Store base (non-composio) servers so search_integrations can include
   // them in its setMcpServers call — otherwise setMcpServers would nuke them.
-  queryState.baseMcpServers = {
-    recall: recallServer,
-    "send-media": sendMediaServer,
-    scheduling: schedulingServer,
-    tasks: tasksServer,
-    integrations: integrationsServer,
-  };
+  queryState.baseMcpServers = baseMcpServers;
+
+  logger.info(`MCP servers registered: ${Object.keys(mcpServers).join(", ") || "none"}`);
 
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
+    // SDK isolation — don't load the user's ~/.claude/settings.json (which
+    // brings in personal MCP servers like Linear/Sentry/Gmail and pollutes
+    // the agent's tool list with 60+ unrelated tools).
+    settingSources: [],
     allowedTools: [
       "Skill",
       "Agent",
@@ -740,26 +785,39 @@ async function buildQueryOptions(
       "WebSearch",
       "WebFetch",
       "Browser",
-      // Custom MCP tools
-      "mcp__recall__search_messages",
-      "mcp__recall__search_activity",
-      "mcp__send-media__send_voice",
-      "mcp__send-media__send_image",
-      "mcp__send-media__send_file",
-      "mcp__integrations__search_integrations",
-      "mcp__scheduling__schedule_task",
-      "mcp__scheduling__set_reminder",
-      "mcp__scheduling__list_schedules",
-      "mcp__scheduling__delete_schedule",
-      "mcp__tasks__create_task",
-      "mcp__tasks__list_tasks",
-      "mcp__tasks__update_task",
-      "mcp__tasks__comment_on_task",
-      "mcp__tasks__write_checkpoint",
-      "mcp__tasks__ask_user",
-      "mcp__tasks__cancel_self",
-      // Composio tools: explicit list (wildcards may not match)
-      ...composioToolNames.map((name) => `mcp__composio__${name}`),
+      // Capability-gated MCP tools — only listed when their server is registered
+      ...(caps.recall.enabled ? [
+        "mcp__recall__search_messages",
+        "mcp__recall__search_activity",
+      ] : []),
+      ...(caps.send_media.enabled ? [
+        "mcp__send-media__send_voice",
+        "mcp__send-media__send_image",
+        "mcp__send-media__send_file",
+      ] : []),
+      ...(caps.integrations.enabled ? [
+        "mcp__integrations__search_integrations",
+        // Composio tools: explicit list (wildcards may not match)
+        ...composioToolNames.map((name) => `mcp__composio__${name}`),
+      ] : []),
+      ...(caps.knowledge_base.enabled ? [
+        "mcp__knowledge__search_knowledge",
+      ] : []),
+      ...(caps.scheduling.enabled ? [
+        "mcp__scheduling__schedule_task",
+        "mcp__scheduling__set_reminder",
+        "mcp__scheduling__list_schedules",
+        "mcp__scheduling__delete_schedule",
+      ] : []),
+      ...(caps.tasks.enabled ? [
+        "mcp__tasks__create_task",
+        "mcp__tasks__list_tasks",
+        "mcp__tasks__update_task",
+        "mcp__tasks__comment_on_task",
+        "mcp__tasks__write_checkpoint",
+        "mcp__tasks__ask_user",
+        "mcp__tasks__cancel_self",
+      ] : []),
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
@@ -896,5 +954,57 @@ async function getRecentComposioToolkits(agentId: number): Promise<string[]> {
     return [...toolkits];
   } catch {
     return [];
+  }
+}
+
+// Always-retrieve RAG with threshold filter (Mem0/Letta pattern).
+// Runs on every inbound turn when knowledge_base is enabled. No regex, no
+// "decide whether to search" — embed the user text, run hybrid search,
+// keep only passages above the similarity threshold, inject into the prompt.
+async function prefetchKnowledge(agent: Agent, job: JobData) {
+  const caps = resolveCapabilities(agent);
+  if (!caps.knowledge_base.enabled) return null;
+  if (!caps.knowledge_base.always_retrieve) return null;
+  if (job.type !== "inbound_message" && job.type !== "task_assignment") return null;
+
+  const userText = job.payload?.body || job.payload?.instruction || "";
+  if (!userText.trim()) return null;
+
+  const topK = caps.knowledge_base.top_k ?? 5;
+  const threshold = caps.knowledge_base.threshold ?? 0.75;
+  const maxDistance = 1 - threshold;
+
+  try {
+    const { listDocuments, hybridSearch } = await import("./rag/store.js");
+    const { embedText, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
+    if (!isEmbeddingReady()) return null;
+    const docs = await listDocuments(agent.id);
+    if (docs.length === 0) return null;
+
+    const embedding = await embedText(userText);
+    if (!embedding) return null;
+
+    const raw = await hybridSearch(agent.id, embedding, userText, topK);
+    const filtered = raw.filter((r) => r.distance <= maxDistance);
+    if (filtered.length === 0) {
+      logger.info(`Knowledge prefetch: "${userText.slice(0, 60)}" → 0/${raw.length} above threshold ${threshold}`);
+      return null;
+    }
+
+    logger.info(`Knowledge prefetch: "${userText.slice(0, 60)}" → ${filtered.length}/${raw.length} passages above threshold ${threshold}`);
+
+    return {
+      query: userText.slice(0, 200),
+      passages: filtered.map((r) => ({
+        document_title: r.document_title,
+        chunk_index: r.chunk_index,
+        content: r.content,
+        context: r.context,
+        distance: r.distance,
+      })),
+    };
+  } catch (err) {
+    logger.warn("Knowledge prefetch failed", { error: (err as Error).message });
+    return null;
   }
 }

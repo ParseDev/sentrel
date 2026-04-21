@@ -1,3 +1,23 @@
+export interface Capability {
+  enabled: boolean;
+  [k: string]: unknown;
+}
+
+export interface KnowledgeBaseCapability extends Capability {
+  always_retrieve?: boolean;
+  threshold?: number;
+  top_k?: number;
+}
+
+export interface Capabilities {
+  knowledge_base?: KnowledgeBaseCapability;
+  scheduling?:    Capability;
+  tasks?:         Capability;
+  integrations?:  Capability;
+  recall?:        Capability;
+  send_media?:    Capability;
+}
+
 export interface Agent {
   id: number;
   organization_id: number;
@@ -15,6 +35,7 @@ export interface Agent {
   command_allowlist: string[];
   heartbeat_enabled: boolean;
   heartbeat_interval_minutes: number;
+  capabilities: Capabilities;
   ai_config: AiConfig | null;
   organization: Organization;
 }

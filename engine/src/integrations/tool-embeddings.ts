@@ -105,6 +105,12 @@ export function isEmbeddingReady(): boolean {
   return initialized;
 }
 
+// Exposed for RAG ingestion (chunks get embedded with the same model we
+// use for tool routing — keeps the model loaded once for both purposes).
+export async function embedText(text: string): Promise<number[] | null> {
+  return embed(text);
+}
+
 async function embed(text: string): Promise<number[] | null> {
   if (!embedder) return null;
   try {
