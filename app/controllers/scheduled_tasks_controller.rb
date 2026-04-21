@@ -23,7 +23,7 @@ class ScheduledTasksController < ApplicationController
   end
 
   def update
-    sw = @agent.scheduled_work.find(params[:id])
+    sw = find_by_public_id!(@agent.scheduled_work, params[:id])
     if sw.update(work_update_params)
       render json: work_json(sw)
     else
@@ -32,7 +32,7 @@ class ScheduledTasksController < ApplicationController
   end
 
   def destroy
-    sw = @agent.scheduled_work.find(params[:id])
+    sw = find_by_public_id!(@agent.scheduled_work, params[:id])
     sw.destroy
     head :no_content
   end
@@ -40,7 +40,7 @@ class ScheduledTasksController < ApplicationController
   private
 
   def set_agent
-    @agent = current_tenant.agents.find(params[:agent_id])
+    @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
   end
 
   def work_create_params
@@ -54,7 +54,7 @@ class ScheduledTasksController < ApplicationController
   # Shape matches what the frontend expects — adds mode badge.
   def work_json(sw)
     {
-      id: sw.id,
+      id: sw.to_param,
       name: sw.name,
       instruction: sw.instruction,
       cron_expression: sw.cron_expression,

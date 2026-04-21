@@ -44,7 +44,7 @@ class Ops::RunsController < ApplicationController
 
   # GET /ops/runs/:id
   def show
-    run = current_tenant.audit_logs.find(params[:id])
+    run = find_by_public_id!(current_tenant.audit_logs, params[:id])
 
     render inertia: "ops/runs/show", props: {
       run: run_detail(run),

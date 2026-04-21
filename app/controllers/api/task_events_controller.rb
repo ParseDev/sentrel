@@ -16,14 +16,16 @@ class Api::TaskEventsController < ApplicationController
 
     comment_data = if message
       {
-        id: message.id,
+        id: message.to_param,
         content: message.content,
         created_at: message.created_at,
         author: { id: nil, name: task.agent&.name || "Agent" },
         author_type: message.role == "assistant" ? "agent" : "user",
       }
     else
-      # Fallback: broadcast the event even if message not found (yet)
+      # Fallback: broadcast the event even if message not found (yet).
+      # Engine payload still uses numeric id here since the frontend will
+      # dedupe against the real message when it arrives.
       {
         id: params[:message_id],
         content: params[:content] || "",

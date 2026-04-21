@@ -1,4 +1,7 @@
 class Message < ApplicationRecord
+  has_prefix_id :msg
+  include PublicIdSerialization
+
   belongs_to :conversation
   has_many_attached :attachments
 

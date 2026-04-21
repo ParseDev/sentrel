@@ -24,6 +24,18 @@ class ApplicationController < ActionController::Base
 
   private
 
+  # Lookup a record by either its public prefix_id (agt_..., tsk_..., etc.)
+  # or a raw numeric id. Relation-scoped — pass a chain like
+  # `current_tenant.agents` to keep tenant isolation.
+  #
+  # The gem's `find()` override doesn't fire through tenant-scoped relations
+  # (acts_as_tenant + prefixed_ids interaction), so we decode explicitly.
+  def find_by_public_id!(scope, param)
+    prefix_id = scope.klass.respond_to?(:_prefix_id) ? scope.klass._prefix_id : nil
+    numeric   = prefix_id ? (prefix_id.decode(param, fallback: true) || param) : param
+    scope.find(numeric)
+  end
+
   def set_tenant
     if current_user
       set_current_tenant(current_user.organization)

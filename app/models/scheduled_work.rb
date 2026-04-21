@@ -1,4 +1,7 @@
 class ScheduledWork < ApplicationRecord
+  has_prefix_id :sch
+  include PublicIdSerialization
+
   self.table_name = "scheduled_work"
 
   MODES = %w[cron once interval].freeze

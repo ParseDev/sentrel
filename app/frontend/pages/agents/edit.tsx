@@ -41,7 +41,22 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
       thinking_level: agent.ai_config?.thinking_level || "none",
     },
     permissions: (agent as any).permissions || {},
+    capabilities: (agent as any).capabilities || {
+      knowledge_base: { enabled: false, always_retrieve: true, threshold: 0.75, top_k: 5 },
+      scheduling:   { enabled: true },
+      tasks:        { enabled: true },
+      integrations: { enabled: true },
+      recall:       { enabled: true },
+      send_media:   { enabled: true },
+    },
   })
+
+  function setCap(key: string, patch: Record<string, unknown>) {
+    setData("capabilities", {
+      ...data.capabilities,
+      [key]: { ...(data.capabilities as any)[key], ...patch },
+    })
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -150,6 +165,58 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
                 />
               </div>
             )}
+          </div>
+        </section>
+
+        {/* Capabilities */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Capabilities</h2>
+          <div className="rounded-lg border border-border p-4 space-y-4">
+            {(["knowledge_base", "scheduling", "tasks", "integrations", "recall", "send_media"] as const).map((key) => {
+              const cap = (data.capabilities as any)[key] || {}
+              const labels: Record<string, { title: string; desc: string }> = {
+                knowledge_base: { title: "Knowledge base (RAG)", desc: "Search over uploaded documents. Auto-enables on first upload." },
+                scheduling:     { title: "Scheduling",            desc: "schedule_task, set_reminder tools." },
+                tasks:          { title: "Task management",       desc: "create_task, comment_on_task tools." },
+                integrations:   { title: "Integrations",          desc: "Third-party app access via Composio (Slack, Gmail, Notion, etc.)." },
+                recall:         { title: "Recall / history",      desc: "search_messages, search_activity tools." },
+                send_media:     { title: "Send media",            desc: "send_voice, send_image, send_file tools." },
+              }
+              return (
+                <div key={key} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>{labels[key]!.title}</Label>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{labels[key]!.desc}</p>
+                    </div>
+                    <Checkbox
+                      checked={!!cap.enabled}
+                      onCheckedChange={(v) => setCap(key, { enabled: !!v })}
+                    />
+                  </div>
+                  {key === "knowledge_base" && cap.enabled && (
+                    <div className="grid grid-cols-2 gap-3 pl-3 pt-1">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Similarity threshold</Label>
+                        <Input
+                          type="number" min={0} max={1} step={0.05}
+                          value={cap.threshold ?? 0.75}
+                          onChange={(e) => setCap("knowledge_base", { threshold: parseFloat(e.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Top-k passages</Label>
+                        <Input
+                          type="number" min={1} max={20}
+                          value={cap.top_k ?? 5}
+                          onChange={(e) => setCap("knowledge_base", { top_k: parseInt(e.target.value, 10) })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
 

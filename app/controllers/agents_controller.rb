@@ -63,7 +63,7 @@ class AgentsController < ApplicationController
           .where("input->>'taskId' = ?", sw.id.to_s)
           .order(created_at: :desc).limit(20)
           .map { |l| {
-            id: l.id,
+            id: l.to_param,
             status: l.status,
             output: l.output&.dig("response"),
             duration_ms: l.output&.dig("duration_ms"),
@@ -72,7 +72,7 @@ class AgentsController < ApplicationController
           } }
 
         {
-          id: sw.id,
+          id: sw.to_param,
           name: sw.name,
           instruction: sw.instruction,
           cron_expression: sw.cron_expression,
@@ -85,6 +85,7 @@ class AgentsController < ApplicationController
           recent_runs: recent_logs,
         }
       },
+      knowledge_documents: fetch_knowledge_documents(@agent),
       # Sprint 6 — skills
       installed_skills: @agent.agent_skills.includes(:skill_definition).map { |as|
         as.skill_definition.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
@@ -136,15 +137,41 @@ class AgentsController < ApplicationController
   private
 
   def set_agent
-    @agent = current_tenant.agents.find(params[:id])
+    @agent = find_by_public_id!(current_tenant.agents, params[:id])
   end
+
+  # Fetches the agent's knowledge_base docs from the engine. Best-effort —
+  # returns [] if the engine is unreachable so the page still renders.
+  def fetch_knowledge_documents(agent)
+    require "net/http"
+    base = ENV.fetch("ENGINE_URL", "http://localhost:3300")
+    uri = URI.parse("#{base}/rag/documents?agent_id=#{agent.id}")
+    req = Net::HTTP::Get.new(uri)
+    req["X-Engine-Secret"] = ENV["ENGINE_API_SECRET"] || ""
+    res = Net::HTTP.start(uri.hostname, uri.port, read_timeout: 3, open_timeout: 1) { |http| http.request(req) }
+    return [] unless res.is_a?(Net::HTTPSuccess)
+    JSON.parse(res.body)["documents"] || []
+  rescue => e
+    Rails.logger.warn "fetch_knowledge_documents failed for agent #{agent.id}: #{e.message}"
+    []
+  end
+
+  CAPABILITY_KEYS = {
+    knowledge_base: [:enabled, :always_retrieve, :threshold, :top_k],
+    scheduling:   [:enabled],
+    tasks:        [:enabled],
+    integrations: [:enabled],
+    recall:       [:enabled],
+    send_media:   [:enabled]
+  }.freeze
 
   def agent_params
     params.require(:agent).permit(
       :name, :slug, :role, :status, :manager_id,
       :identity_md, :personality_md, :instructions_md, :email_signature_md, :memory_md,
       :heartbeat_enabled, :heartbeat_interval_minutes, :approval_mode,
-      permissions: {}
+      permissions: {},
+      capabilities: CAPABILITY_KEYS
     )
   end
 
@@ -159,6 +186,7 @@ class AgentsController < ApplicationController
       :heartbeat_enabled, :heartbeat_interval_minutes, :permissions, :approval_mode,
       :created_at, :updated_at
     ]).merge(
+      capabilities: agent.effective_capabilities,
       ai_config: agent.ai_config&.as_json(only: [:provider, :model_id, :temperature, :max_tokens, :thinking_level]),
       instance: agent.instance&.as_json(only: [:status, :instance_type, :region, :aws_ip_address]),
       manager: agent.manager&.as_json(only: [:id, :name, :slug])

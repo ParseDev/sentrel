@@ -1,0 +1,183 @@
+class KnowledgeDocumentsController < ApplicationController
+  before_action :authenticate_user!
+  before_action :set_agent
+
+  # GET /agents/:agent_id/knowledge_documents
+  def index
+    res = engine_get("/rag/documents?agent_id=#{@agent.id}")
+    docs = res&.dig("documents") || []
+    render inertia: "knowledge/index", props: {
+      agent: @agent.as_json(only: [:id, :name, :slug]),
+      documents: docs,
+    }
+  end
+
+  # POST /agents/:agent_id/knowledge_documents
+  #
+  # Three modes:
+  # - file upload(s): multipart forward to engine /rag/ingest (one call per file)
+  # - url:            POST JSON to engine /rag/ingest/url
+  # - raw text:       POST JSON to engine /rag/ingest
+  #
+  # No text extraction happens here. Engine owns the RAG pipeline end-to-end.
+  def create
+    files = params[:files] || (params[:file] ? [params[:file]] : [])
+    url   = params[:url].presence
+    text  = params[:text].presence
+    title = params[:title].presence
+
+    results = []
+    errors = []
+
+    files.each do |f|
+      next unless f.respond_to?(:tempfile)
+      doc_title = title || f.original_filename
+      result = engine_upload_file(f, doc_title)
+      if result
+        results << result
+      else
+        errors << "Upload failed for #{f.original_filename}"
+      end
+    end
+
+    if url
+      result = engine_post_json("/rag/ingest/url", {
+        agent_id: @agent.id,
+        url: url,
+        title: title || url,
+      })
+      result ? results << result : errors << "URL ingest failed: #{url}"
+    end
+
+    if text
+      result = engine_post_json("/rag/ingest", {
+        agent_id: @agent.id,
+        title: title || "Pasted text",
+        source_type: "text",
+        content: text,
+      })
+      result ? results << result : errors << "Text ingest failed"
+    end
+
+    if results.empty? && errors.empty?
+      return redirect_to agent_knowledge_documents_path(@agent), alert: "No content provided"
+    end
+
+    indexed = results.count { |r| !r["skipped"] }
+    total_chunks = results.sum { |r| r["chunk_count"].to_i }
+    msg = "Indexed #{indexed} document(s), #{total_chunks} chunks total"
+    msg += ". Errors: #{errors.join(', ')}" if errors.any?
+    redirect_to agent_knowledge_documents_path(@agent), notice: msg
+  end
+
+  # DELETE /agents/:agent_id/knowledge_documents/:id
+  def destroy
+    engine_delete("/rag/documents/#{params[:id]}?agent_id=#{@agent.id}")
+    redirect_to agent_knowledge_documents_path(@agent), notice: "Document deleted"
+  end
+
+  private
+
+  def set_agent
+    @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
+  end
+
+  def engine_base
+    ENV.fetch("ENGINE_URL", "http://localhost:3300")
+  end
+
+  def engine_secret
+    ENV["ENGINE_API_SECRET"] || ""
+  end
+
+  def engine_get(path)
+    require "net/http"
+    uri = URI.parse("#{engine_base}#{path}")
+    req = Net::HTTP::Get.new(uri)
+    req["X-Engine-Secret"] = engine_secret
+    res = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(req) }
+    JSON.parse(res.body) if res.is_a?(Net::HTTPSuccess)
+  rescue => e
+    Rails.logger.error "Engine GET failed: #{e.message}"
+    nil
+  end
+
+  def engine_post_json(path, body)
+    require "net/http"
+    uri = URI.parse("#{engine_base}#{path}")
+    req = Net::HTTP::Post.new(uri, {
+      "Content-Type" => "application/json",
+      "X-Engine-Secret" => engine_secret,
+    })
+    req.body = body.to_json
+    res = Net::HTTP.start(uri.hostname, uri.port, read_timeout: 600) { |http| http.request(req) }
+    JSON.parse(res.body) if res.is_a?(Net::HTTPSuccess)
+  rescue => e
+    Rails.logger.error "Engine POST JSON failed: #{e.message}"
+    nil
+  end
+
+  # Forward a single uploaded file to the engine as multipart/form-data.
+  # Body is built as binary (ASCII-8BIT) to preserve PDF/DOCX bytes intact.
+  def engine_upload_file(file, title)
+    require "net/http"
+    require "securerandom"
+
+    boundary = "AlchemyBoundary#{SecureRandom.hex(16)}"
+    crlf = "\r\n".b
+
+    # Read the tempfile as binary — no encoding transform
+    file.tempfile.binmode
+    file.tempfile.rewind
+    file_bytes = file.tempfile.read
+    file_bytes = file_bytes.b # force ASCII-8BIT
+
+    parts = []
+    parts << "--#{boundary}".b << crlf
+    parts << %(Content-Disposition: form-data; name="agent_id").b << crlf << crlf
+    parts << "#{@agent.id}".b << crlf
+
+    parts << "--#{boundary}".b << crlf
+    parts << %(Content-Disposition: form-data; name="title").b << crlf << crlf
+    parts << title.to_s.b << crlf
+
+    parts << "--#{boundary}".b << crlf
+    parts << %(Content-Disposition: form-data; name="file"; filename="#{file.original_filename}").b << crlf
+    parts << "Content-Type: #{file.content_type || 'application/octet-stream'}".b << crlf << crlf
+    parts << file_bytes << crlf
+
+    parts << "--#{boundary}--".b << crlf
+
+    body = parts.join.b
+    Rails.logger.info "Engine upload: #{file.original_filename} (#{file_bytes.bytesize}b, total body #{body.bytesize}b, boundary=#{boundary})"
+
+    uri = URI.parse("#{engine_base}/rag/ingest")
+    req = Net::HTTP::Post.new(uri.request_uri)
+    req["Content-Type"] = "multipart/form-data; boundary=#{boundary}"
+    req["X-Engine-Secret"] = engine_secret
+    req["Content-Length"] = body.bytesize.to_s
+    req.body = body
+
+    res = Net::HTTP.start(uri.hostname, uri.port, read_timeout: 600) { |http| http.request(req) }
+
+    if res.is_a?(Net::HTTPSuccess)
+      JSON.parse(res.body)
+    else
+      Rails.logger.error "Engine upload failed #{res.code}: #{res.body}"
+      nil
+    end
+  rescue => e
+    Rails.logger.error "Engine upload exception: #{e.class}: #{e.message}\n#{e.backtrace.first(3).join("\n")}"
+    nil
+  end
+
+  def engine_delete(path)
+    require "net/http"
+    uri = URI.parse("#{engine_base}#{path}")
+    req = Net::HTTP::Delete.new(uri)
+    req["X-Engine-Secret"] = engine_secret
+    Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(req) }
+  rescue => e
+    Rails.logger.error "Engine DELETE failed: #{e.message}"
+  end
+end

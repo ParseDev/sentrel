@@ -81,7 +81,7 @@ class TasksController < ApplicationController
   # keeps running to completion (engine-side interrupt comes in a follow-up).
   # Idempotent: cancelling an already-cancelled task is a no-op.
   def cancel
-    @task = current_tenant.tasks.find(params[:id])
+    @task = find_by_public_id!(current_tenant.tasks, params[:id])
     @task.update!(status: "cancelled")
     respond_to do |format|
       format.json { render json: task_json(@task) }
@@ -92,7 +92,7 @@ class TasksController < ApplicationController
   private
 
   def set_task
-    @task = current_tenant.tasks.find(params[:id])
+    @task = find_by_public_id!(current_tenant.tasks, params[:id])
   end
 
   def task_params

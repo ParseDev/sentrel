@@ -28,6 +28,6 @@ class AgentSkillsController < ApplicationController
   private
 
   def set_agent
-    @agent = current_tenant.agents.find(params[:agent_id])
+    @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
   end
 end

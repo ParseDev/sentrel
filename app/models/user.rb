@@ -1,4 +1,7 @@
 class User < ApplicationRecord
+  has_prefix_id :usr
+  include PublicIdSerialization
+
   devise :database_authenticatable, :registerable,
          :recoverable, :rememberable, :validatable
 

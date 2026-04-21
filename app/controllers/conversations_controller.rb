@@ -18,7 +18,7 @@ class ConversationsController < ApplicationController
   end
 
   def show
-    conversation = @agent.conversations.find(params[:id])
+    conversation = find_by_public_id!(@agent.conversations, params[:id])
     messages = conversation.messages
                            .with_attached_attachments
                            .order(created_at: :asc)
@@ -62,6 +62,6 @@ class ConversationsController < ApplicationController
   end
 
   def set_agent
-    @agent = current_tenant.agents.find(params[:agent_id])
+    @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
   end
 end

@@ -22,7 +22,7 @@ import {
   Save,
   Check,
 } from "lucide-react"
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown } from "lucide-react"
 
 function formatBytes(bytes: number): string {
@@ -34,6 +34,7 @@ function formatBytes(bytes: number): string {
 
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
+import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -121,9 +122,10 @@ interface Props {
   approvals_by_message: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string; created_at: string }[]>
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
+  knowledge_documents: KnowledgeDocument[]
 }
 
-type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "identity"
+type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity"
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -374,8 +376,33 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, installed_skills = [], available_skills = [] }: Props) {
-  const [section, setSection] = useState<Section>("chat")
+export default function AgentShow({ agent, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, installed_skills = [], available_skills = [], knowledge_documents = [] }: Props) {
+  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity"]
+  const initialSection: Section = (() => {
+    if (typeof window === "undefined") return "chat"
+    const t = new URLSearchParams(window.location.search).get("tab") as Section | null
+    return t && VALID_SECTIONS.includes(t) ? t : "chat"
+  })()
+  const [section, setSectionState] = useState<Section>(initialSection)
+
+  function setSection(next: Section) {
+    setSectionState(next)
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (next === "chat") url.searchParams.delete("tab"); else url.searchParams.set("tab", next)
+    window.history.replaceState({}, "", url.toString())
+  }
+
+  // Browser back/forward should sync the tab too.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onPop = () => {
+      const t = new URLSearchParams(window.location.search).get("tab") as Section | null
+      setSectionState(t && VALID_SECTIONS.includes(t) ? t : "chat")
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
   const [selectedConvId, setSelectedConvId] = useState<number | null>(null)
   const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null)
   const [channelFilter, setChannelFilter] = useState<string>("all")
@@ -409,6 +436,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
     { key: "tasks", label: "Tasks", icon: CheckSquare, count: tasks.length },
     { key: "schedule", label: "Schedule", icon: Clock, count: scheduled_tasks.length },
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
+    { key: "knowledge", label: "Knowledge", icon: BookOpen, count: knowledge_documents.length },
     { key: "identity", label: "Identity", icon: User },
   ]
 
@@ -792,6 +820,13 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Knowledge */}
+        {section === "knowledge" && (
+          <div className="flex-1 overflow-hidden">
+            <KnowledgePanel agentId={agent.id} agentName={agent.name} documents={knowledge_documents} />
           </div>
         )}
 

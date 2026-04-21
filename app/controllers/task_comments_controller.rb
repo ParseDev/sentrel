@@ -91,7 +91,7 @@ class TaskCommentsController < ApplicationController
   end
 
   def destroy
-    task = current_tenant.tasks.find(params[:task_id])
+    task = find_by_public_id!(current_tenant.tasks, params[:task_id])
     comment = task.comments.find(params[:id])
     comment.destroy
     redirect_to task_path(task), notice: "Comment deleted"

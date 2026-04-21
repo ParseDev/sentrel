@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_20_213152) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_21_201046) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -77,6 +77,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_20_213152) do
 
   create_table "agents", force: :cascade do |t|
     t.string "approval_mode", default: "manual", null: false
+    t.jsonb "capabilities", default: {}, null: false
     t.jsonb "command_allowlist", default: []
     t.datetime "created_at", null: false
     t.text "email_signature_md"
@@ -94,6 +95,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_20_213152) do
     t.string "slug", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.index ["capabilities"], name: "index_agents_on_capabilities", using: :gin
     t.index ["manager_id"], name: "index_agents_on_manager_id"
     t.index ["organization_id", "slug"], name: "index_agents_on_organization_id_and_slug", unique: true
     t.index ["organization_id"], name: "index_agents_on_organization_id"

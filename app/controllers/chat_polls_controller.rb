@@ -3,7 +3,7 @@ class ChatPollsController < ApplicationController
 
   # GET /agents/:agent_id/chat/poll?after_id=message_id
   def show
-    agent = current_tenant.agents.find(params[:agent_id])
+    agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
     after_id = params[:after_id].to_i
 
     conversation = agent.conversations.find_by(kind: "internal", user: current_user)

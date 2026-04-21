@@ -55,6 +55,11 @@ Rails.application.routes.draw do
         post :cancel
       end
     end
+
+    # Knowledge base (RAG) — per-agent document upload + index management
+    resources :agents, only: [] do
+      resources :knowledge_documents, only: [:index, :create, :destroy]
+    end
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do

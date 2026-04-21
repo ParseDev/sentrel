@@ -1,4 +1,7 @@
 class Agent < ApplicationRecord
+  has_prefix_id :agt
+  include PublicIdSerialization
+
   acts_as_tenant :organization
   belongs_to :organization
   belongs_to :manager, class_name: "Agent", optional: true
@@ -20,4 +23,26 @@ class Agent < ApplicationRecord
   validates :slug, presence: true, uniqueness: { scope: :organization_id }
   validates :role, presence: true
   validates :status, presence: true, inclusion: { in: %w[pending starting running paused stopped] }
+
+  DEFAULT_CAPABILITIES = {
+    "knowledge_base" => {
+      "enabled" => false,
+      "always_retrieve" => true,
+      "threshold" => 0.75,
+      "top_k" => 5
+    },
+    "scheduling"   => { "enabled" => true },
+    "tasks"        => { "enabled" => true },
+    "integrations" => { "enabled" => true },
+    "recall"       => { "enabled" => true },
+    "send_media"   => { "enabled" => true }
+  }.freeze
+
+  def effective_capabilities
+    DEFAULT_CAPABILITIES.deep_merge(capabilities || {})
+  end
+
+  def capability_enabled?(key)
+    effective_capabilities.dig(key.to_s, "enabled") == true
+  end
 end

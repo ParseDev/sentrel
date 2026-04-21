@@ -1,5 +1,5 @@
 export interface User {
-  id: number
+  id: string  // prefix_id (e.g. usr_...)
   name: string
   email: string
   role: "owner" | "admin" | "member" | "viewer"
@@ -42,7 +42,7 @@ export interface AgentInstance {
 }
 
 export interface Agent {
-  id: number
+  id: string  // prefix_id (e.g. agt_...)
   name: string
   slug: string
   role: string
@@ -56,13 +56,13 @@ export interface Agent {
   permissions: Record<string, string>
   ai_config: AiConfig | null
   instance: AgentInstance | null
-  manager: { id: number; name: string; slug: string } | null
+  manager: { id: string; name: string; slug: string } | null
   created_at: string
   updated_at: string
 }
 
 export interface Conversation {
-  id: number
+  id: string  // prefix_id (e.g. cnv_...)
   kind: "internal" | "external"
   contact_name: string | null
   contact_email: string | null
@@ -72,7 +72,7 @@ export interface Conversation {
 }
 
 export interface Task {
-  id: number
+  id: string  // prefix_id (e.g. tsk_...)
   title: string
   status: "todo" | "in_progress" | "done" | "failed"
   priority: "low" | "normal" | "high" | "urgent"
@@ -88,7 +88,7 @@ export interface ChannelConfig {
 }
 
 export interface ScheduledTaskRun {
-  id: number
+  id: string  // prefix_id (log_...)
   status: string
   output: string | null
   duration_ms: number | null
@@ -97,7 +97,7 @@ export interface ScheduledTaskRun {
 }
 
 export interface ScheduledTask {
-  id: number
+  id: string  // prefix_id (sch_...)
   name: string
   instruction?: string
   cron_expression: string | null

@@ -5,6 +5,7 @@ gem "pg", "~> 1.1"
 gem "puma", ">= 5.0"
 gem "propshaft"
 
+
 # Frontend
 gem "inertia_rails"
 gem "vite_rails"
@@ -30,6 +31,7 @@ gem "aws-sdk-sns"
 # Security & Utilities
 gem "rack-attack"
 gem "bcrypt", "~> 3.1.7"
+gem "prefixed_ids"
 gem "bootsnap", require: false
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "image_processing", "~> 1.2"

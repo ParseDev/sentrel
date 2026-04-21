@@ -1,4 +1,7 @@
 class Task < ApplicationRecord
+  has_prefix_id :tsk
+  include PublicIdSerialization
+
   STATUSES = %w[todo in_progress awaiting_input done failed cancelled].freeze
 
   acts_as_tenant :organization

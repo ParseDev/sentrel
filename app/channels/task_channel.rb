@@ -4,7 +4,9 @@
 # (via Api::TaskEventsController bridge).
 class TaskChannel < ApplicationCable::Channel
   def subscribed
-    task = Task.find_by(id: params[:task_id])
+    # Frontend subscribes with the prefix_id (tsk_...); engine internal events
+    # pass numeric. Both decode via the gem's Finder override.
+    task = Task.find_by_prefix_id(params[:task_id]) || Task.find_by(id: params[:task_id])
     return reject unless task
     return reject unless task.organization_id == current_user.organization_id
 
