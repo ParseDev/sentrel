@@ -103,6 +103,12 @@ async function main() {
   logger.info("  ALCHEMY ENGINE ready. Waiting for jobs...");
   logger.info("═══════════════════════════════════════");
 
+  // Fly path: cloud-init isn't used (we boot directly from the image), so
+  // the engine itself pings Rails to flip agent_instances.status from
+  // "provisioning" → "running". Hetzner path already does this from
+  // cloud-init.sh — the duplicate is harmless (Rails just updates the row).
+  void reportReady(agent.id);
+
   // Graceful shutdown
   const shutdown = async () => {
     logger.info("Shutting down...");
@@ -115,6 +121,31 @@ async function main() {
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+async function reportReady(agentId: number): Promise<void> {
+  const rails = process.env.RAILS_INTERNAL_URL;
+  const secret = process.env.ENGINE_API_SECRET;
+  if (!rails || !secret) return;
+  try {
+    const res = await fetch(`${rails}/api/agent_instances/ready`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Engine-Secret": secret },
+      body: JSON.stringify({
+        employee_id: agentId,
+        public_ip: process.env.FLY_PUBLIC_IP || process.env.PUBLIC_IP || null,
+      }),
+    });
+    if (res.ok) {
+      logger.info("Reported ready to Rails");
+    } else {
+      logger.warn(`Ready report returned HTTP ${res.status}`);
+    }
+  } catch (err) {
+    logger.warn("Could not report ready to Rails — will be picked up on next health check", {
+      error: (err as Error).message,
+    });
+  }
 }
 
 main().catch(async (err) => {

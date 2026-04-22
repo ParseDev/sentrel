@@ -1,7 +1,7 @@
 # Template fly.toml for a per-agent Machine.
 #
 # The provisioner customizes this at agent-create time:
-#   - `app` → alchemy-agent-<agent_id>
+#   - `app` → alchemy-{env}-agent-<agent_id>  (env = dev / staging / prod)
 #   - env.EMPLOYEE_ID → the numeric agent id
 #   - secrets (set via `fly secrets set` from provisioner, not committed here)
 #
@@ -9,8 +9,8 @@
 # network, and EMPLOYEE_ID. Fly Machines API handles create / start / stop /
 # destroy — we drive it from Rails.
 
-app = "alchemy-agent-TEMPLATE"
-primary_region = "ord"
+app = "alchemy-dev-agent-TEMPLATE"
+primary_region = "lax"
 
 [build]
   image = "ghcr.io/qubitam/alchemy-engine:latest"
