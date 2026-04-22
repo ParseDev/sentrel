@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_22_212307) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_22_214709) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -335,16 +335,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_22_212307) do
     t.index ["organization_id"], name: "index_scheduled_work_on_organization_id"
   end
 
+  create_table "skill_bundles", force: :cascade do |t|
+    t.jsonb "capability_overrides", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.string "description"
+    t.string "icon"
+    t.string "name", null: false
+    t.jsonb "skill_slugs", default: [], null: false
+    t.string "slug", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_skill_bundles_on_slug", unique: true
+  end
+
   create_table "skill_definitions", force: :cascade do |t|
     t.string "category"
     t.datetime "created_at", null: false
     t.string "description"
     t.string "icon"
     t.string "name"
+    t.jsonb "required_capabilities", default: [], null: false
+    t.jsonb "required_integrations", default: [], null: false
     t.jsonb "requires_connections", default: []
     t.text "skill_md"
     t.string "slug"
     t.string "source", default: "built_in"
+    t.text "system_prompt_fragment"
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_skill_definitions_on_slug", unique: true
   end
