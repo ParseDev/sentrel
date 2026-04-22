@@ -1,7 +1,9 @@
 import { Head } from "@inertiajs/react"
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { TrendingUp, Mail, MessageSquare, CheckSquare, AlertTriangle, Users } from "lucide-react"
+import { dashboardPath } from "@/routes"
 
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 
@@ -50,13 +52,19 @@ export default function ReportsIndex({ agents, agent_totals, daily_data, channel
   }))
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Reports" },
+      ]}
+    >
       <Head title="Reports" />
 
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Reports</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Last {days} days of agent activity</p>
-      </div>
+      <PageHeader
+        eyebrow="Analytics"
+        title="Reports"
+        description={`Last ${days} days of activity across your agent workforce.`}
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">

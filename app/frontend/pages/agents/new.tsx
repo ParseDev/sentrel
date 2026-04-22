@@ -1,6 +1,8 @@
 import { Head, Link, useForm } from "@inertiajs/react"
-import { ArrowLeft } from "lucide-react"
+import { ArrowRight, Sparkles } from "lucide-react"
 
+import { Overline } from "@/components/brand"
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,18 +47,6 @@ const MODELS: Record<string, { value: string; label: string }[]> = {
   ],
 }
 
-function AgentNewHeader() {
-  return (
-    <div className="flex items-center gap-3 w-full">
-      <Link href={agentsPath()} className="flex items-center justify-center size-6 rounded text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="size-3.5" />
-      </Link>
-      <div className="w-px h-4 bg-border" />
-      <span className="text-sm font-medium">Create Agent</span>
-    </div>
-  )
-}
-
 export default function AgentNew() {
   const { data, setData, post, processing } = useForm({
     name: "",
@@ -92,14 +82,26 @@ export default function AgentNew() {
   const availableModels = MODELS[data.ai_config.provider] || []
 
   return (
-    <AppLayout header={<AgentNewHeader />}>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: "/" },
+        { label: "Agents", href: agentsPath() },
+        { label: "New" },
+      ]}
+    >
       <Head title="New Agent" />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-8">
+      <PageHeader
+        eyebrow="Hire"
+        title="Create a new agent"
+        description="Give them an identity, pick a model, write the instructions they'll follow."
+      />
+
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
         {/* Identity */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Identity</h2>
-          <div className="rounded-lg border border-border p-4 space-y-4">
+          <Overline className="mb-3">Identity</Overline>
+          <div className="rounded-lg border bg-card p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
@@ -130,8 +132,11 @@ export default function AgentNew() {
 
         {/* AI Model */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">AI Model</h2>
-          <div className="rounded-lg border border-border p-4">
+          <Overline className="mb-3">
+            <Sparkles className="size-3" />
+            AI model
+          </Overline>
+          <div className="rounded-lg border bg-card p-5">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Provider</Label>
@@ -167,8 +172,8 @@ export default function AgentNew() {
 
         {/* Instructions */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Instructions</h2>
-          <div className="rounded-lg border border-border p-4 space-y-4">
+          <Overline className="mb-3">Instructions</Overline>
+          <div className="rounded-lg border bg-card p-5 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="identity_md">Identity</Label>
               <textarea
@@ -202,13 +207,22 @@ export default function AgentNew() {
           </div>
         </section>
 
-        <div className="flex justify-end gap-2 pb-8">
-          <Button variant="outline" asChild>
-            <Link href={agentsPath()}>Cancel</Link>
-          </Button>
-          <Button type="submit" disabled={processing}>
-            {processing ? "Creating..." : "Create Agent"}
-          </Button>
+        <div className="flex items-center justify-between gap-2 border-t pt-6 pb-10">
+          <p className="font-mono text-[11px] text-muted-foreground">
+            You can edit every field later.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link href={agentsPath()}>Cancel</Link>
+            </Button>
+            <Button type="submit" disabled={processing} className="gap-1.5">
+              {processing ? "Creating…" : (
+                <>
+                  Create agent <ArrowRight className="size-3.5" />
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </form>
     </AppLayout>

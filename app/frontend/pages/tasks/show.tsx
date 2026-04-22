@@ -1,11 +1,11 @@
-import { Head, Link, router } from "@inertiajs/react"
-import { ArrowLeft, MessageSquare, Clock, User, Bot, Send } from "lucide-react"
+import { Head, router } from "@inertiajs/react"
+import { MessageSquare, Clock, User, Bot, Send } from "lucide-react"
 import { useState, useRef } from "react"
 
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { tasksPath } from "@/routes"
+import { dashboardPath, tasksPath } from "@/routes"
 
 interface Comment {
   id: number
@@ -81,24 +81,36 @@ export default function TaskShow({ task, comments: initialComments }: Props) {
   }
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Tasks", href: tasksPath() },
+        { label: task.title },
+      ]}
+    >
       <Head title={task.title} />
 
-      <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-2 mb-6">
-          <Link href={tasksPath()} className="text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="size-4" />
-          </Link>
-          <h1 className="text-lg font-semibold">{task.title}</h1>
-        </div>
+      <div className="mx-auto max-w-3xl">
+        <h1 className="mb-6 font-display text-2xl font-semibold tracking-[-0.02em] text-foreground">
+          {task.title}
+        </h1>
 
         {/* Task details */}
         <div className="rounded-lg border bg-card p-5 mb-6 space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[task.status] || ""}`}>
+            <span
+              className={`rounded-sm px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                STATUS_COLORS[task.status] || ""
+              }`}
+            >
               {task.status.replace("_", " ")}
             </span>
-            <Badge variant={PRIORITY_COLORS[task.priority] as any} className="text-[10px]">{task.priority}</Badge>
+            <Badge
+              variant={PRIORITY_COLORS[task.priority] as any}
+              className="uppercase"
+            >
+              {task.priority}
+            </Badge>
             <span className="text-xs text-muted-foreground">Assigned to {task.agent.name}</span>
             {task.assigned_by && <span className="text-xs text-muted-foreground">by {task.assigned_by.name}</span>}
           </div>

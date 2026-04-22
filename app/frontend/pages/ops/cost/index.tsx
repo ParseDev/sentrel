@@ -1,6 +1,7 @@
 import { Head, router, Link } from "@inertiajs/react"
-import { ArrowLeft, Zap, TrendingDown, Activity } from "lucide-react"
+import { Zap, TrendingDown, Activity } from "lucide-react"
 
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -35,27 +36,38 @@ export default function OpsCostIndex({ days, total_cost_usd, total_runs, cache_s
   const maxCost = Math.max(...chartData.map(([, c]) => c), 0.0001)
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Control plane", href: "/" },
+        { label: "Ops", href: "/ops/runs" },
+        { label: "Cost" },
+      ]}
+      topBarActions={
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild className="h-8">
+            <Link href="/ops/runs">Runs</Link>
+          </Button>
+          <Select onValueChange={updateDays} defaultValue={String(days)}>
+            <SelectTrigger className="h-8 w-32 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+              <SelectItem value="365">Last year</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      }
+    >
       <Head title="Cost — Ops" />
 
-      <div className="flex items-center gap-3 mb-5">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/ops/runs"><ArrowLeft className="size-4" /> Back</Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">Cost</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">API spend, cache savings, per-agent breakdown</p>
-        </div>
-        <Select onValueChange={updateDays} defaultValue={String(days)}>
-          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-            <SelectItem value="365">Last year</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        eyebrow="Observability"
+        title="Cost"
+        description="API spend, cache savings, and per-agent breakdown for your workspace."
+      />
 
       {/* Top stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

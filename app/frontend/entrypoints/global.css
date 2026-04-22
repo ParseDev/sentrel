@@ -5,10 +5,11 @@
 @plugin "@tailwindcss/typography";
 
 /* ==========================================================
-   Fonts — General Sans (headings) + DM Sans (body) + JetBrains Mono
+   Fonts — General Sans (headings) + DM Sans (body)
+           + JetBrains Mono (code) + Instrument Serif (accents)
    ========================================================== */
 @import url("https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@300;400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
 
 /* ==========================================================
    Alchemy Design Tokens — Genesis-core + cyan signal
@@ -78,6 +79,7 @@
     "Segoe UI", system-ui, sans-serif;
   --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont,
     "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, "Liberation Mono", "Courier New", monospace;
 
@@ -93,10 +95,10 @@
 }
 
 /* ==========================================================
-   Light Theme — warm editorial paper
+   Light Theme — clean cool neutral
    ========================================================== */
 :root {
-  --background: #fafaf7;        /* Warm off-white — not pure */
+  --background: #fbfbfd;         /* Cool near-white, pairs with indigo */
   --foreground: #0a0a0a;
 
   --card: #ffffff;
@@ -107,11 +109,11 @@
   --primary: #6366f1;            /* Indigo workhorse */
   --primary-foreground: #ffffff;
 
-  --secondary: #f4f3ee;          /* Warm surface */
+  --secondary: #f3f4f8;          /* Cool surface */
   --secondary-foreground: #0a0a0a;
 
-  --muted: #f4f3ee;
-  --muted-foreground: #6b6b68;
+  --muted: #f3f4f8;
+  --muted-foreground: #6b6b72;
 
   --accent: #00c8c8;             /* Alchemy cyan — signal */
   --accent-foreground: #0a0a0a;
@@ -119,9 +121,9 @@
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 
-  --border: #e8e7e1;             /* Warm neutral border */
-  --border-strong: #d4d2ca;
-  --input: #e8e7e1;
+  --border: #e5e7ee;             /* Cool neutral border */
+  --border-strong: #d4d6de;
+  --input: #e5e7ee;
   --ring: #6366f1;
 
   --chart-1: #6366f1;
@@ -131,12 +133,12 @@
   --chart-5: #ef4444;
 
   --sidebar: #ffffff;
-  --sidebar-foreground: #6b6b68;
+  --sidebar-foreground: #6b6b72;
   --sidebar-primary: #6366f1;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f4f3ee;
+  --sidebar-accent: #f3f4f8;
   --sidebar-accent-foreground: #0a0a0a;
-  --sidebar-border: #e8e7e1;
+  --sidebar-border: #e5e7ee;
   --sidebar-ring: #6366f1;
 
   /* Alchemy-specific */

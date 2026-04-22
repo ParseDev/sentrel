@@ -1,5 +1,5 @@
-import { Head, Link, router } from "@inertiajs/react"
-import { ArrowLeft, MessageSquare, Phone, Hash, Send, Mail, Check, X, Plus, Loader2, ShoppingCart } from "lucide-react"
+import { Head, router } from "@inertiajs/react"
+import { MessageSquare, Phone, Hash, Send, Mail, Check, X, Plus, Loader2, ShoppingCart } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import AppLayout from "@/layouts/app-layout"
@@ -67,16 +67,21 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
   const isTwilioChannel = (key: string) => key === "whatsapp" || key === "sms"
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: "/" },
+        { label: "Agents", href: "/agents" },
+        { label: agent.name, href: agentPath(agent.id) },
+        { label: "Channels" },
+      ]}
+    >
       <Head title={`${agent.name} — Channels`} />
 
-      <div className="mb-6">
-        <Link href={agentPath(agent.id)} className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground mb-3">
-          <ArrowLeft className="size-3.5 mr-1" />
-          Back to {agent.name}
-        </Link>
-        <PageHeader title="Channels" description={`Configure how ${agent.name} communicates`} />
-      </div>
+      <PageHeader
+        eyebrow="Communication"
+        title="Channels"
+        description={`Configure how ${agent.name} sends and receives messages across email, SMS, Slack, and more.`}
+      />
 
       <div className="max-w-2xl space-y-3">
         {/* Connected channels */}

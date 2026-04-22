@@ -1,26 +1,15 @@
 import { Head, Link, useForm } from "@inertiajs/react"
-import { ArrowLeft } from "lucide-react"
 
+import { Overline } from "@/components/brand"
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { agentPath } from "@/routes"
+import { agentPath, agentsPath, dashboardPath } from "@/routes"
 import type { Agent } from "@/types"
-
-function AgentEditHeader({ agent }: { agent: Agent }) {
-  return (
-    <div className="flex items-center gap-3 w-full">
-      <Link href={agentPath(agent.id)} className="flex items-center justify-center size-6 rounded text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="size-3.5" />
-      </Link>
-      <div className="w-px h-4 bg-border" />
-      <span className="text-sm font-medium">Edit {agent.name}</span>
-    </div>
-  )
-}
 
 export default function AgentEdit({ agent }: { agent: Agent }) {
   const { data, setData, patch, processing } = useForm({
@@ -64,14 +53,27 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
   }
 
   return (
-    <AppLayout header={<AgentEditHeader agent={agent} />}>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Agents", href: agentsPath() },
+        { label: agent.name, href: agentPath(agent.id) },
+        { label: "Edit" },
+      ]}
+    >
       <Head title={`Edit ${agent.name}`} />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-8">
+      <PageHeader
+        eyebrow="Configure"
+        title={`Edit ${agent.name}`}
+        description="Tune the agent's identity, model, permissions, and capabilities."
+      />
+
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
         {/* Identity */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Identity</h2>
-          <div className="rounded-lg border border-border p-4 space-y-4">
+          <Overline className="mb-3">Identity</Overline>
+          <div className="rounded-lg border bg-card p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
@@ -91,7 +93,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
 
         {/* Instructions */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Instructions</h2>
+          <Overline className="mb-3">Instructions</Overline>
           <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="identity_md">Identity</Label>
@@ -125,7 +127,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
 
         {/* Email Signature */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Email Signature</h2>
+          <Overline className="mb-3">Email Signature</Overline>
           <div className="rounded-lg border border-border p-4 space-y-2">
             <Label htmlFor="email_signature_md">Signature appended to outgoing emails</Label>
             <textarea
@@ -141,7 +143,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
 
         {/* Heartbeat */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Heartbeat</h2>
+          <Overline className="mb-3">Heartbeat</Overline>
           <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="flex items-center gap-2">
               <Checkbox
@@ -170,7 +172,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
 
         {/* Capabilities */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Capabilities</h2>
+          <Overline className="mb-3">Capabilities</Overline>
           <div className="rounded-lg border border-border p-4 space-y-4">
             {(["knowledge_base", "scheduling", "tasks", "integrations", "recall", "send_media"] as const).map((key) => {
               const cap = (data.capabilities as any)[key] || {}
@@ -222,7 +224,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
 
         {/* Permissions */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Permissions</h2>
+          <Overline className="mb-3">Permissions</Overline>
           <div className="rounded-lg border border-border p-4">
             <div className="flex items-center justify-between">
               <div>

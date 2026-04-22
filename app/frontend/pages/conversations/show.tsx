@@ -1,9 +1,10 @@
-import { Head, Link } from "@inertiajs/react"
-import { ArrowLeft, Mail, Phone, Send, MessageSquare, ArrowUpRight, ArrowDownLeft } from "lucide-react"
+import { Head } from "@inertiajs/react"
+import { ArrowDownLeft, ArrowUpRight, Mail, MessageSquare, Phone, Send } from "lucide-react"
 
-import AppLayout from "@/layouts/app-layout"
+import { Overline, StatusDot } from "@/components/brand"
 import { Badge } from "@/components/ui/badge"
-import { agentPath } from "@/routes"
+import AppLayout from "@/layouts/app-layout"
+import { agentPath, agentsPath, dashboardPath } from "@/routes"
 
 interface Message {
   id: number
@@ -29,7 +30,7 @@ interface Props {
   messages: Message[]
 }
 
-const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
+const CHANNEL_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   email: Mail,
   whatsapp: Phone,
   telegram: Send,
@@ -38,45 +39,75 @@ const channelIcon: Record<string, React.ComponentType<{ className?: string }>> =
 }
 
 export default function ConversationShow({ agent, conversation, messages }: Props) {
-  const contact = conversation.contact_name || conversation.contact_email || conversation.contact_phone || "Unknown"
-  const channel = messages[0]?.channel || "web"
-  const ChannelIcon = channelIcon[channel] || MessageSquare
+  const contact =
+    conversation.contact_name ??
+    conversation.contact_email ??
+    conversation.contact_phone ??
+    "Unknown"
+  const channel = messages[0]?.channel ?? "web"
+  const ChannelIcon = CHANNEL_ICON[channel] ?? MessageSquare
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Agents", href: agentsPath() },
+        { label: agent.name, href: agentPath(agent.id) },
+        { label: contact },
+      ]}
+    >
       <Head title={`${contact} — ${agent.name}`} />
 
-      <div className="mb-4">
-        <Link href={agentPath(agent.id)} className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground mb-3">
-          <ArrowLeft className="size-3.5 mr-1" />
-          Back to {agent.name}
-        </Link>
-
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-            <ChannelIcon className="size-5 text-muted-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">{contact}</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              {conversation.subject && (
-                <span className="text-xs text-muted-foreground">{conversation.subject}</span>
-              )}
-              <Badge variant="secondary" className="text-[10px]">{channel}</Badge>
-              <span className="text-[10px] text-muted-foreground">{messages.length} messages</span>
+      <div className="mb-6 rounded-lg border bg-card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex size-11 items-center justify-center rounded-md border"
+              style={{
+                background: "var(--indigo-surface)",
+                borderColor: "var(--indigo-border)",
+              }}
+            >
+              <ChannelIcon className="size-5 text-[var(--color-indigo)]" />
             </div>
+            <div>
+              <Overline>{channel} · {conversation.kind}</Overline>
+              <h1 className="mt-1 font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
+                {contact}
+              </h1>
+              {conversation.subject && (
+                <p className="mt-0.5 text-sm text-muted-foreground">{conversation.subject}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              <StatusDot status={conversation.status === "open" ? "online" : "offline"} />
+              {conversation.status}
+            </div>
+            <Badge variant="outline">{messages.length} msg</Badge>
           </div>
         </div>
       </div>
 
-      <div className="max-w-3xl space-y-1">
+      <div className="max-w-3xl space-y-2">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} agentName={agent.name} contact={contact} channel={channel} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            agentName={agent.name}
+            contact={contact}
+            channel={channel}
+          />
         ))}
 
         {messages.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            No messages in this conversation
+          <div className="flex flex-col items-center gap-2 py-16 text-center">
+            <MessageSquare className="size-6 text-muted-foreground/50" />
+            <p className="font-mono text-sm text-muted-foreground">
+              No messages in this conversation yet.
+            </p>
           </div>
         )}
       </div>
@@ -84,38 +115,59 @@ export default function ConversationShow({ agent, conversation, messages }: Prop
   )
 }
 
-function MessageBubble({ message, agentName, contact, channel }: { message: Message; agentName: string; contact: string; channel: string }) {
+function MessageBubble({
+  message,
+  agentName,
+  contact,
+  channel,
+}: {
+  message: Message
+  agentName: string
+  contact: string
+  channel: string
+}) {
   const isOutbound = message.direction === "outbound" || message.role === "assistant"
   const sender = isOutbound ? agentName : contact
   const DirectionIcon = isOutbound ? ArrowUpRight : ArrowDownLeft
 
-  // Email-specific metadata
   const emailMeta = message.metadata as { to?: string; cc?: string[]; subject?: string }
 
   return (
-    <div className={`rounded-lg border p-4 ${isOutbound ? "bg-card" : "bg-muted/30"}`}>
-      <div className="flex items-center justify-between mb-2">
+    <div
+      className={`rounded-lg border p-4 ${
+        isOutbound ? "border-[var(--indigo-border)] bg-[var(--indigo-surface)]/50" : "bg-card"
+      }`}
+    >
+      <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <DirectionIcon className={`size-3.5 ${isOutbound ? "text-blue-500" : "text-green-500"}`} />
-          <span className="font-medium text-sm">{sender}</span>
+          <DirectionIcon
+            className={`size-3.5 ${
+              isOutbound ? "text-[var(--color-indigo)]" : "text-[var(--color-success)]"
+            }`}
+          />
+          <span className="text-sm font-semibold text-foreground">{sender}</span>
           {channel === "email" && emailMeta.to && (
-            <span className="text-xs text-muted-foreground">to {isOutbound ? emailMeta.to : agentName}</span>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              → {isOutbound ? emailMeta.to : agentName}
+            </span>
           )}
         </div>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="font-mono text-[10px] text-muted-foreground">
           {new Date(message.created_at).toLocaleString()}
         </span>
       </div>
 
       {channel === "email" && emailMeta.subject && (
-        <p className="text-sm font-medium mb-2">{emailMeta.subject}</p>
+        <p className="mb-2 text-sm font-medium text-foreground">{emailMeta.subject}</p>
       )}
 
       {channel === "email" && emailMeta.cc && emailMeta.cc.length > 0 && (
-        <p className="text-xs text-muted-foreground mb-2">CC: {emailMeta.cc.join(", ")}</p>
+        <p className="mb-2 font-mono text-[11px] text-muted-foreground">
+          cc: {emailMeta.cc.join(", ")}
+        </p>
       )}
 
-      <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+      <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {message.content}
       </div>
     </div>

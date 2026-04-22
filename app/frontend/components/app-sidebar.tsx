@@ -36,7 +36,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import {
-  authenticatedRootPath,
+  dashboardPath,
   agentsPath,
   tasksPath,
   integrationsPath,
@@ -48,7 +48,7 @@ import {
 import type { NavItem } from "@/types"
 
 const workNavItems: NavItem[] = [
-  { title: "Dashboard", href: authenticatedRootPath(), icon: LayoutGrid },
+  { title: "Dashboard", href: dashboardPath(), icon: LayoutGrid },
   { title: "Agents", href: agentsPath(), icon: Bot },
   { title: "Tasks", href: tasksPath(), icon: CheckSquare },
   { title: "Integrations", href: integrationsPath(), icon: Plug },
@@ -71,32 +71,35 @@ export function AppSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href={authenticatedRootPath()} prefetch>
+            <SidebarMenuButton asChild>
+              <Link href={dashboardPath()} prefetch>
                 <AppLogo />
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-
-        <SidebarGroup className="p-0 pt-3">
-          <SidebarGroupContent>
-            <Button
-              asChild
-              variant="default"
-              className="w-full justify-start gap-2 h-9 text-[13px]"
-            >
-              <Link href={newAgentPath()}>
-                <Plus className="size-3.5" />
-                <span>New agent</span>
-                <kbd className="ml-auto font-mono text-[10px] opacity-70">⌘N</kbd>
-              </Link>
-            </Button>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarHeader>
 
       <SidebarContent>
+        <SidebarGroup className="!pt-6 !pb-2">
+          <SidebarGroupContent>
+            <Link
+              href={newAgentPath()}
+              className="group relative flex h-9 w-full items-center gap-2 overflow-hidden rounded-md bg-[var(--color-indigo)] px-3 text-[13px] font-semibold text-white shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_8px_20px_-8px_var(--indigo-glow)] transition-all hover:-translate-y-0.5 hover:bg-[var(--color-indigo-600)] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_12px_28px_-8px_var(--indigo-glow)]"
+            >
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
+              />
+              <Plus className="relative size-3.5" strokeWidth={2.5} />
+              <span className="relative">New agent</span>
+              <kbd className="relative ml-auto rounded-sm bg-white/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold">
+                ⌘N
+              </kbd>
+            </Link>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>Workspace</SidebarGroupLabel>
           <NavMain items={workNavItems} />

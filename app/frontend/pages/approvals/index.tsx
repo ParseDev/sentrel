@@ -2,6 +2,8 @@ import { Head, router } from "@inertiajs/react"
 import { ShieldCheck, Check, X, Mail, ChevronDown, ChevronUp, Clock, Paperclip } from "lucide-react"
 import { useState } from "react"
 
+import { Overline } from "@/components/brand"
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -66,37 +68,115 @@ function timeAgo(dateStr: string): string {
   return d.toLocaleDateString()
 }
 
+type ApprovalFilter = "all" | "pending" | "approved" | "rejected"
+
 export default function ApprovalsIndex({ approvals }: { approvals: Approval[] }) {
-  const pending = approvals.filter((a) => a.status === "pending")
-  const reviewed = approvals.filter((a) => a.status !== "pending")
+  const [filter, setFilter] = useState<ApprovalFilter>("pending")
+  const [query, setQuery] = useState("")
+
+  const pendingCount = approvals.filter((a) => a.status === "pending").length
+  const approvedCount = approvals.filter((a) => a.status === "approved").length
+  const rejectedCount = approvals.filter((a) => a.status === "rejected").length
+
+  const filtered = approvals.filter((a) => {
+    if (filter !== "all" && a.status !== filter) return false
+    if (!query) return true
+    const q = query.toLowerCase()
+    return (
+      a.tool_name.toLowerCase().includes(q) ||
+      a.agent.name.toLowerCase().includes(q) ||
+      (a.context ?? "").toLowerCase().includes(q)
+    )
+  })
+
+  const pending = filtered.filter((a) => a.status === "pending")
+  const reviewed = filtered.filter((a) => a.status !== "pending")
 
   function handleApproval(id: number, status: "approved" | "rejected") {
     router.patch(`/pending_approvals/${id}`, { status }, { preserveScroll: true })
   }
 
+  const TABS: { key: ApprovalFilter; label: string; count: number; tone?: string }[] = [
+    { key: "all", label: "All", count: approvals.length },
+    { key: "pending", label: "Pending", count: pendingCount, tone: "warning" },
+    { key: "approved", label: "Approved", count: approvedCount, tone: "success" },
+    { key: "rejected", label: "Rejected", count: rejectedCount, tone: "destructive" },
+  ]
+
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Control plane", href: "/" },
+        { label: "Approvals" },
+      ]}
+      topBarActions={
+        <div className="relative">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search tool, agent, context…"
+            className="h-8 w-64 rounded-md border bg-card px-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-[var(--color-indigo)] focus:outline-none focus:ring-2 focus:ring-[var(--indigo-surface)]"
+          />
+        </div>
+      }
+    >
       <Head title="Approvals" />
 
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Approvals</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Review actions your agents want to take</p>
+      <PageHeader
+        eyebrow="Control plane"
+        title="Approvals"
+        description="Review actions your agents want to take before they happen."
+      />
+
+      {/* Filter tabs */}
+      <div className="mb-6 flex items-center gap-1 rounded-md border bg-card p-1">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={`flex items-center gap-2 rounded-sm px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              filter === tab.key
+                ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+            <span
+              className={`rounded-sm px-1.5 font-mono text-[10px] ${
+                filter === tab.key
+                  ? "bg-[var(--color-indigo)]/15"
+                  : "bg-[var(--muted)]"
+              }`}
+            >
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {approvals.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 border border-dashed border-border rounded-lg">
-          <ShieldCheck className="size-8 text-muted-foreground/30 mb-3" />
-          <p className="text-sm font-medium mb-1">All clear</p>
-          <p className="text-xs text-muted-foreground">No pending approvals. Your agents are running smoothly.</p>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-20">
+          <ShieldCheck className="mb-3 size-8 text-[var(--color-success)]/60" />
+          <p className="mb-1 font-display text-sm font-semibold text-foreground">All clear</p>
+          <p className="text-xs text-muted-foreground">
+            No pending approvals. Your agents are within policy.
+          </p>
+        </div>
+      )}
+
+      {approvals.length > 0 && filtered.length === 0 && (
+        <div className="py-12 text-center">
+          <p className="font-mono text-sm text-muted-foreground">No approvals match your filter.</p>
         </div>
       )}
 
       {pending.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-amber-500" />
-            Pending ({pending.length})
-          </h2>
+        <div className="mb-10">
+          <Overline className="mb-3">
+            <span className="size-1.5 rounded-full bg-[var(--color-warning)]" />
+            Pending · {pending.length}
+          </Overline>
           <div className="space-y-3">
             {pending.map((approval) => (
               <PendingCard key={approval.id} approval={approval} onAction={handleApproval} />
@@ -107,7 +187,7 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
 
       {reviewed.length > 0 && (
         <div>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">History</h2>
+          <Overline className="mb-3">History</Overline>
           <div className="space-y-1.5">
             {reviewed.map((approval) => (
               <HistoryRow key={approval.id} approval={approval} />

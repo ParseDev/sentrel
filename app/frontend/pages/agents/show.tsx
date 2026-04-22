@@ -1,6 +1,5 @@
 import { Head, Link, router } from "@inertiajs/react"
 import {
-  ArrowLeft,
   MessageSquare,
   CheckSquare,
   Clock,
@@ -32,6 +31,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
+import { StatusDot } from "@/components/brand"
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
 import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
@@ -40,16 +40,8 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { agentsPath, editAgentPath, agentChannelConfigsPath } from "@/routes"
+import { agentsPath, dashboardPath, editAgentPath, agentChannelConfigsPath } from "@/routes"
 import type { Agent, Task, ChannelConfig, ScheduledTask } from "@/types"
-
-const STATUS_CONFIG: Record<string, { color: string; pulse: boolean; label: string }> = {
-  running: { color: "bg-emerald-500", pulse: true, label: "Running" },
-  pending: { color: "bg-amber-500", pulse: false, label: "Pending" },
-  paused: { color: "bg-zinc-400", pulse: false, label: "Paused" },
-  stopped: { color: "bg-red-500", pulse: false, label: "Stopped" },
-  starting: { color: "bg-blue-500", pulse: true, label: "Starting" },
-}
 
 interface ConversationItem {
   id: number
@@ -137,56 +129,44 @@ const channelIcon: Record<string, React.ComponentType<{ className?: string }>> =
 }
 
 // ── Header bar content for this page ──
-function AgentHeader({ agent }: { agent: Agent }) {
-  const status = STATUS_CONFIG[agent.status] || STATUS_CONFIG.stopped
+function agentStatusDot(status: string): "online" | "working" | "idle" | "error" | "offline" {
+  if (status === "running" || status === "starting") return "working"
+  if (status === "paused") return "offline"
+  if (status === "stopped") return "error"
+  return "idle"
+}
 
+function AgentTopBarMeta({ agent }: { agent: Agent }) {
   return (
-    <div className="flex items-center justify-between w-full">
-      {/* Left: back + agent identity */}
-      <div className="flex items-center gap-3">
-        <Link
-          href={agentsPath()}
-          className="flex items-center justify-center size-6 rounded text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="size-3.5" />
+    <div className="flex items-center gap-3 border-l pl-3">
+      <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+        <StatusDot status={agentStatusDot(agent.status)} pulse={agent.status === "running"} />
+        <span className="uppercase tracking-[0.1em]">{agent.status}</span>
+      </span>
+      {agent.ai_config && (
+        <span className="hidden rounded-sm bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
+          {agent.ai_config.model_id}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function AgentTopBarActions({ agent }: { agent: Agent }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button variant="ghost" size="sm" className="h-8 gap-1.5" asChild>
+        <Link href={agentChannelConfigsPath(agent.id)}>
+          <Radio className="size-3.5" />
+          Channels
         </Link>
-
-        <div className="w-px h-4 bg-border" />
-
-        {/* Avatar */}
-        <div className="relative">
-          <div className="flex size-6 items-center justify-center rounded bg-muted text-[10px] font-semibold">
-            {agent.name.slice(0, 2).toUpperCase()}
-          </div>
-          <div className="absolute -bottom-0.5 -right-0.5">
-            <div className={`size-2 rounded-full border border-card ${status.color}`} />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{agent.name}</span>
-          <Badge variant="secondary" className="text-[10px]">{agent.role}</Badge>
-          {agent.ai_config && (
-            <span className="text-[10px] text-muted-foreground font-mono">{agent.ai_config.model_id}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Right: actions */}
-      <div className="flex items-center gap-1.5">
-        <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
-          <Link href={agentChannelConfigsPath(agent.id)}>
-            <Radio className="size-3 mr-1" />
-            Channels
-          </Link>
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
-          <Link href={editAgentPath(agent.id)}>
-            <Settings className="size-3 mr-1" />
-            Edit
-          </Link>
-        </Button>
-      </div>
+      </Button>
+      <Button variant="outline" size="sm" className="h-8 gap-1.5" asChild>
+        <Link href={editAgentPath(agent.id)}>
+          <Settings className="size-3.5" />
+          Edit
+        </Link>
+      </Button>
     </div>
   )
 }
@@ -441,7 +421,15 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
   ]
 
   return (
-    <AppLayout header={<AgentHeader agent={agent} />}>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Agents", href: agentsPath() },
+        { label: agent.name },
+      ]}
+      topBarMeta={<AgentTopBarMeta agent={agent} />}
+      topBarActions={<AgentTopBarActions agent={agent} />}
+    >
       <Head title={agent.name} />
 
       {/* ═══ Tabs ═══ */}

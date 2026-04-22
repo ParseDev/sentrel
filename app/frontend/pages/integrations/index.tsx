@@ -1,6 +1,8 @@
 import { Head, router } from "@inertiajs/react"
 import { Plug, Trash2, Check } from "lucide-react"
 
+import { Overline } from "@/components/brand"
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -67,50 +69,80 @@ export default function IntegrationsIndex({ integrations }: { integrations: Inte
   const categories = [...new Set(AVAILABLE_INTEGRATIONS.map((i) => i.category))]
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: "/" },
+        { label: "Integrations" },
+      ]}
+    >
       <Head title="Integrations" />
 
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Integrations</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Connect your tools — agents use them to get work done</p>
-      </div>
+      <PageHeader
+        eyebrow="Tools"
+        title="Integrations"
+        description="Connect the services your agents work inside. OAuth once, they use them forever."
+      />
 
       <div className="space-y-8">
         {categories.map((category) => (
           <div key={category}>
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">{category}</h2>
+            <Overline className="mb-3">{category}</Overline>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {AVAILABLE_INTEGRATIONS.filter((i) => i.category === category).map((service) => {
                 const connected = integrations.find((i) => i.service_name === service.name)
                 return (
                   <div
                     key={service.name}
-                    className={`flex items-center gap-3 rounded-lg border border-border px-3.5 py-3 transition-colors ${
-                      connected ? "" : "opacity-60 hover:opacity-100"
+                    className={`group relative flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-all ${
+                      connected
+                        ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.04]"
+                        : "hover:border-[var(--border-strong)]"
                     }`}
                   >
-                    <div className="flex size-8 items-center justify-center rounded-md bg-muted shrink-0">
-                      <Plug className="size-3.5 text-muted-foreground" />
+                    <div
+                      className={`relative flex size-9 shrink-0 items-center justify-center rounded-md border ${
+                        connected
+                          ? "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <Plug className="size-4" />
+                      {connected && (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-[var(--color-success)] text-white ring-2 ring-background">
+                          <Check className="size-2.5" strokeWidth={3} />
+                        </span>
+                      )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{service.label}</p>
-                      <p className="text-[11px] text-muted-foreground">{service.description}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm ${connected ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
+                        {service.label}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {connected ? (
+                          <span className="flex items-center gap-1.5 font-mono font-semibold text-[var(--color-success)]">
+                            <span className="size-1 rounded-full bg-[var(--color-success)] animate-pulse-glow" />
+                            CONNECTED
+                          </span>
+                        ) : (
+                          service.description
+                        )}
+                      </p>
                     </div>
                     {connected ? (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge variant="default" className="text-[10px] bg-emerald-600">
-                          <Check className="size-2.5 mr-0.5" />
-                          Connected
-                        </Badge>
-                        <button
-                          onClick={() => disconnect(connected.id)}
-                          className="flex items-center justify-center size-6 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                          <Trash2 className="size-3" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => disconnect(connected.id)}
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                        aria-label={`Disconnect ${service.label}`}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
                     ) : (
-                      <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => connect(service.name)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 text-xs"
+                        onClick={() => connect(service.name)}
+                      >
                         Connect
                       </Button>
                     )}

@@ -1,153 +1,219 @@
 import { Head, Link } from "@inertiajs/react"
-import { Bot, Plus, Search } from "lucide-react"
-import { useState } from "react"
+import { ArrowUpRight, Bot, Filter, Plus, Search } from "lucide-react"
+import { useMemo, useState } from "react"
 
-import AppLayout from "@/layouts/app-layout"
-import { Badge } from "@/components/ui/badge"
+import { GlowCard, Overline, StatusDot } from "@/components/brand"
+import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { agentPath, newAgentPath } from "@/routes"
+import { Input } from "@/components/ui/input"
+import AppLayout from "@/layouts/app-layout"
+import { agentPath, dashboardPath, newAgentPath } from "@/routes"
 import type { Agent } from "@/types"
 
-const statusConfig: Record<string, { color: string; pulse: boolean; label: string }> = {
-  running: { color: "bg-emerald-500", pulse: true, label: "Running" },
-  pending: { color: "bg-amber-500", pulse: false, label: "Pending" },
-  paused: { color: "bg-zinc-400", pulse: false, label: "Paused" },
-  stopped: { color: "bg-red-500", pulse: false, label: "Stopped" },
-  starting: { color: "bg-blue-500", pulse: true, label: "Starting" },
+const STATUS_MAP: Record<string, { dot: "online" | "working" | "idle" | "error" | "offline"; label: string }> = {
+  running: { dot: "working", label: "Running" },
+  pending: { dot: "idle", label: "Pending" },
+  paused: { dot: "offline", label: "Paused" },
+  stopped: { dot: "error", label: "Stopped" },
+  starting: { dot: "working", label: "Starting" },
 }
+
+const FILTERS = ["All", "Running", "Paused", "Stopped"] as const
+type FilterKey = (typeof FILTERS)[number]
 
 export default function AgentsIndex({ agents }: { agents: Agent[] }) {
   const [search, setSearch] = useState("")
+  const [filter, setFilter] = useState<FilterKey>("All")
 
-  const filtered = search
-    ? agents.filter((a) =>
-        a.name.toLowerCase().includes(search.toLowerCase()) ||
-        a.role.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(() => {
+    let list = agents
+    if (filter !== "All") {
+      list = list.filter((a) => a.status.toLowerCase() === filter.toLowerCase())
+    }
+    if (search) {
+      const q = search.toLowerCase()
+      list = list.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.role.toLowerCase().includes(q),
       )
-    : agents
+    }
+    return list
+  }, [agents, filter, search])
+
+  const runningCount = agents.filter((a) => a.status === "running").length
 
   return (
-    <AppLayout>
-      <Head title="Agents" />
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Agents</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {agents.length} agent{agents.length !== 1 ? "s" : ""} in your team
-          </p>
-        </div>
-        <Button asChild size="sm">
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Agents" },
+      ]}
+      topBarActions={
+        <Button asChild size="sm" className="h-8 gap-1.5 font-semibold shadow-[0_0_0_1px_var(--color-indigo),0_6px_16px_-6px_var(--indigo-glow)]">
           <Link href={newAgentPath()}>
-            <Plus className="size-3.5 mr-1.5" />
-            New Agent
+            <Plus className="size-3.5" strokeWidth={2.5} />
+            New agent
           </Link>
         </Button>
-      </div>
+      }
+    >
+      <Head title="Agents" />
 
-      {/* Search */}
+      <PageHeader
+        eyebrow="Roster"
+        title="Agents"
+        description={`${agents.length} agent${agents.length === 1 ? "" : "s"} in your workspace · ${runningCount} running right now.`}
+      />
+
       {agents.length > 0 && (
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            placeholder="Search agents..."
-            className="w-full h-9 pl-9 pr-4 rounded-lg border border-border bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10 transition-colors"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or role…"
+              className="h-9 pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center gap-1 rounded-md border bg-card p-1">
+            <Filter className="ml-2 size-3 text-muted-foreground" />
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`rounded-sm px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  filter === f
+                    ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+            {filtered.length} shown
+          </span>
         </div>
       )}
 
-      {/* Cards */}
       {agents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24">
-          <div className="flex size-14 items-center justify-center rounded-2xl border border-dashed border-border mb-5">
-            <Bot className="size-7 text-muted-foreground/40" />
-          </div>
-          <p className="text-base font-medium mb-1">No agents yet</p>
-          <p className="text-sm text-muted-foreground mb-6 text-center max-w-sm">
-            Create your first AI employee — give them a role, personality, and instructions.
-          </p>
-          <Button asChild>
-            <Link href={newAgentPath()}>
-              <Plus className="size-4 mr-2" />
-              Create Agent
-            </Link>
-          </Button>
-        </div>
+        <EmptyState />
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-12">No agents match "{search}"</p>
+        <div className="flex flex-col items-center gap-2 py-20 text-center">
+          <p className="font-mono text-sm text-muted-foreground">No matches</p>
+          <p className="text-sm text-muted-foreground">
+            No agents match your search. Try a different keyword or filter.
+          </p>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((agent) => {
-            const st = statusConfig[agent.status] || statusConfig.stopped
-            const preview = agent.instructions_md || agent.identity_md || null
-
-            return (
-              <Link key={agent.id} href={agentPath(agent.id)} className="block group">
-                <div className="rounded-xl border border-border p-5 transition-all hover:border-muted-foreground/20 hover:shadow-[0_2px_12px_rgba(0,0,0,0.15)] flex flex-col h-full min-h-[180px]">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      {/* Avatar */}
-                      <div className="relative">
-                        <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--color-cyan)]/15 text-sm font-bold text-[var(--color-cyan)]">
-                          {agent.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5">
-                          <div className={`size-3 rounded-full border-2 border-card ${st.color}`}>
-                            {st.pulse && <div className={`size-3 rounded-full ${st.color} animate-ping absolute inset-0 opacity-40`} />}
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-[15px] leading-tight tracking-tight">{agent.name}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">{agent.role}</p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className={`text-[10px] mt-0.5 ${
-                        agent.status === "running"
-                          ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                          : ""
-                      }`}
-                    >
-                      {st.label}
-                    </Badge>
-                  </div>
-
-                  {/* Description */}
-                  <div className="flex-1 mb-4">
-                    {preview ? (
-                      <p className="text-[13px] text-muted-foreground/50 leading-relaxed line-clamp-3">
-                        {preview}
-                      </p>
-                    ) : (
-                      <p className="text-[13px] text-muted-foreground/30 italic">No instructions set</p>
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                    <div className="flex items-center gap-2">
-                      {agent.ai_config && (
-                        <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
-                          {agent.ai_config.model_id}
-                        </span>
-                      )}
-                    </div>
-                    {agent.manager && (
-                      <span className="text-[10px] text-muted-foreground">→ {agent.manager.name}</span>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((agent) => (
+            <AgentListCard key={agent.id} agent={agent} />
+          ))}
         </div>
       )}
     </AppLayout>
+  )
+}
+
+/* ---------- card ---------- */
+function AgentListCard({ agent }: { agent: Agent }) {
+  const st = STATUS_MAP[agent.status] ?? STATUS_MAP.stopped
+  const preview = agent.instructions_md ?? agent.identity_md ?? null
+
+  return (
+    <Link href={agentPath(agent.id)} className="group block">
+      <GlowCard
+        glow={agent.status === "running" ? "soft" : "none"}
+        tint="cyan"
+        className="h-full min-h-[192px] p-5"
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div
+                className="flex size-10 items-center justify-center rounded-md border font-display text-sm font-semibold text-foreground"
+                style={{
+                  borderColor: "var(--cyan-border)",
+                  background: "var(--cyan-surface)",
+                }}
+              >
+                {agent.name.slice(0, 2).toUpperCase()}
+              </div>
+              <span className="absolute -bottom-0.5 -right-0.5">
+                <StatusDot status={st.dot} pulse={agent.status === "running"} ring />
+              </span>
+            </div>
+            <div className="min-w-0">
+              <h3 className="truncate font-display text-[15px] font-semibold leading-tight tracking-[-0.015em] text-foreground">
+                {agent.name}
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">{agent.role}</p>
+            </div>
+          </div>
+          <span className="rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            {st.label}
+          </span>
+        </div>
+
+        <div className="mt-4 min-h-[48px]">
+          {preview ? (
+            <p className="line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">
+              {preview}
+            </p>
+          ) : (
+            <p className="text-[13px] italic text-muted-foreground/60">
+              No instructions set yet
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 flex items-center justify-between border-t pt-3">
+          <div className="flex items-center gap-2">
+            {agent.ai_config && (
+              <span className="rounded-sm bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                {agent.ai_config.model_id}
+              </span>
+            )}
+            {agent.manager && (
+              <span className="font-mono text-[10px] text-muted-foreground">
+                → {agent.manager.name}
+              </span>
+            )}
+          </div>
+          <ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </div>
+      </GlowCard>
+    </Link>
+  )
+}
+
+/* ---------- empty ---------- */
+function EmptyState() {
+  return (
+    <GlowCard glow="soft" tint="indigo" className="px-6 py-16 text-center">
+      <div className="mx-auto flex size-12 items-center justify-center rounded-md border border-dashed">
+        <Bot className="size-5 text-muted-foreground" />
+      </div>
+      <Overline className="mt-5 justify-center">Workspace empty</Overline>
+      <h3 className="mx-auto mt-3 max-w-sm font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
+        Hire your first AI teammate.
+      </h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+        Give them a role, connect the tools they'll use, set an approval policy.
+        They start working on a schedule of your choosing.
+      </p>
+      <Button asChild className="mt-6 gap-1.5">
+        <Link href={newAgentPath()}>
+          <Plus className="size-3.5" />
+          Hire an agent
+        </Link>
+      </Button>
+    </GlowCard>
   )
 }

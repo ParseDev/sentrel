@@ -29,7 +29,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { tasksPath } from "@/routes"
+import { dashboardPath, tasksPath } from "@/routes"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -66,10 +66,10 @@ interface Props {
 }
 
 const columns = [
-  { key: "todo", label: "To Do", dot: "bg-stone-400" },
-  { key: "in_progress", label: "In Progress", dot: "bg-blue-500" },
-  { key: "done", label: "Done", dot: "bg-green-500" },
-  { key: "failed", label: "Failed", dot: "bg-red-500" },
+  { key: "todo", label: "TO DO", dot: "bg-stone-400" },
+  { key: "in_progress", label: "IN PROGRESS", dot: "bg-[var(--color-indigo)]" },
+  { key: "done", label: "DONE", dot: "bg-[var(--color-success)]" },
+  { key: "failed", label: "FAILED", dot: "bg-[var(--destructive)]" },
 ] as const
 
 const priorityBadge: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -109,10 +109,21 @@ function TaskCard({ task, overlay, setEditingTask, onOpen }: { task: TaskItem; o
       {...(overlay ? {} : { ...attributes, ...listeners })}
       className="cursor-grab active:cursor-grabbing"
     >
-      <Card className={`group ${overlay ? "shadow-lg ring-2 ring-accent rotate-2" : ""}`}>
-        <CardContent className="px-3 py-2">
+      <Card
+        className={`group !gap-0 !py-0 ${
+          overlay ? "shadow-lg ring-2 ring-accent rotate-2" : ""
+        }`}
+      >
+        <CardContent className="!px-3.5 !py-3">
           <div className="flex items-start justify-between gap-2">
-            <button className="font-medium text-sm leading-snug flex-1 text-left hover:underline" onClick={(e) => { e.stopPropagation(); onOpen?.(task) }} onPointerDown={(e) => e.stopPropagation()}>
+            <button
+              className="flex-1 text-left text-[13px] font-medium leading-snug tracking-[-0.005em] hover:underline"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpen?.(task)
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               {task.title}
             </button>
             {!overlay && (
@@ -160,26 +171,29 @@ function TaskCard({ task, overlay, setEditingTask, onOpen }: { task: TaskItem; o
               </DropdownMenu>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-            <Badge variant={pb.variant} className="text-[10px]">{pb.label}</Badge>
-            <div className="flex items-center gap-1.5 ml-auto">
-              <div className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
-                {task.agent.name[0]}
-              </div>
-              <span className="text-xs text-muted-foreground">{task.agent.name}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="mt-3 flex items-center gap-2">
+            <Badge variant={pb.variant} className="uppercase">
+              {pb.label}
+            </Badge>
             {task.due_at && (
-              <span className="text-[11px] text-muted-foreground">
-                Due {new Date(task.due_at).toLocaleDateString()}
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+                {new Date(task.due_at).toLocaleDateString()}
               </span>
             )}
-            {(task.comments_count ?? 0) > 0 && (
-              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground ml-auto">
-                <MessageSquare className="size-3" /> {task.comments_count}
+            <div className="ml-auto flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="flex size-5 items-center justify-center rounded-full bg-[var(--indigo-surface)] text-[10px] font-semibold text-[var(--color-indigo)]">
+                  {task.agent.name[0]}
+                </span>
+                <span className="text-[12px] text-muted-foreground">{task.agent.name}</span>
               </span>
-            )}
+              {(task.comments_count ?? 0) > 0 && (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <MessageSquare className="size-3" />
+                  {task.comments_count}
+                </span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -199,22 +213,26 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask, onO
   const { setNodeRef, isOver } = useDroppable({ id: columnKey })
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 mb-2 px-0.5 shrink-0">
-        <div className={`size-2 rounded-full ${dot}`} />
-        <h3 className="font-semibold text-sm">{label}</h3>
-        <span className="text-xs text-muted-foreground">
+    <div
+      className={`flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card transition-colors ${
+        isOver ? "border-[var(--color-indigo)] bg-[var(--indigo-surface)]/30" : ""
+      }`}
+    >
+      {/* Column header — fixed */}
+      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2.5">
+        <span className={`size-1.5 rounded-full ${dot}`} />
+        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground">
+          {label}
+        </h3>
+        <span className="ml-auto rounded-sm bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
           {columnTasks.length}
         </span>
       </div>
 
+      {/* Scrollable list */}
       <div
         ref={setNodeRef}
-        className={`flex-1 space-y-2 rounded-lg p-2.5 border overflow-y-auto transition-colors ${
-          isOver
-            ? "bg-accent/5 border-accent/20 border-dashed"
-            : "bg-muted/50 border-transparent"
-        }`}
+        className="flex-1 space-y-2 overflow-y-auto p-2"
       >
         <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {columnTasks.map((task) => (
@@ -223,7 +241,9 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask, onO
         </SortableContext>
 
         {columnTasks.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-10">No tasks</p>
+          <p className="py-8 text-center font-mono text-[11px] text-muted-foreground/60">
+            No tasks
+          </p>
         )}
       </div>
     </div>
@@ -365,109 +385,161 @@ export default function TasksIndex({ tasks, agents }: Props) {
     post(tasksPath(), { onSuccess: () => reset() })
   }
 
+  const pageCrumbs = [
+    { label: "Workspace", href: dashboardPath() },
+    { label: "Tasks" },
+  ]
+
+  const newTaskDialog = (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" className="h-8 gap-1.5">
+          <Plus className="size-3.5" />
+          New task
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create task</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Assign to</Label>
+            <Select value={data.agent_id} onValueChange={(v) => setData("agent_id", v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Title</Label>
+            <Input
+              value={data.title}
+              onChange={(e) => setData("title", e.target.value)}
+              placeholder="Research top competitors"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Instruction</Label>
+            <textarea
+              className="flex min-h-[80px] w-full rounded-md border bg-card px-3 py-2 text-sm focus:border-[var(--color-indigo)] focus:outline-none focus:ring-2 focus:ring-[var(--indigo-surface)]"
+              placeholder="Detailed instructions for the agent…"
+              value={data.instruction}
+              onChange={(e) => setData("instruction", e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Priority</Label>
+            <Select value={data.priority} onValueChange={(v) => setData("priority", v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="submit" className="w-full" disabled={processing}>
+            Create task
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+
   if (tasks.length === 0 && agents.length === 0) {
     return (
-      <AppLayout>
+      <AppLayout crumbs={pageCrumbs} topBarActions={newTaskDialog}>
         <Head title="Tasks" />
-        <PageHeader title="Tasks" description="Assign and track work across your agents" />
-        <EmptyState icon={CheckSquare} title="No tasks yet" description="Create agents first, then assign them tasks" />
+        <PageHeader
+          eyebrow="Queue"
+          title="Tasks"
+          description="Assign and track work across your agents."
+        />
+        <EmptyState
+          icon={CheckSquare}
+          title="No tasks yet"
+          description="Create agents first, then assign them tasks"
+        />
       </AppLayout>
     )
   }
 
   return (
-    <AppLayout>
+    <AppLayout fullBleed crumbs={pageCrumbs} topBarActions={newTaskDialog}>
       <Head title="Tasks" />
-      <PageHeader
-        title="Tasks"
-        description="Assign and track work across your agents"
-        action={
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button><Plus className="size-4 mr-2" />New Task</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Create Task</DialogTitle></DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Assign to</Label>
-                  <Select value={data.agent_id} onValueChange={(v) => setData("agent_id", v)}>
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Select agent" /></SelectTrigger>
-                    <SelectContent>
-                      {agents.map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Title</Label>
-                  <Input value={data.title} onChange={(e) => setData("title", e.target.value)} placeholder="Research top competitors" required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Instruction</Label>
-                  <textarea
-                    className="flex min-h-[80px] w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-gold)] focus:ring-[3px] focus:ring-[var(--color-gold-border)]"
-                    placeholder="Detailed instructions for the agent..."
-                    value={data.instruction}
-                    onChange={(e) => setData("instruction", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Priority</Label>
-                  <Select value={data.priority} onValueChange={(v) => setData("priority", v)}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button type="submit" className="w-full" disabled={processing}>Create Task</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        }
-      />
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={rectIntersection}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-4 gap-4" style={{ height: "calc(100vh - 180px)" }}>
-          {columns.map((col) => (
-            <Column
-              key={col.key}
-              columnKey={col.key}
-              label={col.label}
-              dot={col.dot}
-              tasks={tasks.filter((t) => t.status === col.key)}
-              setEditingTask={setEditingTask}
-              onOpenTask={openTaskDetail}
-            />
-          ))}
+      {/* Fixed-height board — flex chain fills the remaining height */}
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Sub-header */}
+        <div className="flex shrink-0 items-baseline justify-between border-b px-6 py-4">
+          <div>
+            <span className="text-eyebrow">Queue</span>
+            <h1 className="mt-1 font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
+              Tasks
+            </h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {tasks.length} total · drag between columns to update status
+          </p>
         </div>
 
-        <DragOverlay>
-          {activeTask ? <TaskCard task={activeTask} overlay /> : null}
-        </DragOverlay>
-      </DndContext>
+        {/* Board */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={rectIntersection}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid min-h-0 flex-1 grid-cols-4 gap-3 overflow-hidden p-4">
+            {columns.map((col) => (
+              <Column
+                key={col.key}
+                columnKey={col.key}
+                label={col.label}
+                dot={col.dot}
+                tasks={tasks.filter((t) => t.status === col.key)}
+                setEditingTask={setEditingTask}
+                onOpenTask={openTaskDetail}
+              />
+            ))}
+          </div>
+
+          <DragOverlay>{activeTask ? <TaskCard task={activeTask} overlay /> : null}</DragOverlay>
+        </DndContext>
+      </div>
 
       {/* Edit Dialog */}
       <Dialog open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Edit Task</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Edit task</DialogTitle>
+          </DialogHeader>
           {editingTask && (
             <EditTaskForm task={editingTask} agents={agents} onClose={() => setEditingTask(null)} />
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Task Detail Modal (Linear-style) */}
+      {/* Task Detail Modal */}
       {selectedTask && (
-        <TaskDetailModal task={selectedTask} comments={comments} loading={loadingComments} onClose={() => setSelectedTask(null)} />
+        <TaskDetailModal
+          task={selectedTask}
+          comments={comments}
+          loading={loadingComments}
+          onClose={() => setSelectedTask(null)}
+        />
       )}
     </AppLayout>
   )
@@ -555,18 +627,30 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
   const pb = priorityBadge[task.priority] || priorityBadge.normal
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]" onClick={onClose}>
-      <div className="fixed inset-0 bg-black/50 animate-in fade-in duration-150" />
-      <div className="relative w-full max-w-2xl max-h-[75vh] bg-background border rounded-xl shadow-2xl flex flex-col animate-in zoom-in-95 fade-in duration-150" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]"
+      onClick={onClose}
+    >
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" />
+      <div
+        className="relative flex max-h-[75vh] w-full max-w-2xl flex-col rounded-xl border bg-card shadow-xl animate-in zoom-in-95 fade-in duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b">
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-semibold">{task.title}</h2>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${statusColors[task.status] || ""}`}>
+              <span
+                className={`rounded-sm px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                  statusColors[task.status] || ""
+                }`}
+              >
                 {task.status.replace("_", " ")}
               </span>
-              <Badge variant={pb.variant} className="text-[10px]">{pb.label}</Badge>
+              <Badge variant={pb.variant} className="uppercase">
+                {pb.label}
+              </Badge>
               <span className="text-xs text-muted-foreground">{task.agent.name}</span>
               {task.due_at && <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="size-3" /> Due {new Date(task.due_at).toLocaleDateString()}</span>}
             </div>

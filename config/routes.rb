@@ -32,7 +32,7 @@ Rails.application.routes.draw do
 
   # Authenticated routes
   authenticate :user do
-    root "dashboard#index", as: :authenticated_root
+    get "dashboard", to: "dashboard#index", as: :dashboard
 
     resources :agents do
       resources :conversations, only: [:index, :show]
@@ -82,6 +82,6 @@ Rails.application.routes.draw do
     end
   end
 
-  # Unauthenticated root — public marketing landing page
+  # Root always renders the public landing page (auth-aware actions inside).
   root "home#index"
 end

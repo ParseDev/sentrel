@@ -21,13 +21,15 @@ interface TopBarProps {
   crumbs?: Crumb[]
   /** Right-aligned actions (buttons, filters, etc.) */
   actions?: ReactNode
+  /** Inline meta rendered after crumbs (status chips, etc.) */
+  meta?: ReactNode
   /** Optional slot rendered below the crumb line (tabs, filters) */
   children?: ReactNode
 }
 
-export function TopBar({ crumbs, actions, children }: TopBarProps) {
+export function TopBar({ crumbs, actions, meta, children }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-20 flex shrink-0 flex-col border-b bg-background/90 backdrop-blur-md">
+    <header className="z-20 flex shrink-0 flex-col border-b bg-background">
       <div className="flex h-12 items-center gap-3 px-5">
         <SidebarTrigger className="-ml-1.5 size-7" />
         <Separator orientation="vertical" className="h-4 opacity-60" />
@@ -59,6 +61,8 @@ export function TopBar({ crumbs, actions, children }: TopBarProps) {
             </BreadcrumbList>
           </Breadcrumb>
         ) : null}
+
+        {meta}
 
         <div className="ml-auto flex items-center gap-2">{actions}</div>
       </div>

@@ -2,12 +2,14 @@ import { Head, useForm } from "@inertiajs/react"
 import { useState } from "react"
 import { Copy, Check, Loader2, RefreshCw } from "lucide-react"
 
+import { Overline } from "@/components/brand"
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { settingsPath } from "@/routes"
+import { dashboardPath, settingsPath } from "@/routes"
 
 interface Member {
   id: number
@@ -44,19 +46,25 @@ export default function SettingsShow({ organization, members }: Props) {
   }
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Control plane", href: dashboardPath() },
+        { label: "Settings" },
+      ]}
+    >
       <Head title="Settings" />
 
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Manage your organization</p>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Settings"
+        description="Manage your organization, email domain, and team members."
+      />
 
       <div className="max-w-2xl space-y-8">
         {/* Organization */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Organization</h2>
-          <div className="rounded-lg border border-border p-4">
+          <Overline className="mb-3">Organization</Overline>
+          <div className="rounded-lg border bg-card p-5">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -89,7 +97,7 @@ export default function SettingsShow({ organization, members }: Props) {
 
         {/* Organization Context */}
         <section>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Agent Context</h2>
+          <Overline className="mb-3">Agent Context</Overline>
           <div className="rounded-lg border border-border p-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -116,8 +124,8 @@ export default function SettingsShow({ organization, members }: Props) {
 
         {/* Team Members */}
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Team Members</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <Overline>Team Members</Overline>
             <Button variant="outline" size="sm" className="h-7 text-xs" disabled>
               Invite
             </Button>
@@ -199,7 +207,7 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
 
   return (
     <section>
-      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Email Domain</h2>
+      <Overline className="mb-3">Email Domain</Overline>
       <div className="rounded-lg border border-border p-4 space-y-4">
         <form onSubmit={onSave} className="space-y-4">
           <div className="space-y-2">

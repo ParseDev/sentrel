@@ -10,6 +10,8 @@ interface AppLayoutProps {
   crumbs?: Crumb[]
   /** Right-aligned actions in the top bar (buttons, search, etc.) */
   topBarActions?: ReactNode
+  /** Inline meta after crumbs (status pills, etc.) */
+  topBarMeta?: ReactNode
   /** Content rendered below the crumb line in the top bar (tabs, filters) */
   topBarExtra?: ReactNode
   /** Escape hatch: fully custom top bar */
@@ -22,6 +24,7 @@ export default function AppLayout({
   children,
   crumbs,
   topBarActions,
+  topBarMeta,
   topBarExtra,
   header,
   fullBleed = false,
@@ -31,11 +34,17 @@ export default function AppLayout({
       <AppSidebar />
       <SidebarInset>
         {header ?? (
-          <TopBar crumbs={crumbs} actions={topBarActions}>
+          <TopBar crumbs={crumbs} actions={topBarActions} meta={topBarMeta}>
             {topBarExtra}
           </TopBar>
         )}
-        <main className={fullBleed ? "flex-1 overflow-auto" : "flex-1 overflow-auto p-6"}>
+        <main
+          className={
+            fullBleed
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+              : "flex-1 overflow-auto p-6"
+          }
+        >
           {children}
         </main>
       </SidebarInset>

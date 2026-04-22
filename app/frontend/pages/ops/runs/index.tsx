@@ -1,6 +1,7 @@
 import { Head, router, Link } from "@inertiajs/react"
 import { Activity, CheckCircle2, XCircle, Clock, Zap, TrendingDown } from "lucide-react"
 
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -75,20 +76,25 @@ export default function OpsRunsIndex({ runs, totals, agents, filters }: Props) {
   }
 
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Control plane", href: "/" },
+        { label: "Ops" },
+        { label: "Runs" },
+      ]}
+      topBarActions={
+        <Button variant="outline" size="sm" asChild className="h-8">
+          <Link href="/ops/cost">Cost dashboard</Link>
+        </Button>
+      }
+    >
       <Head title="Runs — Ops" />
 
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Agent Runs</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Every agent execution with timing, cost, and tool calls</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/ops/cost">Cost dashboard</Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Observability"
+        title="Agent runs"
+        description="Every agent execution with timing, cost, and tool calls — trace any run end-to-end."
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
@@ -100,35 +106,65 @@ export default function OpsRunsIndex({ runs, totals, agents, filters }: Props) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <Select onValueChange={(v) => updateFilter("agent_id", v)} value={filters.agent_id || "all"}>
-          <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Agent" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All agents</SelectItem>
-            {agents.map((a) => <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
+      {(() => {
+        const activeCount =
+          (filters.agent_id && filters.agent_id !== "all" ? 1 : 0) +
+          (filters.status && filters.status !== "all" ? 1 : 0) +
+          (filters.job_type && filters.job_type !== "all" ? 1 : 0)
+        return (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border bg-card p-2">
+            <span className="overline ml-1 mr-2">Filter</span>
+            <Select onValueChange={(v) => updateFilter("agent_id", v)} value={filters.agent_id || "all"}>
+              <SelectTrigger className="h-7 w-40 text-xs">
+                <SelectValue placeholder="Agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All agents</SelectItem>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        <Select onValueChange={(v) => updateFilter("status", v)} value={filters.status || "all"}>
-          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any status</SelectItem>
-            <SelectItem value="success">Success</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
-          </SelectContent>
-        </Select>
+            <Select onValueChange={(v) => updateFilter("status", v)} value={filters.status || "all"}>
+              <SelectTrigger className="h-7 w-32 text-xs">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any status</SelectItem>
+                <SelectItem value="success">Success</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
 
-        <Select onValueChange={(v) => updateFilter("job_type", v)} value={filters.job_type || "all"}>
-          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Job type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any type</SelectItem>
-            <SelectItem value="inbound_message">Inbound</SelectItem>
-            <SelectItem value="task_assignment">Task</SelectItem>
-            <SelectItem value="scheduled_task">Scheduled</SelectItem>
-            <SelectItem value="heartbeat">Heartbeat</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+            <Select onValueChange={(v) => updateFilter("job_type", v)} value={filters.job_type || "all"}>
+              <SelectTrigger className="h-7 w-36 text-xs">
+                <SelectValue placeholder="Job type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any type</SelectItem>
+                <SelectItem value="inbound_message">Inbound</SelectItem>
+                <SelectItem value="task_assignment">Task</SelectItem>
+                <SelectItem value="scheduled_task">Scheduled</SelectItem>
+                <SelectItem value="heartbeat">Heartbeat</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {activeCount > 0 && (
+              <button
+                onClick={() =>
+                  router.get("/ops/runs", {}, { preserveState: true })
+                }
+                className="ml-auto rounded-sm px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              >
+                Clear · {activeCount}
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {runs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 border border-dashed border-border rounded-lg">

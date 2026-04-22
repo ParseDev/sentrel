@@ -1,9 +1,9 @@
-import { Head, Link } from "@inertiajs/react"
-import { ArrowLeft } from "lucide-react"
+import { Head } from "@inertiajs/react"
 
+import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
-import { Button } from "@/components/ui/button"
 import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
+import { agentPath, agentsPath, dashboardPath } from "@/routes"
 
 interface Props {
   agent: { id: string; name: string; slug: string }
@@ -12,13 +12,22 @@ interface Props {
 
 export default function KnowledgeIndex({ agent, documents }: Props) {
   return (
-    <AppLayout>
+    <AppLayout
+      crumbs={[
+        { label: "Workspace", href: dashboardPath() },
+        { label: "Agents", href: agentsPath() },
+        { label: agent.name, href: agentPath(agent.id) },
+        { label: "Knowledge" },
+      ]}
+    >
       <Head title={`Knowledge — ${agent.name}`} />
-      <div className="flex items-center gap-3 mb-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href={`/agents/${agent.id}`}><ArrowLeft className="size-4" /> Back to agent</Link>
-        </Button>
-      </div>
+
+      <PageHeader
+        eyebrow="RAG"
+        title={`${agent.name}'s knowledge`}
+        description="Upload documents this agent can retrieve from when answering."
+      />
+
       <KnowledgePanel agentId={agent.id} agentName={agent.name} documents={documents} />
     </AppLayout>
   )
