@@ -159,6 +159,10 @@ class TasksController < ApplicationController
       type: "task_assignment",
       agent: task.agent,
       conversation_id: task.conversation_id,
+      # Idempotency: same job_id while the previous run is still in-flight
+      # is a BullMQ no-op. Lets Rails retry safely; re-assignment after
+      # completion still works because the previous job has drained.
+      job_id: "task-assign-#{task.id}-resume-#{Time.current.to_i}",
       payload: {
         taskId: task.id,
         instruction: instruction,
@@ -172,6 +176,7 @@ class TasksController < ApplicationController
       type: "task_assignment",
       agent: task.agent,
       conversation_id: task.conversation_id,
+      job_id: "task-assign-#{task.id}",
       payload: {
         taskId: task.id,
         instruction: "Task: #{task.title}\n\n#{task.description}\n\n#{task.instruction}".strip,

@@ -347,11 +347,19 @@ class WebhooksController < ApplicationController
 
   def enqueue(agent, channel, payload)
     conversation_id = payload.delete(:conversationId)
+    # Idempotency — Twilio / Telegram retry webhooks on timeout / 5xx. Derive
+    # a stable job_id from the provider's native message id when present so a
+    # double-webhook doesn't enqueue the same inbound twice. Falls back to a
+    # random UUID (current behavior) if no provider id is available.
+    meta = payload[:metadata] || {}
+    provider_id = meta[:message_sid] || meta[:message_id]
+    job_id = provider_id.present? ? "inbound-#{channel}-#{provider_id}" : nil
     AgentEventBus.publish(
       type: "inbound_message",
       agent: agent,
       channel: channel,
       conversation_id: conversation_id,
+      job_id: job_id,
       payload: payload,
     )
   end

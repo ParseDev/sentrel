@@ -83,6 +83,9 @@ class TaskCommentsController < ApplicationController
       type: "task_assignment",
       agent: task.agent,
       conversation_id: task.conversation_id,
+      # Idempotent on the comment id — double-submit of the same comment
+      # won't re-enqueue the agent twice.
+      job_id: "task-comment-#{comment.id}",
       payload: {
         taskId: task.id,
         instruction: instruction,
