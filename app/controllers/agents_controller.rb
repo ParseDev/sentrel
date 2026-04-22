@@ -173,10 +173,11 @@ class AgentsController < ApplicationController
 
       EngineSync.trigger(@agent)
       # Spawn the agent's machine (Fly / Hetzner / local depending on
-      # AGENT_PROVISIONER). No-op when unconfigured — dev can run a shared
-      # engine process against the agent instead.
-      AgentProvisioner.provision_for(@agent)
-      redirect_to agent_path(@agent), notice: "Agent created"
+      # AGENT_PROVISIONER). Runs in background so the UI doesn't block on
+      # Hetzner's 60s boot. Instance row flips to "running" when the engine
+      # pings /api/agent_instances/ready after boot.
+      ProvisionAgentJob.perform_later(@agent.id)
+      redirect_to agent_path(@agent), notice: "Agent created — machine provisioning in background"
     else
       redirect_back fallback_location: new_agent_path, alert: @agent.errors.full_messages.join(", ")
     end

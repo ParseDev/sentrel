@@ -95,7 +95,7 @@ module AgentProvisioner
 
       body = {
         name: "agent-#{agent.id}",
-        region: ENV.fetch("FLY_REGION", "ord"),
+        region: ENV.fetch("FLY_REGION", "lax"),
         config: {
           image: ENV.fetch("ENGINE_IMAGE", "ghcr.io/qubitam/alchemy-engine:latest"),
           env: env_for(agent),
@@ -129,7 +129,10 @@ module AgentProvisioner
 
     def fly_app_name(agent)
       # One Fly App per agent so each gets its own DNS + scale-to-zero clock.
-      "alchemy-agent-#{agent.id}"
+      # Env prefix keeps dev / staging / prod agents separate on the same
+      # Fly org — e.g. alchemy-dev-agent-7 vs alchemy-prod-agent-7.
+      env = ENV.fetch("DEPLOY_ENV", Rails.env == "production" ? "prod" : "dev")
+      "alchemy-#{env}-agent-#{agent.id}"
     end
 
     def env_for(agent)
