@@ -11,8 +11,8 @@ import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
 import { startGateway, setSyncHandler } from "./gateway.js";
-import { startTelegramPolling } from "./channels/telegram.js";
-import { initWhatsApp } from "./channels/whatsapp.js";
+import { startTelegramPolling, stopTelegramPolling } from "./channels/telegram.js";
+import { initWhatsApp, stopWhatsApp } from "./channels/whatsapp.js";
 import { initSentry, setAgentContext, captureException, flush as flushSentry } from "./sentry.js";
 import { logger, flushLogs } from "./logger.js";
 import type { JobData } from "./types.js";
@@ -83,7 +83,25 @@ async function main() {
     const freshAgent = await host.getAgent(config.employeeId);
     syncWorkspace(freshAgent);
     provisionSkills(freshAgent);
-    logger.info(`Config synced: ${freshAgent.name} (${freshAgent.role})`);
+
+    // Restart channel pollers so rotated Telegram tokens / changed WhatsApp
+    // numbers take effect without a full engine restart. Telegram's long-poll
+    // may take up to ~30s to drain — that's the cost of not force-killing
+    // the fetch. In-flight emitDone routing is unaffected (the listener is
+    // global in gateway.ts, bot token is captured by closure).
+    try {
+      await stopTelegramPolling();
+      stopWhatsApp();
+      // Small yield so the BullMQ worker pulls any in-flight job before we
+      // re-attach listeners.
+      await new Promise((r) => setTimeout(r, 50));
+      await startTelegramPolling();
+      await initWhatsApp();
+    } catch (err) {
+      logger.error("Channel reload during sync failed", { error: (err as Error).message });
+    }
+
+    logger.info(`Config synced (including channels): ${freshAgent.name} (${freshAgent.role})`);
   });
   startGateway();
 

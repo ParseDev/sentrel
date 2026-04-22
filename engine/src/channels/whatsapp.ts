@@ -11,11 +11,21 @@ export async function initWhatsApp(): Promise<void> {
 
   if (!waConfig || !waConfig.config?.phone_number) {
     logger.info("WhatsApp: no phone configured, skipping");
+    botNumber = "";
     return;
   }
 
   botNumber = waConfig.config.phone_number as string;
   logger.info(`WhatsApp: initialized for ${botNumber}`);
+}
+
+// Drops the cached bot number. Inbound WhatsApp arrives via Rails webhook
+// (Twilio → /webhooks/whatsapp) so there's no listener loop to tear down —
+// outbound sends just stop attaching the old From header until initWhatsApp
+// repopulates it.
+export function stopWhatsApp(): void {
+  botNumber = "";
+  logger.info("WhatsApp: bot number cleared");
 }
 
 // Register a one-shot listener for the current inbound WhatsApp job.

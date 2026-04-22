@@ -16,6 +16,7 @@ interface TelegramFileRef {
 }
 
 let pollingActive = false;
+let pollingPromise: Promise<void> | null = null;
 let lastUpdateId = 0;
 
 interface TelegramConfig {
@@ -25,6 +26,12 @@ interface TelegramConfig {
 }
 
 export async function startTelegramPolling(): Promise<void> {
+  // Idempotent — a sync-triggered restart should be a no-op if polling is live.
+  if (pollingActive) {
+    logger.warn("Telegram: polling already active, skipping start");
+    return;
+  }
+
   // Get telegram channel config from DB
   const agent = await host.getAgent(config.employeeId);
   const channelConfigs = await host.getChannelConfigs(config.employeeId);
@@ -40,7 +47,7 @@ export async function startTelegramPolling(): Promise<void> {
 
   logger.info(`Telegram: polling started for @${telegramConfig.config.bot_username || "bot"}`);
 
-  poll(botToken, agent.organization_id);
+  pollingPromise = poll(botToken, agent.organization_id);
 }
 
 async function poll(botToken: string, orgId: number): Promise<void> {
@@ -592,8 +599,19 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function stopTelegramPolling(): void {
+export async function stopTelegramPolling(): Promise<void> {
   pollingActive = false;
+  // In-flight long-poll may block up to its timeout (~30s); wait for it to
+  // drain before returning so the caller can safely re-start.
+  if (pollingPromise) {
+    try {
+      await pollingPromise;
+    } catch (err) {
+      logger.warn("Telegram: poll loop errored during shutdown", { error: (err as Error).message });
+    }
+    pollingPromise = null;
+  }
+  logger.info("Telegram: polling stopped");
 }
 
 interface TelegramCallbackQuery {
