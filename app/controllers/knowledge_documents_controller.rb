@@ -3,28 +3,35 @@ class KnowledgeDocumentsController < ApplicationController
   before_action :set_agent
 
   # GET /agents/:agent_id/knowledge_documents
+  # Lists personal + org-shared docs together so the panel can show both
+  # in one view. `scope` on each doc tells the frontend which KB it's in.
   def index
-    res = engine_get("/rag/documents?agent_id=#{@agent.id}")
-    docs = res&.dig("documents") || []
+    personal = (engine_get("/rag/documents?agent_id=#{@agent.id}")&.dig("documents") || [])
+      .map { |d| d.merge("scope" => "agent") }
+    org = (engine_get("/rag/documents?org_id=#{current_tenant.id}")&.dig("documents") || [])
+      .map { |d| d.merge("scope" => "org") }
     render inertia: "knowledge/index", props: {
       agent: @agent.as_json(only: [:id, :name, :slug]),
-      documents: docs,
+      documents: personal + org,
     }
   end
 
   # POST /agents/:agent_id/knowledge_documents
   #
-  # Three modes:
-  # - file upload(s): multipart forward to engine /rag/ingest (one call per file)
+  # Three modes × two scopes:
+  # - file upload(s): multipart forward to engine /rag/ingest
   # - url:            POST JSON to engine /rag/ingest/url
   # - raw text:       POST JSON to engine /rag/ingest
   #
-  # No text extraction happens here. Engine owns the RAG pipeline end-to-end.
+  # `scope` param selects target: "agent" (default, personal KB) or "org"
+  # (shared across every agent in the org). Org scope ingests into
+  # agent_data/rag/org-<org_id>.db.
   def create
     files = params[:files] || (params[:file] ? [params[:file]] : [])
     url   = params[:url].presence
     text  = params[:text].presence
     title = params[:title].presence
+    scope = params[:scope] == "org" ? "org" : "agent"
 
     results = []
     errors = []
@@ -32,7 +39,7 @@ class KnowledgeDocumentsController < ApplicationController
     files.each do |f|
       next unless f.respond_to?(:tempfile)
       doc_title = title || f.original_filename
-      result = engine_upload_file(f, doc_title)
+      result = engine_upload_file(f, doc_title, scope)
       if result
         results << result
       else
@@ -40,22 +47,22 @@ class KnowledgeDocumentsController < ApplicationController
       end
     end
 
+    scope_field = scope == "org" ? { org_id: current_tenant.id } : { agent_id: @agent.id }
+
     if url
-      result = engine_post_json("/rag/ingest/url", {
-        agent_id: @agent.id,
+      result = engine_post_json("/rag/ingest/url", scope_field.merge(
         url: url,
         title: title || url,
-      })
+      ))
       result ? results << result : errors << "URL ingest failed: #{url}"
     end
 
     if text
-      result = engine_post_json("/rag/ingest", {
-        agent_id: @agent.id,
+      result = engine_post_json("/rag/ingest", scope_field.merge(
         title: title || "Pasted text",
         source_type: "text",
         content: text,
-      })
+      ))
       result ? results << result : errors << "Text ingest failed"
     end
 
@@ -65,14 +72,15 @@ class KnowledgeDocumentsController < ApplicationController
 
     indexed = results.count { |r| !r["skipped"] }
     total_chunks = results.sum { |r| r["chunk_count"].to_i }
-    msg = "Indexed #{indexed} document(s), #{total_chunks} chunks total"
+    msg = "Indexed #{indexed} #{scope == "org" ? "org-shared " : ""}document(s), #{total_chunks} chunks total"
     msg += ". Errors: #{errors.join(', ')}" if errors.any?
     redirect_to agent_knowledge_documents_path(@agent), notice: msg
   end
 
-  # DELETE /agents/:agent_id/knowledge_documents/:id
+  # DELETE /agents/:agent_id/knowledge_documents/:id[?scope=org]
   def destroy
-    engine_delete("/rag/documents/#{params[:id]}?agent_id=#{@agent.id}")
+    scope = params[:scope] == "org" ? "org_id=#{current_tenant.id}" : "agent_id=#{@agent.id}"
+    engine_delete("/rag/documents/#{params[:id]}?#{scope}")
     redirect_to agent_knowledge_documents_path(@agent), notice: "Document deleted"
   end
 
@@ -119,7 +127,8 @@ class KnowledgeDocumentsController < ApplicationController
 
   # Forward a single uploaded file to the engine as multipart/form-data.
   # Body is built as binary (ASCII-8BIT) to preserve PDF/DOCX bytes intact.
-  def engine_upload_file(file, title)
+  # scope = "agent" (default) or "org".
+  def engine_upload_file(file, title, scope = "agent")
     require "net/http"
     require "securerandom"
 
@@ -133,9 +142,11 @@ class KnowledgeDocumentsController < ApplicationController
     file_bytes = file_bytes.b # force ASCII-8BIT
 
     parts = []
+    # Scope field — engine branches on agent_id vs org_id.
+    scope_field, scope_value = scope == "org" ? ["org_id", current_tenant.id] : ["agent_id", @agent.id]
     parts << "--#{boundary}".b << crlf
-    parts << %(Content-Disposition: form-data; name="agent_id").b << crlf << crlf
-    parts << "#{@agent.id}".b << crlf
+    parts << %(Content-Disposition: form-data; name="#{scope_field}").b << crlf << crlf
+    parts << scope_value.to_s.b << crlf
 
     parts << "--#{boundary}".b << crlf
     parts << %(Content-Disposition: form-data; name="title").b << crlf << crlf

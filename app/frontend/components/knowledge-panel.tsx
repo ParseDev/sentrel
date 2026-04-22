@@ -14,6 +14,7 @@ export interface KnowledgeDocument {
   indexed_at: string | null
   created_at: string
   metadata: Record<string, unknown>
+  scope?: "agent" | "org" // tags where the doc lives in the two-KB layout
 }
 
 interface KnowledgePanelProps {
@@ -42,6 +43,7 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
 
   const [dragging, setDragging] = useState(false)
   const [mode, setMode] = useState<"file" | "url" | "text">("file")
+  const [scope, setScope] = useState<"agent" | "org">("agent")
   const [files, setFiles] = useState<File[]>([])
   const [url, setUrl] = useState("")
   const [text, setText] = useState("")
@@ -74,6 +76,7 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
     try {
       const fd = new FormData()
       if (title) fd.append("title", title)
+      fd.append("scope", scope)
       if (mode === "file") {
         for (const f of files) fd.append("files[]", f)
       } else if (mode === "url" && url) {
@@ -102,9 +105,10 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
     }
   }
 
-  async function handleDelete(docId: number) {
+  async function handleDelete(docId: number, docScope: "agent" | "org" | undefined) {
     if (!confirm("Delete this document and all its indexed chunks?")) return
-    await fetch(`/agents/${agentId}/knowledge_documents/${docId}`, {
+    const qs = docScope === "org" ? "?scope=org" : ""
+    await fetch(`/agents/${agentId}/knowledge_documents/${docId}${qs}`, {
       method: "DELETE",
       headers: { "X-CSRF-Token": csrfToken },
     })
@@ -162,6 +166,25 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="flex items-center gap-2">
+            {(["agent", "org"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setScope(s)}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ${
+                  scope === s ? "bg-foreground text-background border-foreground" : "hover:bg-muted"
+                }`}
+              >
+                {s === "agent" ? `Personal (${agentName})` : "Org-shared"}
+              </button>
+            ))}
+            <div className="text-[10px] text-muted-foreground ml-1">
+              {scope === "agent"
+                ? "Indexed only for this agent."
+                : "Shared with every agent in the org — good for company policies, product docs, standard responses."}
+            </div>
+          </div>
           <input
             type="text"
             placeholder={mode === "file" && files.length > 1 ? "Title (applied to all files, optional)" : "Title (optional)"}
@@ -294,6 +317,9 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
                         <div className="flex items-center gap-2">
                           <Icon className="size-4 text-muted-foreground" />
                           <span className="text-sm font-medium">{doc.title}</span>
+                          {doc.scope === "org" && (
+                            <Badge variant="secondary" className="text-[9px] uppercase tracking-wide">Org</Badge>
+                          )}
                         </div>
                       </td>
                       <td className="px-3 py-2 text-xs">
@@ -302,7 +328,7 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
                       <td className="px-3 py-2 text-xs text-right tabular-nums">{doc.chunk_count}</td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(doc.indexed_at)}</td>
                       <td className="px-3 py-2 text-right">
-                        <button onClick={() => handleDelete(doc.id)} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Delete">
+                        <button onClick={() => handleDelete(doc.id, doc.scope)} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Delete">
                           <Trash2 className="size-3.5" />
                         </button>
                       </td>
