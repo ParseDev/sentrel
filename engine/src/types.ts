@@ -102,16 +102,7 @@ export interface SubAgent {
   ai_config: AiConfig | null;
 }
 
-export interface ScheduledTask {
-  id: number;
-  name: string;
-  instruction: string;
-  cron_expression: string;
-  timezone: string;
-  active: boolean;
-}
-
-// Step 5 — unified scheduling: cron + once + interval in one table.
+// Unified scheduling: cron + once + interval in one table.
 export interface ScheduledWorkItem {
   id: number;
   mode: "cron" | "once" | "interval";

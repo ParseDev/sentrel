@@ -4,8 +4,6 @@ import { createWorker } from "./queue.js";
 import { runAgent } from "./agent-runner.js";
 import { syncWorkspace } from "./memory.js";
 import { provisionSkills } from "./skills.js";
-import { startHeartbeat } from "./heartbeat.js";
-import { startScheduler } from "./scheduler.js";
 import { startWorkScheduler } from "./work-scheduler.js";
 import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
@@ -60,17 +58,9 @@ async function main() {
   });
   logger.info(`Worker listening on queue: employee-${config.employeeId}`);
 
-  // 6-7. Scheduling: use unified work-scheduler (Step 5) if enabled.
-  // Old scheduler/heartbeat kept in parallel during rollout for safety.
-  const useUnifiedSchedule = process.env.UNIFIED_SCHEDULE !== "false"; // default true
-  if (useUnifiedSchedule) {
-    await startWorkScheduler();
-    logger.info("Unified work-scheduler started (UNIFIED_SCHEDULE=true)");
-  } else {
-    await startHeartbeat(agent);
-    await startScheduler();
-    logger.info("Legacy scheduler + heartbeat started (UNIFIED_SCHEDULE=false)");
-  }
+  // Unified scheduling — cron / once / interval all read from scheduled_work.
+  await startWorkScheduler();
+  logger.info("Work scheduler started");
 
   // 8. Start health reporter
   startHealthReporter();

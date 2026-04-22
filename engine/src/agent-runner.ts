@@ -353,10 +353,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       logger.info(`[SILENT] job ${jobId} — suppressing emitDone (${finalResponse.length} chars)`);
     }
 
-    // Update last_run_at for scheduled tasks (write to both tables during rollout)
+    // Update last_run_at on the scheduled_work row.
     if (job.type === "scheduled_task" && job.payload?.taskId) {
       await host.updateScheduledWorkLastRun(job.payload.taskId).catch(() => {});
-      await host.updateScheduledTaskLastRun(job.payload.taskId).catch(() => {});
     }
 
     // Scheduled tasks deliver their final text to the originating channel —

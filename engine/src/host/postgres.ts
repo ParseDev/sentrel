@@ -13,7 +13,6 @@ import type {
   Conversation,
   ConversationSummary,
   Message,
-  ScheduledTask,
   ScheduledWorkItem,
   SubAgent,
 } from "../types.js";
@@ -381,44 +380,6 @@ export class PostgresHost implements Host {
   }
 
   // ── Scheduling ──
-
-  async getScheduledTasks(agentId: number): Promise<ScheduledTask[]> {
-    const { rows } = await this.pool.query(
-      `SELECT * FROM scheduled_tasks WHERE agent_id = $1 AND active = true`,
-      [agentId],
-    );
-    return rows as ScheduledTask[];
-  }
-
-  async createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone = "UTC"): Promise<number> {
-    const { rows } = await this.pool.query(
-      `INSERT INTO scheduled_tasks (organization_id, agent_id, name, instruction, cron_expression, timezone, active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW()) RETURNING id`,
-      [orgId, agentId, name, instruction, cronExpression, timezone],
-    );
-    return rows[0].id;
-  }
-
-  async updateScheduledTask(id: number, updates: { name?: string; instruction?: string; cron_expression?: string; timezone?: string; active?: boolean }): Promise<void> {
-    const sets: string[] = ["updated_at = NOW()"];
-    const params: unknown[] = [];
-    for (const [key, val] of Object.entries(updates)) {
-      if (val !== undefined) {
-        params.push(val);
-        sets.push(`${key} = $${params.length}`);
-      }
-    }
-    params.push(id);
-    await this.pool.query(`UPDATE scheduled_tasks SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
-  }
-
-  async deleteScheduledTask(id: number): Promise<void> {
-    await this.pool.query(`DELETE FROM scheduled_tasks WHERE id = $1`, [id]);
-  }
-
-  async updateScheduledTaskLastRun(id: number): Promise<void> {
-    await this.pool.query(`UPDATE scheduled_tasks SET last_run_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
-  }
 
   // Layer 1 tool routing: extract tool names from recent audit log output.tool_calls
   async getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]> {

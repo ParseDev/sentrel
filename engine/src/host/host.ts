@@ -9,7 +9,7 @@
 // directly, or know about Rails table names. The engine talks to `host.foo()`,
 // the Host implementation owns the schema.
 
-import type { Agent, Conversation, ConversationSummary, Message, ScheduledTask, ScheduledWorkItem, SubAgent } from "../types.js";
+import type { Agent, Conversation, ConversationSummary, Message, ScheduledWorkItem, SubAgent } from "../types.js";
 
 export interface ChannelConfig {
   channel_type: string;
@@ -186,14 +186,7 @@ export interface Host {
   // Layer 1 tool routing: recent Composio tool names from audit logs
   getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]>;
 
-  // ── Scheduling (legacy — scheduled_tasks) ──
-  getScheduledTasks(agentId: number): Promise<ScheduledTask[]>;
-  createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone?: string): Promise<number>;
-  updateScheduledTask(id: number, updates: { name?: string; instruction?: string; cron_expression?: string; timezone?: string; active?: boolean }): Promise<void>;
-  deleteScheduledTask(id: number): Promise<void>;
-  updateScheduledTaskLastRun(id: number): Promise<void>;
-
-  // ── Scheduling (Step 5 — scheduled_work, unified) ──
+  // ── Scheduling (unified — scheduled_work) ──
   getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]>;
   createScheduledWork(orgId: number, agentId: number, item: Omit<ScheduledWorkItem, "id" | "last_run_at" | "next_run_at">): Promise<number>;
   updateScheduledWork(id: number, updates: Partial<Pick<ScheduledWorkItem, "name" | "instruction" | "cron_expression" | "timezone" | "fire_at" | "interval_seconds" | "active">>): Promise<void>;
