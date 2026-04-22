@@ -244,7 +244,10 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // System prompt advertises all connected toolkits (not just the routed subset)
   // so the agent knows what's available if it wants to call search_integrations.
   const allConnectedToolkits = await getActiveToolkits(agent.organization_id);
-  options.systemPrompt = buildSystemPrompt(agent, skills, allConnectedToolkits);
+  const teammates = (await host.getTeammates(agent.organization_id, agent.id)).map((t) => ({
+    name: t.name, slug: t.slug, role: t.role, managerId: t.manager_id,
+  }));
+  options.systemPrompt = buildSystemPrompt(agent, skills, allConnectedToolkits, teammates);
   if (resumeSessionId) {
     options.resume = resumeSessionId;
   }
@@ -451,7 +454,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
             orgId: agent.organization_id,
             payload: {
               taskId: task.id,
-              instruction: `Task completed by ${agent.name} (${agent.role}): "${task.title}"\n\nResult:\n${summary}\n\n(This is a report-back on a task you delegated. Decide if follow-up action is needed, then call comment_on_task to close the loop.)`,
+              instruction: `Task completed by ${agent.name} (${agent.role}): "${task.title}"\n\nResult:\n${summary}\n\nThis is a report-back on work you delegated. Two things to decide:\n1. Does anything else need to happen on your end? If yes, do it (or delegate it further).\n2. Did the original requester (the user on Telegram/WhatsApp/email, or your own manager) ask about this? If yes, **message them on the same channel they used** with a concise status update. Don't leave them hanging.`,
               skipAutoComplete: true,
             },
           });

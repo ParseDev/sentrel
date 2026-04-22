@@ -196,6 +196,7 @@ export interface Host {
   // ── Tasks ──
   createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number }): Promise<number>;
   findAgentBySlugOrRole(orgId: number, slug?: string | null, role?: string | null): Promise<{ id: number; name: string; slug: string; role: string } | null>;
+  getTeammates(orgId: number, excludeAgentId: number): Promise<Array<{ id: number; name: string; slug: string; role: string; manager_id: number | null; summary: string | null; skills: string[] }>>;
   publishInboundToAgent(targetAgentId: number, payload: {
     type: "task_assignment";
     jobId: string;

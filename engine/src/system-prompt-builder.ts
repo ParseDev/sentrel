@@ -5,7 +5,12 @@ import { resolveCapabilities } from "./capabilities.js";
 // Builds the agent's full system prompt. Passed to the Claude Agent SDK as
 // `options.systemPrompt` (string form), which fully replaces the default
 // Claude Code preset. The agent should never know it's running on Claude.
-export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connectedToolkits: string[] = []): string {
+export function buildSystemPrompt(
+  agent: Agent,
+  skills?: AgentSkill[],
+  connectedToolkits: string[] = [],
+  teammates: Array<{ name: string; slug: string; role: string; managerId?: number | null; summary?: string | null; skills?: string[] }> = [],
+): string {
   const orgName = agent.organization?.name || "the company";
   const orgContext = agent.organization?.context_md?.trim();
   const caps = resolveCapabilities(agent);
@@ -13,6 +18,36 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connected
   const parts: string[] = [];
 
   parts.push(`You are ${agent.name}, ${agent.role} at ${orgName}.`);
+
+  // Team roster — who else works here and what they do. Enables cross-agent
+  // delegation via `create_task({ assign_to_slug | assign_to_role, ... })`.
+  // Each entry includes a one-line "what they do" summary (first paragraph
+  // of their identity_md) and their top installed skills, so the agent can
+  // pick the right teammate without guessing.
+  if (caps.tasks.enabled && teammates.length > 0) {
+    const reports = teammates.filter((t) => t.managerId === agent.id);
+    const peers = teammates.filter((t) => t.managerId !== agent.id);
+    const renderMate = (t: { name: string; slug: string; role: string; summary?: string | null; skills?: string[] }) => {
+      const skillChips = t.skills && t.skills.length > 0 ? ` — skills: ${t.skills.slice(0, 5).join(", ")}` : "";
+      const summary = t.summary ? `\n  ${t.summary}` : "";
+      return `- **${t.name}** (${t.role}) — slug: \`${t.slug}\`${skillChips}${summary}`;
+    };
+    const lines: string[] = [];
+    if (reports.length > 0) {
+      lines.push(`**Your direct reports** (you can delegate to them):`);
+      for (const r of reports) lines.push(renderMate(r));
+    }
+    if (peers.length > 0) {
+      lines.push(`${reports.length > 0 ? "\n" : ""}**Other teammates in ${orgName}**:`);
+      for (const p of peers) lines.push(renderMate(p));
+    }
+    parts.push(
+      `# Your team\n` +
+      lines.join("\n") + `\n\n` +
+      `Delegate work with \`create_task({ assign_to_slug: "...", title, description, instruction })\` when the request fits someone else's role better. They'll start immediately.\n\n` +
+      `When someone you delegated to finishes, you'll receive a report-back in your inbox describing what they did. Read the result, judge if any follow-up is needed, and — importantly — **loop back to whoever originally asked you** (the user on Telegram/WhatsApp/email, or your own manager) on the channel they used. Don't leave them hanging.`
+    );
+  }
 
   // Knowledge base — when enabled, RAG retrieval runs on every user turn
   // and relevant passages are injected into the user message directly

@@ -29,6 +29,19 @@ import type {
   SearchMessagesFilters,
 } from "./host.js";
 
+// First meaningful line of an identity_md — skips blank lines + markdown
+// headings. Trimmed to 180 chars so the team roster injected into the
+// system prompt stays compact.
+function summarizeIdentity(md: string | null | undefined): string | null {
+  if (!md) return null;
+  for (const raw of md.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    return line.length > 180 ? line.slice(0, 177) + "..." : line;
+  }
+  return null;
+}
+
 export class PostgresHost implements Host {
   private pool: pg.Pool;
 
@@ -471,6 +484,42 @@ export class PostgresHost implements Host {
       ],
     );
     return rows[0].id;
+  }
+
+  // Pull the first meaningful paragraph from an identity_md (skips blank lines
+  // and markdown headings). Used in teammate roster to answer "what does X do?".
+  // Trimmed to 180 chars so the injected roster stays tight.
+  // Free function rather than class method — no state.
+
+  // Team roster — every other agent in the same org, with manager_id so the
+  // caller can split direct-reports from peers. Also returns a short summary
+  // (first meaningful paragraph of identity_md) and installed skill slugs so
+  // the caller knows "what each teammate is capable of" when deciding who to
+  // delegate to via create_task.
+  async getTeammates(orgId: number, excludeAgentId: number): Promise<Array<{ id: number; name: string; slug: string; role: string; manager_id: number | null; summary: string | null; skills: string[] }>> {
+    const { rows } = await this.pool.query(
+      `SELECT a.id, a.name, a.slug, a.role, a.manager_id, a.identity_md,
+              COALESCE(
+                (SELECT json_agg(sd.slug ORDER BY sd.slug)
+                 FROM agent_skills ags
+                 JOIN skill_definitions sd ON sd.id = ags.skill_definition_id
+                 WHERE ags.agent_id = a.id AND ags.enabled = true),
+                '[]'::json
+              ) AS skill_slugs
+       FROM agents a
+       WHERE a.organization_id = $1 AND a.id <> $2
+       ORDER BY a.name`,
+      [orgId, excludeAgentId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      role: r.role,
+      manager_id: r.manager_id,
+      summary: summarizeIdentity(r.identity_md),
+      skills: r.skill_slugs || [],
+    }));
   }
 
   // Cross-agent targeting: resolve a slug or role to an agent in the same org.
