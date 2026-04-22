@@ -105,14 +105,43 @@ class AgentsController < ApplicationController
   end
 
   def new
-    render inertia: "agents/new"
+    render inertia: "agents/new", props: {
+      templates: AgentTemplate.order(:name).map { |t| template_summary(t) },
+      agents: current_tenant.agents.select(:id, :name, :slug, :role).order(:name).map { |a|
+        { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
+      },
+    }
   end
 
   def create
+    template = params[:template_slug].present? ? AgentTemplate.find_by(slug: params[:template_slug]) : nil
+
     @agent = current_tenant.agents.build(agent_params)
+
+    if template
+      rendered = template.render(
+        agent_name: @agent.name,
+        company_name: current_tenant.name,
+        user_name: current_user.name,
+        role: @agent.role.presence || template.role,
+      )
+      @agent.identity_md     ||= rendered[:identity_md]
+      @agent.personality_md  ||= rendered[:personality_md]
+      @agent.instructions_md ||= rendered[:instructions_md]
+      @agent.role = template.role if @agent.role.blank?
+      @agent.capabilities = template.capabilities.deep_merge(@agent.capabilities || {})
+    end
 
     if @agent.save
       @agent.create_ai_config!(ai_config_params)
+
+      # Install the template's suggested skills (if any).
+      if template && template.suggested_skill_slugs.any?
+        defs = SkillDefinition.where(slug: template.suggested_skill_slugs)
+        defs.each { |d| @agent.agent_skills.find_or_create_by!(skill_definition: d).update!(enabled: true) }
+      end
+
+      EngineSync.trigger(@agent)
       redirect_to agent_path(@agent), notice: "Agent created"
     else
       redirect_back fallback_location: new_agent_path, alert: @agent.errors.full_messages.join(", ")
@@ -121,7 +150,10 @@ class AgentsController < ApplicationController
 
   def edit
     render inertia: "agents/edit", props: {
-      agent: agent_json(@agent)
+      agent: agent_json(@agent),
+      agents: current_tenant.agents.where.not(id: @agent.id).select(:id, :name, :slug, :role).order(:name).map { |a|
+        { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
+      },
     }
   end
 
@@ -172,13 +204,42 @@ class AgentsController < ApplicationController
   }.freeze
 
   def agent_params
-    params.require(:agent).permit(
+    permitted = params.require(:agent).permit(
       :name, :slug, :role, :status, :manager_id,
       :identity_md, :personality_md, :instructions_md, :email_signature_md, :memory_md,
       :heartbeat_enabled, :heartbeat_interval_minutes, :approval_mode,
       permissions: {},
       capabilities: CAPABILITY_KEYS
     )
+    # Frontend posts manager_id as a prefix_id string (e.g. "agt_..."); decode
+    # to the numeric FK. "none" / blank clears the manager.
+    if permitted.key?(:manager_id)
+      raw = permitted[:manager_id]
+      permitted[:manager_id] =
+        if raw.blank? || raw == "none"
+          nil
+        elsif raw.is_a?(String) && raw.start_with?("agt_")
+          Agent._prefix_id.decode(raw)
+        else
+          raw
+        end
+    end
+    permitted
+  end
+
+  # Lightweight template summary for the new-agent picker UI.
+  def template_summary(t)
+    {
+      slug: t.slug,
+      name: t.name,
+      role: t.role,
+      description: t.description,
+      icon: t.icon,
+      capabilities: t.capabilities,
+      suggested_skill_slugs: t.suggested_skill_slugs,
+      suggested_manager_role: t.suggested_manager_role,
+      variables: t.variables,
+    }
   end
 
   def ai_config_params

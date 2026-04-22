@@ -11,14 +11,28 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { agentPath, agentsPath, dashboardPath } from "@/routes"
 import type { Agent } from "@/types"
 
-export default function AgentEdit({ agent }: { agent: Agent }) {
+interface AgentSummary {
+  id: string
+  name: string
+  slug: string
+  role: string
+}
+
+interface Props {
+  agent: Agent
+  agents: AgentSummary[]
+}
+
+export default function AgentEdit({ agent, agents = [] }: Props) {
+  const currentManagerId = (agent as any).manager?.id
+    ? (typeof (agent as any).manager.id === "string" ? (agent as any).manager.id : String((agent as any).manager.id))
+    : "none"
+
   const { data, setData, patch, processing } = useForm({
     name: agent.name,
     slug: agent.slug,
     role: agent.role,
-    identity_md: agent.identity_md || "",
-    personality_md: agent.personality_md || "",
-    instructions_md: agent.instructions_md || "",
+    manager_id: currentManagerId as string,
     email_signature_md: (agent as any).email_signature_md || "",
     heartbeat_enabled: agent.heartbeat_enabled,
     heartbeat_interval_minutes: agent.heartbeat_interval_minutes,
@@ -87,41 +101,29 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>
               <Input id="role" value={data.role} onChange={(e) => setData("role", e.target.value)} required />
-            </div>
-          </div>
-        </section>
-
-        {/* Instructions */}
-        <section>
-          <Overline className="mb-3">Instructions</Overline>
-          <div className="rounded-lg border border-border p-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="identity_md">Identity</Label>
-              <textarea
-                id="identity_md"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
-                value={data.identity_md}
-                onChange={(e) => setData("identity_md", e.target.value)}
-              />
+              <p className="text-[10px] text-muted-foreground">
+                Free-text. Used by other agents to target this one via <code className="font-mono text-[10px] px-1 py-0.5 rounded bg-muted">assign_to_role</code>.
+              </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="personality_md">Personality</Label>
-              <textarea
-                id="personality_md"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
-                value={data.personality_md}
-                onChange={(e) => setData("personality_md", e.target.value)}
-              />
+              <Label htmlFor="manager">Reports to</Label>
+              <Select value={data.manager_id} onValueChange={(v) => setData("manager_id", v)}>
+                <SelectTrigger id="manager">
+                  <SelectValue placeholder="No manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No manager (top level)</SelectItem>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} <span className="text-muted-foreground">— {a.role}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="instructions_md">Instructions</Label>
-              <textarea
-                id="instructions_md"
-                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
-                value={data.instructions_md}
-                onChange={(e) => setData("instructions_md", e.target.value)}
-              />
-            </div>
+            <p className="text-[10px] text-muted-foreground pt-1">
+              Identity, personality, and instructions live on the <Link href={agentPath(agent.id) + "?tab=identity"} className="underline hover:text-foreground">Identity tab</Link> (SOUL.md / PERSONALITY.md / INSTRUCTIONS.md).
+            </p>
           </div>
         </section>
 

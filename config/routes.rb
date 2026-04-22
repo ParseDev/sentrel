@@ -60,6 +60,7 @@ Rails.application.routes.draw do
     resources :agents, only: [] do
       resources :knowledge_documents, only: [:index, :create, :destroy]
     end
+    resources :agent_templates, only: [:index, :show]
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do

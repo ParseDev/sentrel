@@ -110,6 +110,18 @@ export interface ScheduledTask {
   recent_runs?: ScheduledTaskRun[]
 }
 
+export interface AgentTemplate {
+  slug: string
+  name: string
+  role: string
+  description: string | null
+  icon: string | null
+  capabilities: Record<string, { enabled?: boolean; [k: string]: unknown }>
+  suggested_skill_slugs: string[]
+  suggested_manager_role: string | null
+  variables: string[]
+}
+
 export interface NavItem {
   title: string
   href: string

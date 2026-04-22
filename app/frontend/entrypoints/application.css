@@ -323,14 +323,17 @@
   }
 
   /* Outline */
-  button[data-slot="button"][data-variant="outline"] {
+  button[data-slot="button"][data-variant="outline"],
+  a[data-slot="button"][data-variant="outline"] {
     background: var(--card);
-    color: var(--foreground);
+    color: var(--foreground) !important;
     border-color: var(--border-strong);
   }
-  button[data-slot="button"][data-variant="outline"]:hover {
+  button[data-slot="button"][data-variant="outline"]:hover,
+  a[data-slot="button"][data-variant="outline"]:hover {
     border-color: var(--color-indigo);
     background: var(--indigo-surface);
+    color: var(--foreground) !important;
   }
 
   /* Ghost */

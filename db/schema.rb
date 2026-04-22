@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_22_182029) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_22_212307) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -73,6 +73,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_22_182029) do
     t.index ["agent_id", "date"], name: "index_agent_summaries_on_agent_id_and_date", unique: true
     t.index ["agent_id"], name: "index_agent_summaries_on_agent_id"
     t.index ["organization_id"], name: "index_agent_summaries_on_organization_id"
+  end
+
+  create_table "agent_templates", force: :cascade do |t|
+    t.jsonb "capabilities", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "icon"
+    t.text "identity_md"
+    t.text "instructions_md"
+    t.string "name", null: false
+    t.text "personality_md"
+    t.string "role", null: false
+    t.string "slug", null: false
+    t.string "suggested_manager_role"
+    t.jsonb "suggested_skill_slugs", default: [], null: false
+    t.boolean "system_template", default: true, null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "variables", default: [], null: false
+    t.index ["role"], name: "index_agent_templates_on_role"
+    t.index ["slug"], name: "index_agent_templates_on_slug", unique: true
   end
 
   create_table "agents", force: :cascade do |t|
