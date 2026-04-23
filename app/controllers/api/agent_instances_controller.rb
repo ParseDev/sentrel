@@ -13,8 +13,14 @@ class Api::AgentInstancesController < ApplicationController
   def ready
     agent = Agent.find_by(id: params[:employee_id])
     return head :not_found unless agent
-    instance = agent.instance
-    return head :not_found unless instance
+
+    # Auto-create an Instance on first-report so local dev + re-provisioned
+    # agents don't need a pre-existing row. Production FlyBackend normally
+    # creates the row before the engine boots, but tolerate either order.
+    instance = agent.instance || agent.build_instance(
+      provider: Rails.env.development? ? "local" : "fly",
+      machine_id: "unknown",
+    )
 
     instance.update!(
       status: "running",
