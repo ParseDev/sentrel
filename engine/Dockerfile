@@ -26,10 +26,16 @@ WORKDIR /srv/engine
 # Copy lock + manifest first for layer caching on dep-only changes.
 # NOT --frozen-lockfile: the lockfile is generated on the developer's Mac
 # and skips Linux-only platform optional deps (see Bun issue #26156).
-# The running container already defines its CPU/OS target; each variant
-# (amd64, arm64) pulls its matching claude-agent-sdk platform binary.
+#
+# Bun installs BOTH the glibc and musl variants of claude-agent-sdk's
+# native binary (both declare os: linux). The SDK's resolver tries musl
+# first — on Debian/glibc that spawn fails with ENOENT. Deleting the
+# musl copies forces the resolver to fall through to the glibc variant.
 COPY package.json bun.lock ./
-RUN bun install
+RUN bun install \
+  && rm -rf \
+       node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl \
+       node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64-musl
 
 # --- Stage 2: runtime image ---------------------------------------------------
 FROM oven/bun:1.1.38-slim AS runtime
@@ -51,11 +57,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash engine
 WORKDIR /srv/engine
 
-# node_modules from the builder stage
-COPY --from=deps /srv/engine/node_modules ./node_modules
+# node_modules from the builder stage — chown so the engine user can write
+# caches under node_modules (e.g. onnxruntime-node's model dir).
+COPY --from=deps --chown=engine:engine /srv/engine/node_modules ./node_modules
 
 # Engine source (see .dockerignore for exclusions)
 COPY --chown=engine:engine . .
+
+# Ensure the engine user has a writable XDG cache dir for libraries that
+# download models at runtime (e.g. @huggingface/transformers).
+RUN mkdir -p /home/engine/.cache && chown -R engine:engine /home/engine
 
 # /data is the single persistent mount. Everything else is ephemeral.
 # Layout inside /data matches config.dataDir = "/data":
