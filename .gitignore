@@ -34,6 +34,11 @@
 # Ignore key files for decrypting credentials and more.
 /config/*.key
 
+# Kamal secrets — contains raw prod credentials, NEVER commit.
+/.kamal/secrets
+/.kamal/secrets.*
+!/.kamal/secrets.example
+
 
 # Vite Ruby
 /public/vite*

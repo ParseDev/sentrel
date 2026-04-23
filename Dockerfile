@@ -30,10 +30,15 @@ ENV RAILS_ENV="production" \
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
-# Install packages needed to build gems
+# Install packages needed to build gems + frontend assets (Node via Bun)
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libpq-dev libvips libyaml-dev pkg-config && \
+    apt-get install --no-install-recommends -y build-essential git libpq-dev libvips libyaml-dev pkg-config unzip ca-certificates && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# Install Bun (package manager + runtime for vite build)
+ENV BUN_INSTALL=/usr/local/bun
+ENV PATH=$BUN_INSTALL/bin:$PATH
+RUN curl -fsSL https://bun.sh/install | bash
 
 # Install application gems
 COPY vendor/* ./vendor/
@@ -44,12 +49,19 @@ RUN bundle install && \
     # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
     bundle exec bootsnap precompile -j 1 --gemfile
 
+# Install JS dependencies
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
 # Copy application code
 COPY . .
 
 # Precompile bootsnap code for faster boot times.
 # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
 RUN bundle exec bootsnap precompile -j 1 app/ lib/
+
+# Precompile assets (runs vite:build via vite_rails — needs a dummy master key)
+RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
 
 
