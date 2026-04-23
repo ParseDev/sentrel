@@ -15,40 +15,36 @@
 # Size budget: ~600-800 MB. Bun + node_modules + a few OS utilities.
 
 # --- Stage 1: install deps ----------------------------------------------------
-# Alpine (musl) base so the claude-agent-sdk platform binary
-# (@anthropic-ai/claude-agent-sdk-linux-x64-musl) matches the runtime. On
-# Debian/glibc the SDK errors with ENOENT when spawning its native `claude`.
-FROM oven/bun:1.1.38-alpine AS deps
+# Debian (glibc) base — onnxruntime-node + tesseract + several other native
+# deps ship glibc-linked binaries. We avoid the claude-agent-sdk's ENOENT by
+# overriding pathToClaudeCodeExecutable to the bundled JS CLI at runtime,
+# so we never need the SDK's native platform binary at all.
+FROM oven/bun:1.1.38-slim AS deps
 
 WORKDIR /srv/engine
 
-# Copy lock + manifest first for layer caching on dep-only changes.
-# --force so missing platform-specific optional deps get pulled fresh.
+# Copy lock + manifest first for layer caching on dep-only changes
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # --- Stage 2: runtime image ---------------------------------------------------
-FROM oven/bun:1.1.38-alpine AS runtime
+FROM oven/bun:1.1.38-slim AS runtime
 
 # System packages needed at runtime:
 #   - poppler / tesseract — PDF extraction fallbacks (rag/extractor.ts)
 #   - ffmpeg              — media conversion for voice notes
 #   - ca-certificates + curl — TLS + healthcheck
 #   - tini                — PID 1 zombie reaper
-#   - bash                — scripts / ssh shells (Alpine has ash by default)
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
       poppler-utils tesseract-ocr \
       ffmpeg \
       ca-certificates curl \
       tini \
-      bash \
-      gcompat libstdc++
+    && rm -rf /var/lib/apt/lists/*
 
 # Non-root user. Everything persistent lives in /data, which the provisioner
 # mounts as a volume. Agent state survives restarts because /data does.
-# (The oven/bun base image already has a 'bun' user at uid 1000, so we let
-#  adduser pick the next free uid instead of forcing a specific one.)
-RUN adduser -D -s /bin/bash engine
+RUN useradd --create-home --shell /bin/bash engine
 WORKDIR /srv/engine
 
 # node_modules from the builder stage

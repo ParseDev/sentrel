@@ -794,6 +794,11 @@ async function buildQueryOptions(
 
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
+    // Skip the SDK's native platform binary (which doesn't ship for every
+    // libc × arch combo). Use the bundled JS CLI via the current runtime
+    // (bun on Fly) instead — portable across glibc + musl alike.
+    executable: (process.versions.bun ? "bun" : "node") as "bun" | "node",
+    pathToClaudeCodeExecutable: require.resolve("@anthropic-ai/claude-agent-sdk/cli.js"),
     // SDK isolation — don't load the user's ~/.claude/settings.json (which
     // brings in personal MCP servers like Linear/Sentry/Gmail and pollutes
     // the agent's tool list with 60+ unrelated tools).
