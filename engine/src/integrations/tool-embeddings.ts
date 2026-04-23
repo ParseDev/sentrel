@@ -8,8 +8,15 @@
 // This is the LangGraph BigTool / VoltAgent pattern: the LLM decides WHEN
 // to search, and formulates the query itself based on conversation context.
 
-import { pipeline, type FeatureExtractionPipeline } from "@huggingface/transformers";
+import { env, pipeline, type FeatureExtractionPipeline } from "@huggingface/transformers";
 import { logger } from "../logger.js";
+import { config } from "../config.js";
+
+// @huggingface/transformers (JS) uses its own env.cacheDir, NOT the Python
+// HF_HOME env var. Point it at the persistent /data volume so the model
+// (~25 MB) downloads once per agent and survives Machine restarts.
+env.cacheDir = `${config.dataDir}/hf-cache`;
+env.allowLocalModels = true;
 
 // Toolkit descriptions — one entry per integration we support.
 // These are what get embedded. Keep descriptions action-oriented so they
