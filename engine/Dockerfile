@@ -75,8 +75,16 @@ RUN mkdir -p /home/engine/.cache && chown -R engine:engine /home/engine
 #   /data/workspace/        — agent's working files (outbox, screenshots, notes)
 #   /data/rag/              — per-agent + per-org SQLite vector stores
 #   /data/camofox/          — Camofox profile + cookies (shared with sibling)
+#   /data/hf-cache/         — @huggingface/transformers model cache
 ENV DATA_DIR=/data
-RUN mkdir -p /data/memories /data/skills /data/workspace /data/rag /data/camofox \
+# Point transformer libraries at the persistent volume so the ~25 MB
+# MiniLM-L6-v2 model downloads once per agent and survives restarts.
+# Without this, onnxruntime + transformers default to node_modules/.cache
+# which isn't writable after Fly mounts /data over a fresh volume.
+ENV HF_HOME=/data/hf-cache
+ENV TRANSFORMERS_CACHE=/data/hf-cache
+ENV XDG_CACHE_HOME=/data/hf-cache
+RUN mkdir -p /data/memories /data/skills /data/workspace /data/rag /data/camofox /data/hf-cache \
     && chown -R engine:engine /data
 VOLUME ["/data"]
 
