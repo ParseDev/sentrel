@@ -39,10 +39,7 @@ export function ensureWorkspace(): void {
     path.join(dataDir, "workspace", "documents"),
     path.join(dataDir, "sessions"),
     path.join(dataDir, "rag"),
-    // @huggingface/transformers cache — HF_HOME/TRANSFORMERS_CACHE point
-    // here. The Dockerfile mkdir gets shadowed when Fly mounts an empty
-    // volume over /data on first boot, so re-create at runtime.
-    path.join(dataDir, "hf-cache"),
+    // (hf-cache moved to image-baked /opt/hf-cache — not here anymore)
     // Claude Agent SDK session transcripts — resume uses
     // ~/.claude/projects/<dir>/<sessionId>.jsonl. Stored on /data so the
     // jsonl survives Machine restarts; see ensureClaudeHome below.

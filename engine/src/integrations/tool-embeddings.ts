@@ -12,11 +12,15 @@ import { env, pipeline, type FeatureExtractionPipeline } from "@huggingface/tran
 import { logger } from "../logger.js";
 import { config } from "../config.js";
 
-// @huggingface/transformers (JS) uses its own env.cacheDir, NOT the Python
-// HF_HOME env var. Point it at the persistent /data volume so the model
-// (~25 MB) downloads once per agent and survives Machine restarts.
-env.cacheDir = `${config.dataDir}/hf-cache`;
+// Point the JS transformers library at the image-baked model cache. The
+// Dockerfile pre-downloads Xenova/all-MiniLM-L6-v2 into /opt/hf-cache so
+// first boot is instant and doesn't hit the Bun streaming-fs hang we saw
+// on Fly (transformers.js leaves half-written config.json.tmp.* files and
+// never recovers). /opt is in the image, not on /data, so Fly's volume
+// mount doesn't shadow it.
+env.cacheDir = "/opt/hf-cache";
 env.allowLocalModels = true;
+env.allowRemoteModels = false; // image is authoritative; never hit the network
 
 // Toolkit descriptions — one entry per integration we support.
 // These are what get embedded. Keep descriptions action-oriented so they

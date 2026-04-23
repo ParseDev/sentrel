@@ -68,6 +68,20 @@ COPY --chown=engine:engine . .
 # download models at runtime (e.g. @huggingface/transformers).
 RUN mkdir -p /home/engine/.cache && chown -R engine:engine /home/engine
 
+# Pre-bake Xenova/all-MiniLM-L6-v2 (~25MB) into /opt/hf-cache so runtime
+# doesn't hit the Bun + transformers.js streaming-fs hang we saw on Fly
+# (config.json.tmp.* files left mid-write, embeddings never initialize).
+# env.cacheDir in tool-embeddings.ts points here; filesystem is baked,
+# not on the /data volume, so Fly's volume mount can't shadow it.
+RUN mkdir -p /opt/hf-cache/Xenova/all-MiniLM-L6-v2/onnx && \
+    cd /opt/hf-cache/Xenova/all-MiniLM-L6-v2 && \
+    curl -fsSL -o config.json           https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/config.json && \
+    curl -fsSL -o tokenizer.json        https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer.json && \
+    curl -fsSL -o tokenizer_config.json https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json && \
+    curl -fsSL -o special_tokens_map.json https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/special_tokens_map.json && \
+    curl -fsSL -o onnx/model.onnx       https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx && \
+    chown -R engine:engine /opt/hf-cache
+
 # /data is the single persistent mount. Everything else is ephemeral.
 # Layout inside /data matches config.dataDir = "/data":
 #   /data/memories/         — memory.md
