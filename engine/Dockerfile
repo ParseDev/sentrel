@@ -23,9 +23,13 @@ FROM oven/bun:1.1.38-slim AS deps
 
 WORKDIR /srv/engine
 
-# Copy lock + manifest first for layer caching on dep-only changes
+# Copy lock + manifest first for layer caching on dep-only changes.
+# NOT --frozen-lockfile: the lockfile is generated on the developer's Mac,
+# which skips Linux-only platform packages (e.g. claude-agent-sdk-linux-x64).
+# Letting `bun install` resolve fresh on the Linux build host pulls the
+# correct platform-specific native binaries.
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # --- Stage 2: runtime image ---------------------------------------------------
 FROM oven/bun:1.1.38-slim AS runtime
