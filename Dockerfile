@@ -35,9 +35,12 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libpq-dev libvips libyaml-dev pkg-config unzip ca-certificates && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Install Node.js (vite_ruby shells out to `npx vite build`)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+# Install Node.js 24 + upgrade npm to 11 so rolldown's optional platform
+# bindings install correctly (npm <11 has a bug where native deps are lost
+# on subsequent installs: https://github.com/npm/cli/issues/4828).
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
+    npm install -g npm@latest && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Install application gems
@@ -49,10 +52,10 @@ RUN bundle install && \
     # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
     bundle exec bootsnap precompile -j 1 --gemfile
 
-# Install JS dependencies via npm so vite_ruby's `npx vite build` uses the
-# same node_modules layout (mixing bun + npm breaks rolldown platform bindings).
+# Install JS dependencies. `--include=optional` is explicit even though it's
+# the default — rolldown ships native bindings as optional per-platform deps.
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --include=optional
 
 # Copy application code
 COPY . .
