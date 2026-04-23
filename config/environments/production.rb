@@ -84,12 +84,12 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  #
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # Allow the production domain and any subdomains.
+  config.hosts << "alchemy.scribemd.ai"
+  config.hosts << /.*\.scribemd\.ai/
+
+  # Kamal-proxy health checks hit `/up` using the container's internal
+  # hostname (e.g. `d721da4f4556:80`), which HostAuthorization would
+  # otherwise 403. Exempt `/up` from the check so deploys can succeed.
+  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end
