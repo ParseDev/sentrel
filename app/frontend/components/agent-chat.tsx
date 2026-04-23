@@ -228,21 +228,53 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 
       const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 
-      // GATEWAY_URL is empty in production — skip the streaming dance and
-      // just post the message; Rails persists the reply, user refreshes to
-      // see it. Real-time streaming over ActionCable is a follow-up.
+      // In production the engine WebSocket isn't reachable from the browser
+      // (Fly 6pn private network). Instead, subscribe to AgentChatChannel
+      // over Rails' ActionCable — the engine posts to Rails, Message
+      // after_create_commit broadcasts, we render the assistant reply.
       if (!GATEWAY_URL) {
-        await fetch("/webhooks/web", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-          body: JSON.stringify({
-            agent_id: agentId,
-            body: userText,
-            attachment_signed_ids: attachmentSignedIds,
-          }),
-          signal: abortSignal,
+        const { createConsumer } = await import("@rails/actioncable")
+        const consumer = createConsumer()
+        const assistantText = await new Promise<string>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            sub.unsubscribe()
+            consumer.disconnect()
+            reject(new Error("Timed out waiting for reply"))
+          }, 300_000) // 5 min cap
+
+          const sub = consumer.subscriptions.create(
+            { channel: "AgentChatChannel", agent_id: agentId },
+            {
+              connected() {
+                fetch("/webhooks/web", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+                  body: JSON.stringify({
+                    agent_id: agentId,
+                    body: userText,
+                    attachment_signed_ids: attachmentSignedIds,
+                  }),
+                  signal: abortSignal,
+                }).catch((err) => {
+                  clearTimeout(timeout)
+                  sub.unsubscribe()
+                  consumer.disconnect()
+                  reject(err)
+                })
+              },
+              received(data: { type: string; role: string; content: string }) {
+                if (data.type === "message" && data.role === "assistant" && data.content) {
+                  clearTimeout(timeout)
+                  sub.unsubscribe()
+                  consumer.disconnect()
+                  resolve(data.content)
+                }
+              },
+            },
+          )
         })
-        yield { content: [{ type: "text" as const, text: "Message sent. Refresh to see Casper's reply." }] }
+
+        yield { content: [{ type: "text" as const, text: assistantText }] }
         return
       }
 
