@@ -12,7 +12,15 @@ import {
 import { DirectUpload } from "@rails/activestorage"
 import { Thread, CmdApprovalProvider } from "@/components/assistant-ui/thread"
 
-const GATEWAY_URL = "ws://localhost:3300"
+// The engine gateway lives on Fly's private 6pn network in production, so
+// the browser can't reach it directly. Only connect when we're on localhost
+// (dev) and the engine is published on 3300. In production the response
+// arrives via Inertia re-render after the Sidekiq→engine→Rails round-trip.
+const GATEWAY_URL = (() => {
+  if (typeof window === "undefined") return ""
+  const isLocalDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  return isLocalDev ? "ws://localhost:3300" : ""
+})()
 const DIRECT_UPLOAD_URL = "/rails/active_storage/direct_uploads"
 
 // Stash signed_ids returned from direct upload, keyed by the original File
@@ -220,6 +228,24 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 
       const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 
+      // GATEWAY_URL is empty in production — skip the streaming dance and
+      // just post the message; Rails persists the reply, user refreshes to
+      // see it. Real-time streaming over ActionCable is a follow-up.
+      if (!GATEWAY_URL) {
+        await fetch("/webhooks/web", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+          body: JSON.stringify({
+            agent_id: agentId,
+            body: userText,
+            attachment_signed_ids: attachmentSignedIds,
+          }),
+          signal: abortSignal,
+        })
+        yield { content: [{ type: "text" as const, text: "Message sent. Refresh to see Casper's reply." }] }
+        return
+      }
+
       const ws = new WebSocket(GATEWAY_URL)
       let responseText = ""
       let approvalData: PendingEmail | null = null
@@ -332,6 +358,7 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
 
     function connect() {
       if (!mounted) return
+      if (!GATEWAY_URL) return // Production: no direct engine WS; rely on Inertia.
       ws = new WebSocket(GATEWAY_URL)
       ws.onmessage = (event) => {
         try {
