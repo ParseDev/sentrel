@@ -16,7 +16,7 @@ class Api::AgentEventsController < ActionController::API
     event = params[:event]&.to_unsafe_h
     return head :bad_request unless event.is_a?(Hash) && event[:type].present?
 
-    AgentChatChannel.broadcast_to(agent, event)
+    AgentChatChannel.broadcast_event(agent, event)
     head :ok
   end
 
