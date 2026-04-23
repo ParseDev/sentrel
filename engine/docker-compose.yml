@@ -11,7 +11,7 @@
 
 services:
   engine:
-    image: ghcr.io/qubitam/alchemy-engine:latest
+    image: ghcr.io/parsedev/alchemy-engine:latest
     build: .
     restart: unless-stopped
     depends_on:
@@ -64,7 +64,7 @@ services:
   # Uncomment when we ship noVNC in the UI.
   #
   # display-stack:
-  #   image: ghcr.io/qubitam/alchemy-display:latest
+  #   image: ghcr.io/parsedev/alchemy-display:latest
   #   restart: unless-stopped
   #   network_mode: "service:camofox"  # share Xvfb with camofox
   #   ports:

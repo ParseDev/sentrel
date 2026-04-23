@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Local dev loop for the engine. Builds the image from source and runs
+# via docker compose so you can iterate fast without a CI round-trip.
+#
+# Prereqs:
+#   1. Docker Desktop running
+#   2. Postgres + Redis reachable from the container. Easiest: point at your
+#      local Rails dev DB/Redis via host.docker.internal (Mac/Windows).
+#   3. A .env file in this directory (see .env.example)
+#
+# Usage:
+#   bin/dev              # build + up + follow logs (ctrl-c to stop)
+#   bin/dev rebuild      # force a clean rebuild (busts the build cache)
+#   bin/dev down         # tear it all down (keeps the /data volume)
+#   bin/dev nuke         # tear down AND delete the /data volume
+#   bin/dev shell        # open a bash in the running engine container
+#   bin/dev exec CMD...  # run CMD inside the running engine container
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if [ ! -f .env ]; then
+  echo "==> No .env file found. Create one from .env.example first:"
+  echo "    cp .env.example .env    # then edit with your ANTHROPIC_API_KEY etc."
+  exit 1
+fi
+
+case "${1:-up}" in
+  up|"")
+    docker compose build engine
+    docker compose up engine
+    ;;
+  rebuild)
+    docker compose build --no-cache engine
+    docker compose up engine
+    ;;
+  down)
+    docker compose down
+    ;;
+  nuke)
+    docker compose down -v
+    ;;
+  shell)
+    docker compose exec engine bash
+    ;;
+  exec)
+    shift
+    docker compose exec engine "$@"
+    ;;
+  logs)
+    docker compose logs -f engine
+    ;;
+  *)
+    echo "Usage: $0 {up|rebuild|down|nuke|shell|exec|logs}"
+    exit 1
+    ;;
+esac
