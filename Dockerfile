@@ -52,10 +52,12 @@ RUN bundle install && \
     # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
     bundle exec bootsnap precompile -j 1 --gemfile
 
-# Install JS dependencies. `--include=optional` is explicit even though it's
-# the default — rolldown ships native bindings as optional per-platform deps.
+# Install JS dependencies. Using `npm install` (not `npm ci`) so the
+# in-container npm 11 regenerates any missing platform-specific optional
+# deps (rolldown / sharp / oxide / lightningcss) that older npm versions
+# stripped from the committed lockfile.
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund --include=optional
+RUN npm install --no-audit --no-fund --include=optional
 
 # Copy application code
 COPY . .
