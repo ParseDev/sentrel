@@ -257,8 +257,23 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // (30-turn cap), so load times stay reasonable. BullMQ's job lock (10 min)
     // catches pathological hangs.
     const modelTurnSpan = spans.start("agent_loop", { resumed: !!resumeSessionId });
-    const result = await runAgentLoop(built.promptText, options, queryState, spans, jobId);
+    let result = await runAgentLoop(built.promptText, options, queryState, spans, jobId);
     spans.end(modelTurnSpan, { response_length: result.responseContent.length });
+
+    // If a resumed run yielded nothing, the session jsonl on disk is gone
+    // (Machine was re-provisioned with a fresh volume, DB still had the old
+    // session_id pointing at a file that no longer exists). The SDK fails
+    // silently in this case — no error, just an empty stream. Retry once
+    // without resume so the agent actually produces a response.
+    if (resumeSessionId && result.responseContent.length === 0 && usesConversation && conversation) {
+      logger.warn(`Resume yielded 0 chars — session ${resumeSessionId} transcript missing; retrying fresh`);
+      await host.updateConversationSessionId(conversation.id, null, 0).catch(() => {});
+      delete (options as any).resume;
+      resumeSessionId = null;
+      const retrySpan = spans.start("agent_loop_retry", { reason: "empty_resume" });
+      result = await runAgentLoop(built.promptText, options, queryState, spans, jobId);
+      spans.end(retrySpan, { response_length: result.responseContent.length });
+    }
 
     // ── Persist captured session ID for future resumption ──
     // Covers both inbound_message and task_assignment (Step 4) — back-and-forth
