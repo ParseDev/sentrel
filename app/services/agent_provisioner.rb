@@ -147,7 +147,12 @@ module AgentProvisioner
         "RAILS_INTERNAL_URL"  => ENV["RAILS_INTERNAL_URL"].to_s,
         "COMPOSIO_API_KEY"    => ENV["COMPOSIO_API_KEY"].to_s,
         "OPENAI_API_KEY"      => ENV["OPENAI_API_KEY"].to_s,
-        "TOOL_ROUTING"        => "smart",
+        # "all" loads every connected Composio toolkit into allowedTools
+        # at session start, so tools discovered via search_integrations
+        # actually execute. "smart" (the old default) silently dropped
+        # dynamically-loaded tool calls because allowedTools didn't grow
+        # with setMcpServers.
+        "TOOL_ROUTING"        => "all",
         "RESUME_ENABLED"      => "true",
       }.compact
     end
