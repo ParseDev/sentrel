@@ -15,34 +15,39 @@
 # Size budget: ~600-800 MB. Bun + node_modules + a few OS utilities.
 
 # --- Stage 1: install deps ----------------------------------------------------
-FROM oven/bun:1.1.38-slim AS deps
+# Alpine (musl) base so the claude-agent-sdk platform binary
+# (@anthropic-ai/claude-agent-sdk-linux-x64-musl) matches the runtime. On
+# Debian/glibc the SDK errors with ENOENT when spawning its native `claude`.
+FROM oven/bun:1.1.38-alpine AS deps
 
 WORKDIR /srv/engine
 
-# Copy lock + manifest first for layer caching on dep-only changes
+# Copy lock + manifest first for layer caching on dep-only changes.
+# --force so missing platform-specific optional deps get pulled fresh.
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # --- Stage 2: runtime image ---------------------------------------------------
-FROM oven/bun:1.1.38-slim AS runtime
+FROM oven/bun:1.1.38-alpine AS runtime
 
 # System packages needed at runtime:
-#   - poppler/tesseract — PDF extraction fallbacks (engine/rag/extractor.ts)
-#   - ffmpeg             — media conversion for voice notes
+#   - poppler / tesseract — PDF extraction fallbacks (rag/extractor.ts)
+#   - ffmpeg              — media conversion for voice notes
 #   - ca-certificates + curl — TLS + healthcheck
-#   - tini               — PID 1 zombie reaper
-RUN apt-get update && apt-get install -y --no-install-recommends \
+#   - tini                — PID 1 zombie reaper
+#   - bash                — scripts / ssh shells (Alpine has ash by default)
+RUN apk add --no-cache \
       poppler-utils tesseract-ocr \
       ffmpeg \
       ca-certificates curl \
       tini \
-    && rm -rf /var/lib/apt/lists/*
+      bash
 
 # Non-root user. Everything persistent lives in /data, which the provisioner
 # mounts as a volume. Agent state survives restarts because /data does.
 # (The oven/bun base image already has a 'bun' user at uid 1000, so we let
-#  useradd pick the next free uid instead of forcing a specific one.)
-RUN useradd --create-home --shell /bin/bash engine
+#  adduser pick the next free uid instead of forcing a specific one.)
+RUN adduser -D -s /bin/bash engine
 WORKDIR /srv/engine
 
 # node_modules from the builder stage
