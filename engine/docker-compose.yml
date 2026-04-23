@@ -11,11 +11,11 @@
 
 services:
   engine:
-    image: ghcr.io/parsedev/alchemy-engine:latest
+    # Tag used for local dev builds only; CI publishes the real
+    # ghcr.io/parsedev/alchemy-engine:latest tag for Fly Machines.
+    image: alchemy-engine:local
     build: .
     restart: unless-stopped
-    depends_on:
-      - camofox
     environment:
       EMPLOYEE_ID: ${EMPLOYEE_ID:?EMPLOYEE_ID required — which agent is this?}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
@@ -37,14 +37,17 @@ services:
       TOOL_ROUTING: ${TOOL_ROUTING:-smart}
       RESUME_ENABLED: ${RESUME_ENABLED:-true}
     ports:
-      - "3300:3300"
+      # Host 3301 → container 3300 (3300 is often taken locally by other tooling)
+      - "3301:3300"
     volumes:
       - data:/data
     networks:
       - alchemy
 
   camofox:
-    # Published image from sibling repo (github.com/askjo/camofox-browser)
+    # Opt-in: `docker compose --profile browser up` when you need a browser.
+    # Published image from sibling repo (github.com/askjo/camofox-browser).
+    profiles: ["browser"]
     image: ghcr.io/askjo/camofox-browser:latest
     restart: unless-stopped
     environment:
