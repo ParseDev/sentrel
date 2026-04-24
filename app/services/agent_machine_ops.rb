@@ -21,28 +21,39 @@ module AgentMachineOps
     { ok: false, message: e.message }
   end
 
-  # Tell the engine to reload its in-memory config without a full restart.
-  # Used after toggling skills, changing identity prose, rotating Telegram
-  # tokens, etc. Same codepath as EngineSync.trigger — kept here so the UI
-  # calls a single consistent ops surface.
+  # Tell the engine to reload its in-memory config AND push fresh env
+  # vars into the Fly Machine (so rotated API keys, switched provider,
+  # new Composio key, etc. actually apply). The Fly API replaces env
+  # on machine update; the next boot reads the new values. Triggers a
+  # Machine-level restart — no /data loss.
   def reload(agent)
+    app = app_name(agent)
+    mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
+
+    current = fly_api(:get, "/apps/#{app}/machines/#{mid}")
+    cfg = current["config"] || {}
+    cfg["env"] = AgentProvisioner::FlyBackend.env_for(agent)
+    fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
+
+    # Also fire the Redis sync so the engine rebuilds in-memory state
+    # once it's back up (skills, channel pollers, etc.).
     EngineSync.trigger(agent)
-    { ok: true, message: "Config reload requested" }
+    { ok: true, message: "Fresh env pushed + config reload requested" }
   rescue => e
     { ok: false, message: e.message }
   end
 
-  # Update the Machine's image reference to the latest tag and let Fly
-  # roll it. Use this after pushing a new engine image via CI.
+  # Update the Machine's image reference to the latest tag AND refresh
+  # env vars from the current Rails process env. Fly rolls the Machine.
   def redeploy(agent, image: nil)
     app = app_name(agent)
     mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
     target = image || ENV.fetch("ENGINE_IMAGE", "ghcr.io/parsedev/alchemy-engine:latest")
 
-    # Fetch current config so we can mutate only the image field
     current = fly_api(:get, "/apps/#{app}/machines/#{mid}")
     cfg = current["config"] || {}
     cfg["image"] = target
+    cfg["env"] = AgentProvisioner::FlyBackend.env_for(agent)
 
     fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
     { ok: true, message: "Redeployed #{target}" }
