@@ -54,7 +54,8 @@ export async function summarizeConversation(
     permissionMode: "bypassPermissions",
   };
 
-  if (agent.ai_config?.model_id) {
+  // OpenRouter path: model resolves via ANTHROPIC_DEFAULT_*_MODEL env vars.
+  if (agent.ai_config?.provider !== "openrouter" && agent.ai_config?.model_id) {
     options.model = agent.ai_config.model_id;
   }
 

@@ -951,7 +951,12 @@ async function buildQueryOptions(
     },
   };
 
-  if (agent.ai_config?.model_id) {
+  // For OpenRouter, the model is resolved via ANTHROPIC_DEFAULT_*_MODEL env
+  // vars (set by Rails agent_provisioner) — the SDK would reject non-Claude
+  // slugs like "moonshotai/kimi-k2.6" if passed here directly.
+  if (agent.ai_config?.provider === "openrouter") {
+    // Stays unset; SDK uses its default tier -> env var -> OR slug.
+  } else if (agent.ai_config?.model_id) {
     options.model = agent.ai_config.model_id;
   }
   if (Object.keys(subAgents).length > 0) {
