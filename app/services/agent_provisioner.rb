@@ -161,6 +161,9 @@ module AgentProvisioner
       fly_api(:get, "/apps/#{app_name}")
     rescue ApiNotFound
       fly_api(:post, "/apps", { app_name: app_name, org_slug: ENV.fetch("FLY_ORG_SLUG") })
+      # Allocate a free shared IPv4 so Rails can POST /sync over HTTPS and
+      # wake the Machine on cold start. One-time per app.
+      fly_api(:post, "/apps/#{app_name}/ips", { type: "shared_v4" }) rescue nil
     end
 
     # Fly requires a pre-created volume referenced by ID in the machine
