@@ -1,8 +1,18 @@
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
-import { logger } from "./logger.js";
+import { logger, setLogBroadcaster } from "./logger.js";
 import { redis } from "./queue.js";
+
+// Hook every engine log line into the broadcast pipeline so the browser
+// logs drawer streams them via AgentChatChannel. This runs at module
+// load (before startGateway) so logs during boot are captured too — the
+// events queue on Rails' side until the browser subscribes.
+setLogBroadcaster((event) => {
+  // broadcast() is defined below; declared via function hoisting so this
+  // callback can reference it even though it's imported before definition.
+  broadcast(event);
+});
 
 const PORT = parseInt(process.env.GATEWAY_PORT || "3300");
 
