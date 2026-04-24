@@ -207,7 +207,11 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
                   e.preventDefault()
                   setPending(op)
                 }}
-                className={op.destructive ? "text-destructive focus:text-destructive" : undefined}
+                className={
+                  op.destructive
+                    ? "text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20"
+                    : undefined
+                }
               >
                 <Icon className="size-4" />
                 <span>{op.label}</span>
