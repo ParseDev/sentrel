@@ -1,6 +1,15 @@
 import { Head, Link } from "@inertiajs/react"
-import { ArrowUpRight, Bot, Filter, Plus, Search } from "lucide-react"
+import { ArrowUpRight, Bot, Filter, Plus, Rocket, Search } from "lucide-react"
 import { useMemo, useState } from "react"
+import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 import { GlowCard, Overline, StatusDot } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -24,6 +33,28 @@ type FilterKey = (typeof FILTERS)[number]
 export default function AgentsIndex({ agents }: { agents: Agent[] }) {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<FilterKey>("All")
+  const [rollConfirm, setRollConfirm] = useState(false)
+  const [rolling, setRolling] = useState(false)
+
+  const rollEngine = async () => {
+    setRolling(true)
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    try {
+      const res = await fetch("/ops/roll_engine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+        body: "{}",
+      })
+      const data = await res.json()
+      if (data.ok) toast.success(`Queued: ${agents.filter((a) => a.status === "running").length} agents will update (staggered 10s apart)`)
+      else toast.error(`Roll failed: ${data.message}`)
+    } catch (err) {
+      toast.error(`Roll failed: ${(err as Error).message}`)
+    } finally {
+      setRolling(false)
+      setRollConfirm(false)
+    }
+  }
 
   const filtered = useMemo(() => {
     let list = agents
@@ -50,12 +81,26 @@ export default function AgentsIndex({ agents }: { agents: Agent[] }) {
         { label: "Agents" },
       ]}
       topBarActions={
-        <Button asChild size="sm" className="h-8 gap-1.5 font-semibold shadow-[0_0_0_1px_var(--color-indigo),0_6px_16px_-6px_var(--indigo-glow)]">
-          <Link href={newAgentPath()}>
-            <Plus className="size-3.5" strokeWidth={2.5} />
-            New agent
-          </Link>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          {runningCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 hover:bg-muted hover:text-foreground"
+              onClick={() => setRollConfirm(true)}
+              disabled={rolling}
+            >
+              <Rocket className="size-3.5" />
+              Roll engine
+            </Button>
+          )}
+          <Button asChild size="sm" className="h-8 gap-1.5 font-semibold shadow-[0_0_0_1px_var(--color-indigo),0_6px_16px_-6px_var(--indigo-glow)]">
+            <Link href={newAgentPath()}>
+              <Plus className="size-3.5" strokeWidth={2.5} />
+              New agent
+            </Link>
+          </Button>
+        </div>
       }
     >
       <Head title="Agents" />
@@ -117,6 +162,47 @@ export default function AgentsIndex({ agents }: { agents: Agent[] }) {
           ))}
         </div>
       )}
+
+      <Dialog open={rollConfirm} onOpenChange={(open) => !open && setRollConfirm(false)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Rocket className="size-5" />
+              Roll every agent to latest engine
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Updates each running agent to <span className="font-mono">ghcr.io/parsedev/alchemy-engine:latest</span> (the most recent CI build).
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-2 text-sm">
+            <li className="text-muted-foreground flex gap-2">
+              <span className="text-foreground">•</span>
+              <span>{runningCount} agent{runningCount === 1 ? "" : "s"} will be updated, staggered 10s apart so they don't all blip at once.</span>
+            </li>
+            <li className="text-muted-foreground flex gap-2">
+              <span className="text-foreground">•</span>
+              <span>Each agent has ~20-40s of downtime while its Machine swaps to the new image. /data volume is preserved.</span>
+            </li>
+            <li className="text-muted-foreground flex gap-2">
+              <span className="text-foreground">•</span>
+              <span>In-flight chats may need a refresh to reconnect. Session transcripts survive.</span>
+            </li>
+          </ul>
+          <div className="mt-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+            <Rocket className="size-4" />
+            <span className="font-medium">Estimated total:</span>
+            <span>~{Math.ceil(runningCount * 10 / 60)} min for the fleet (10s stagger + 30s per agent)</span>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRollConfirm(false)} disabled={rolling}>
+              Cancel
+            </Button>
+            <Button onClick={rollEngine} disabled={rolling}>
+              {rolling ? "Queueing…" : "Roll all now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   )
 }

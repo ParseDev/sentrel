@@ -83,6 +83,9 @@ Rails.application.routes.draw do
       resources :knowledge_documents, only: [:index, :create, :destroy]
     end
     resources :agent_templates, only: [:index, :show]
+
+    # Fleet-wide ops: roll-update every agent's engine image in the org.
+    post "ops/roll_engine", to: "ops#roll_engine", as: :ops_roll_engine
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do
