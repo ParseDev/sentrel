@@ -60,13 +60,11 @@ Rails.application.routes.draw do
       get "chat/poll", to: "chat_polls#show"
       # Day-2 ops on the agent's Fly Machine — one-click restart / reload
       # config / redeploy / destroy + recreate, plus a live log tail.
-      scope module: :agents, path: "ops" do
-        post "restart",     to: "ops#restart",     as: :agent_ops_restart
-        post "reload",      to: "ops#reload",      as: :agent_ops_reload
-        post "redeploy",    to: "ops#redeploy",    as: :agent_ops_redeploy
-        post "reprovision", to: "ops#reprovision", as: :agent_ops_reprovision
-        get  "logs",        to: "ops#logs",        as: :agent_ops_logs
-      end
+      post "ops/restart",     to: "agents/ops#restart",     as: :agent_ops_restart
+      post "ops/reload",      to: "agents/ops#reload",      as: :agent_ops_reload
+      post "ops/redeploy",    to: "agents/ops#redeploy",    as: :agent_ops_redeploy
+      post "ops/reprovision", to: "agents/ops#reprovision", as: :agent_ops_reprovision
+      get  "ops/logs",        to: "agents/ops#logs",        as: :agent_ops_logs
       # Quick model switch from the agent page top bar (AgentModelPicker).
       resource :ai_config, only: [:update], module: :agents, controller: :ai_configs
     end
