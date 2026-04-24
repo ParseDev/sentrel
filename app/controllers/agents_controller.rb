@@ -57,6 +57,7 @@ class AgentsController < ApplicationController
 
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
+      spend: AgentSpend.for_agent(@agent),
       conversations: @agent.conversations.where(kind: "external").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
         last_msg = c.messages.order(created_at: :desc).first
         c.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at]).merge(

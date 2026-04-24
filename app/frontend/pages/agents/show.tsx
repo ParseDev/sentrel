@@ -36,6 +36,8 @@ import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
 import { AgentOpsMenu } from "@/components/agent-ops-menu"
 import { AgentModelPicker } from "@/components/agent-model-picker"
+import { AgentSpendCard } from "@/components/agent-spend-card"
+import { DollarSign } from "lucide-react"
 import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -111,8 +113,19 @@ interface SkillItem {
   agent_skill_id?: number
 }
 
+interface SpendSummary {
+  runs: number
+  input_tokens: number
+  output_tokens: number
+  cache_read: number
+  cache_written: number
+  cost_usd: number
+  top_models: Array<{ model_id: string; runs: number; cost_usd: number }>
+}
+
 interface Props {
   agent: Agent
+  spend?: { today: SpendSummary; seven_day: SpendSummary; thirty_day: SpendSummary }
   conversations: ConversationItem[]
   emails: EmailItem[]
   chat_messages: unknown[]
@@ -125,7 +138,7 @@ interface Props {
   knowledge_documents: KnowledgeDocument[]
 }
 
-type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity"
+type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "spend"
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -370,8 +383,8 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, installed_skills = [], available_skills = [], knowledge_documents = [] }: Props) {
-  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity"]
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, installed_skills = [], available_skills = [], knowledge_documents = [] }: Props) {
+  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
     const t = new URLSearchParams(window.location.search).get("tab") as Section | null
@@ -432,6 +445,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
     { key: "knowledge", label: "Knowledge", icon: BookOpen, count: knowledge_documents.length },
     { key: "identity", label: "Identity", icon: User },
+    { key: "spend", label: "Spend", icon: DollarSign },
   ]
 
   return (
@@ -796,6 +810,21 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
         {/* Identity */}
         {section === "identity" && (
           <IdentityEditor agent={agent} />
+        )}
+
+        {section === "spend" && (
+          <div className="p-4 sm:p-6">
+            <div className="mx-auto max-w-2xl">
+              {spend ? (
+                <AgentSpendCard spend={spend} />
+              ) : (
+                <p className="text-muted-foreground text-sm">No spend data available yet.</p>
+              )}
+              <p className="text-muted-foreground mt-3 text-xs">
+                Aggregated from audit_logs. Costs are computed from Anthropic's published per-model rates at the time each run completed.
+              </p>
+            </div>
+          </div>
         )}
       </div>
     </AppLayout>
