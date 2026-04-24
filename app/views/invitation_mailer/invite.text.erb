@@ -1,0 +1,10 @@
+You're invited to <%= @invitation.organization.name %>
+
+<%= @invitation.invited_by.email %> invited you to join <%= @invitation.organization.name %>
+on Alchemy as <%= @invitation.role %>.
+
+Accept the invitation:
+<%= @accept_url %>
+
+This link expires on <%= @invitation.expires_at.strftime("%B %-d, %Y at %l:%M %p %Z") %>.
+If you weren't expecting this, you can safely ignore it.

@@ -90,6 +90,11 @@ Rails.application.routes.draw do
 
     # Fleet-wide ops: roll-update every agent's engine image in the org.
     post "ops/roll_engine", to: "ops#roll_engine", as: :ops_roll_engine
+
+    # Team management — invite teammates, manage roles.
+    resources :invitations, only: [:index, :create, :destroy]
+    get  "invitations/:token",        to: "invitations#show",   as: :invitation
+    post "invitations/:token/accept", to: "invitations#accept", as: :accept_invitation
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do

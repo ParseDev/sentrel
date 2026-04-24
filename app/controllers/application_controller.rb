@@ -7,6 +7,7 @@ class ApplicationController < ActionController::Base
   before_action :set_tenant
 
   before_action :configure_permitted_parameters, if: :devise_controller?
+  before_action :consume_pending_invitation, if: :user_signed_in?
 
   # Share current user and org with all Inertia pages
   inertia_share do
@@ -48,6 +49,20 @@ class ApplicationController < ActionController::Base
 
     Sentry.set_user(id: current_user.id, email: current_user.email)
     Sentry.set_tags(org_id: current_tenant&.id, org_slug: current_tenant&.slug)
+  end
+
+  # After sign-in/up, auto-accept any invitation the user was mid-flow for
+  # (captured in session by InvitationsController#accept when unauthenticated).
+  def consume_pending_invitation
+    token = session.delete(:pending_invitation_token) || params[:invitation].presence
+    return unless token.present?
+    inv = Invitation.find_by(token: token)
+    return unless inv&.pending?
+    return unless inv.email.casecmp?(current_user.email) # must match the invited email
+    inv.accept!(current_user)
+    flash[:notice] = "Joined #{inv.organization.name}"
+  rescue => e
+    Rails.logger.warn "Invitation consume failed: #{e.message}"
   end
 
   def configure_permitted_parameters

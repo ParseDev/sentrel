@@ -9,6 +9,7 @@ import {
   ScrollText,
   Activity,
   Settings,
+  Users,
   Plus,
   Sun,
   Moon,
@@ -59,7 +60,8 @@ const controlNavItems: NavItem[] = [
   { title: "Approvals", href: pendingApprovalsPath(), icon: ShieldCheck },
   { title: "Ops", href: "/ops/runs", icon: Activity },
   { title: "Audit Log", href: auditLogsPath(), icon: ScrollText },
-  { title: "Settings", href: settingsPath(), icon: Settings },
+  { title: "Team",      href: "/invitations",  icon: Users },
+  { title: "Settings",  href: settingsPath(), icon: Settings },
 ]
 
 export function AppSidebar() {
