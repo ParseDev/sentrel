@@ -1,14 +1,18 @@
 class AgentChatChannel < ApplicationCable::Channel
   def subscribed
     agent = Agent.find_by(id: params[:agent_id])
-    return reject unless agent
-    return reject unless current_user&.organization_id == agent.organization_id
+    unless agent
+      Rails.logger.warn("[AgentChatChannel] rejected: no agent id=#{params[:agent_id].inspect}")
+      return reject
+    end
+    unless current_user&.organization_id == agent.organization_id
+      Rails.logger.warn("[AgentChatChannel] rejected: user #{current_user&.id} org #{current_user&.organization_id} != agent.org #{agent.organization_id}")
+      return reject
+    end
 
-    # Explicit string stream name so the subscribe-side and broadcast-side
-    # key match exactly. stream_for uses a GlobalID-derived key which has
-    # silently mismatched in practice (ActiveJob/GlobalID encoding tweaks
-    # between versions).
-    stream_from self.class.stream_name_for(agent)
+    stream = self.class.stream_name_for(agent)
+    Rails.logger.info("[AgentChatChannel] user=#{current_user.id} subscribed to #{stream}")
+    stream_from stream
   end
 
   def unsubscribed
@@ -19,7 +23,9 @@ class AgentChatChannel < ApplicationCable::Channel
   end
 
   def self.broadcast_event(agent, event)
-    ActionCable.server.broadcast(stream_name_for(agent), event)
+    stream = stream_name_for(agent)
+    Rails.logger.info("[AgentChatChannel] broadcast #{event[:type] || event['type']} to #{stream}")
+    ActionCable.server.broadcast(stream, event)
   end
 
   def self.broadcast_assistant_message(agent, message)
