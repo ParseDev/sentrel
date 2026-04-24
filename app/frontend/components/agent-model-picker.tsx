@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sparkles, Check, Loader2 } from "lucide-react"
+import { Brain, Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { router } from "@inertiajs/react"
 
@@ -108,8 +108,8 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId }: P
           className="h-8 gap-1.5 font-normal hover:bg-muted hover:text-foreground"
           disabled={busy}
         >
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-          <span className="text-muted-foreground">Model:</span>
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Brain className="size-3.5" />}
+          <span className="text-muted-foreground">Brain:</span>
           <span className="font-medium">{currentLabel}</span>
         </Button>
       </DropdownMenuTrigger>
