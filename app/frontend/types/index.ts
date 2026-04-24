@@ -39,6 +39,12 @@ export interface AgentInstance {
   instance_type: string
   region: string
   aws_ip_address: string | null
+  provider?: string | null
+  machine_id?: string | null
+  public_ip?: string | null
+  health_checked_at?: string | null
+  started_at?: string | null
+  provisioning_error?: string | null
 }
 
 export interface Agent {

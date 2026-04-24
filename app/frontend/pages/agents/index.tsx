@@ -207,10 +207,37 @@ export default function AgentsIndex({ agents }: { agents: Agent[] }) {
   )
 }
 
+/* ---------- machine health ---------- */
+// Derive a live health state from the Instance row. The engine pings
+// /api/agent_instances/ready on boot and on its periodic heartbeat, so
+// a fresh health_checked_at means the Machine is alive.
+function machineHealth(agent: Agent): { tone: "ok" | "warn" | "bad" | "idle"; label: string; hint: string } {
+  const inst = agent.instance
+  if (!inst) return { tone: "idle", label: "No machine", hint: "Agent hasn't been provisioned yet" }
+  if (inst.provisioning_error) return { tone: "bad", label: "Error", hint: inst.provisioning_error }
+
+  const hb = inst.health_checked_at ? new Date(inst.health_checked_at) : null
+  const ageMs = hb ? Date.now() - hb.getTime() : Infinity
+  const ageMin = Math.floor(ageMs / 60_000)
+
+  if (inst.status !== "running") {
+    return { tone: "idle", label: inst.status ?? "Stopped", hint: `Last heartbeat: ${hb ? `${ageMin}m ago` : "never"}` }
+  }
+  if (ageMin < 2) return { tone: "ok",   label: "Healthy", hint: `Heartbeat ${ageMin === 0 ? "just now" : `${ageMin}m ago`}` }
+  if (ageMin < 10) return { tone: "warn", label: `Stale ${ageMin}m`, hint: "Engine hasn't reported a heartbeat recently" }
+  return { tone: "bad", label: "Silent", hint: hb ? `Last heartbeat ${ageMin}m ago — Machine may be stopped` : "No heartbeat yet" }
+}
+
 /* ---------- card ---------- */
 function AgentListCard({ agent }: { agent: Agent }) {
   const st = STATUS_MAP[agent.status] ?? STATUS_MAP.stopped
   const preview = agent.instructions_md ?? agent.identity_md ?? null
+  const health = machineHealth(agent)
+  const healthColor =
+    health.tone === "ok"   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
+    health.tone === "warn" ? "border-amber-500/40  bg-amber-500/10  text-amber-700  dark:text-amber-400" :
+    health.tone === "bad"  ? "border-destructive/40 bg-destructive/10 text-destructive" :
+                             "border-muted-foreground/20 bg-muted text-muted-foreground"
 
   return (
     <Link href={agentPath(agent.id)} className="group block">
@@ -242,9 +269,17 @@ function AgentListCard({ agent }: { agent: Agent }) {
               <p className="mt-0.5 text-xs text-muted-foreground">{agent.role}</p>
             </div>
           </div>
-          <span className="rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-            {st.label}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`rounded-sm border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ${healthColor}`}
+              title={health.hint}
+            >
+              {health.label}
+            </span>
+            <span className="rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              {st.label}
+            </span>
+          </div>
         </div>
 
         <div className="mt-4 min-h-[48px]">

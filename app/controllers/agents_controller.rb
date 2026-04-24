@@ -293,7 +293,7 @@ class AgentsController < ApplicationController
     ]).merge(
       capabilities: agent.effective_capabilities,
       ai_config: agent.ai_config&.as_json(only: [:provider, :model_id, :temperature, :max_tokens, :thinking_level]),
-      instance: agent.instance&.as_json(only: [:status, :instance_type, :region, :aws_ip_address]),
+      instance: agent.instance&.as_json(only: [:status, :instance_type, :region, :aws_ip_address, :provider, :machine_id, :public_ip, :health_checked_at, :started_at, :provisioning_error]),
       manager: agent.manager&.as_json(only: [:id, :name, :slug])
     )
   end

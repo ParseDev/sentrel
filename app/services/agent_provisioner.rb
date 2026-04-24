@@ -162,6 +162,7 @@ module AgentProvisioner
         "RAILS_INTERNAL_URL"  => ENV["RAILS_INTERNAL_URL"].to_s,
         "COMPOSIO_API_KEY"    => ENV["COMPOSIO_API_KEY"].to_s,
         "OPENAI_API_KEY"      => ENV["OPENAI_API_KEY"].to_s,
+        "SENTRY_DSN"          => ENV["SENTRY_DSN"].to_s,
         # "all" loads every connected Composio toolkit into allowedTools
         # at session start, so tools discovered via search_integrations
         # actually execute. "smart" (the old default) silently dropped
