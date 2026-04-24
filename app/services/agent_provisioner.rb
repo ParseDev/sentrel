@@ -138,26 +138,27 @@ module AgentProvisioner
     end
 
     def env_for(agent)
-      # Provider routing: the Claude Agent SDK always talks to an
-      # Anthropic-compatible endpoint. When the agent is configured to use
-      # OpenRouter we point ANTHROPIC_BASE_URL at OpenRouter and hand it the
-      # OpenRouter key under ANTHROPIC_API_KEY. The SDK + engine code doesn't
-      # need to know — it just calls "Anthropic" and OpenRouter does the
-      # model routing (Kimi, MiniMax, DeepSeek, Llama etc.).
+      # Provider routing for the Claude Agent SDK.
+      #
+      # The SDK's CLI validates model slugs client-side against Anthropic's
+      # known list — passing "moonshotai/kimi-k2.6" or "deepseek/deepseek-v4"
+      # directly fails with "model may not exist or you may not have access".
+      # The supported escape hatch is the three ANTHROPIC_DEFAULT_*_MODEL env
+      # vars: the SDK picks a tier (haiku/sonnet/opus) per call, we wire all
+      # three to the same OpenRouter slug so whichever tier the SDK picks, it
+      # ends up on the user-chosen model. ANTHROPIC_API_KEY must be explicitly
+      # empty (not unset) so the SDK doesn't fall back to Anthropic direct;
+      # auth travels via ANTHROPIC_AUTH_TOKEN. Base URL is openrouter.ai/api
+      # (no /v1 — OR's Anthropic-compat skin lives at /api).
+      #
+      # Reference: https://code.claude.com/docs/en/model-config (ANTHROPIC_DEFAULT_*_MODEL)
       provider = agent.ai_config&.provider.to_s
-      anthropic_key = ENV["ANTHROPIC_API_KEY"].to_s
-      base_url = nil
-      if provider == "openrouter" && ENV["OPENROUTER_API_KEY"].present?
-        anthropic_key = ENV["OPENROUTER_API_KEY"]
-        base_url = "https://openrouter.ai/api/v1"
-      end
+      model_id = agent.ai_config&.model_id.to_s
 
-      {
+      env = {
         "EMPLOYEE_ID"         => agent.id.to_s,
         "DATABASE_URL"        => ENV.fetch("ENGINE_DATABASE_URL", ENV["DATABASE_URL"].to_s),
         "REDIS_URL"           => ENV.fetch("ENGINE_REDIS_URL", ENV["REDIS_URL"].to_s),
-        "ANTHROPIC_API_KEY"   => anthropic_key,
-        "ANTHROPIC_BASE_URL"  => base_url,
         "ENGINE_API_SECRET"   => ENV["ENGINE_API_SECRET"].to_s,
         "RAILS_INTERNAL_URL"  => ENV["RAILS_INTERNAL_URL"].to_s,
         "COMPOSIO_API_KEY"    => ENV["COMPOSIO_API_KEY"].to_s,
@@ -170,7 +171,20 @@ module AgentProvisioner
         # with setMcpServers.
         "TOOL_ROUTING"        => "all",
         "RESUME_ENABLED"      => "true",
-      }.compact
+      }
+
+      if provider == "openrouter" && ENV["OPENROUTER_API_KEY"].present?
+        env["ANTHROPIC_BASE_URL"]           = "https://openrouter.ai/api"
+        env["ANTHROPIC_AUTH_TOKEN"]         = ENV["OPENROUTER_API_KEY"]
+        env["ANTHROPIC_API_KEY"]            = ""
+        env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]  = model_id
+        env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model_id
+        env["ANTHROPIC_DEFAULT_OPUS_MODEL"]   = model_id
+      else
+        env["ANTHROPIC_API_KEY"] = ENV["ANTHROPIC_API_KEY"].to_s
+      end
+
+      env.compact
     end
 
     def ensure_app!(app_name)

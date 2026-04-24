@@ -29,26 +29,29 @@ const MODELS: Array<{
     ],
   },
   {
+    // Non-Anthropic OR models resolve via ANTHROPIC_DEFAULT_*_MODEL env vars
+    // (set by Rails agent_provisioner) — the engine doesn't pass the slug to
+    // the SDK directly, so client-side validation is bypassed.
     group: "OpenRouter — specialty",
     options: [
-      { provider: "openrouter", model_id: "moonshotai/kimi-k2.6",          label: "Kimi K2.6 (Moonshot)", hint: "top agentic tool use" },
-      { provider: "openrouter", model_id: "minimax/minimax-m2.7",          label: "MiniMax M2.7",         hint: "long-context reasoning" },
-      { provider: "openrouter", model_id: "minimax/minimax-m2.5",          label: "MiniMax M2.5",         hint: "cheaper MiniMax" },
-      { provider: "openrouter", model_id: "deepseek/deepseek-v4-pro",      label: "DeepSeek V4 Pro",      hint: "strong reasoning" },
-      { provider: "openrouter", model_id: "deepseek/deepseek-v4-flash",    label: "DeepSeek V4 Flash",    hint: "cheap + fast" },
-      { provider: "openrouter", model_id: "qwen/qwen3-max-thinking",       label: "Qwen 3 Max (thinking)", hint: "open reasoning generalist" },
+      { provider: "openrouter", model_id: "moonshotai/kimi-k2.6",       label: "Kimi K2.6 (Moonshot)", hint: "top agentic tool use" },
+      { provider: "openrouter", model_id: "minimax/minimax-m2.7",       label: "MiniMax M2.7",         hint: "long-context reasoning" },
+      { provider: "openrouter", model_id: "minimax/minimax-m2.5",       label: "MiniMax M2.5",         hint: "cheaper MiniMax" },
+      { provider: "openrouter", model_id: "deepseek/deepseek-v4-pro",   label: "DeepSeek V4 Pro",      hint: "strong reasoning" },
+      { provider: "openrouter", model_id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash",    hint: "cheap + fast" },
+      { provider: "openrouter", model_id: "qwen/qwen3-max-thinking",    label: "Qwen 3 Max (thinking)", hint: "open reasoning generalist" },
     ],
   },
   {
     group: "OpenRouter — frontier",
     options: [
-      { provider: "openrouter", model_id: "anthropic/claude-opus-4-7",          label: "Claude Opus 4.7",   hint: "Anthropic flagship" },
-      { provider: "openrouter", model_id: "anthropic/claude-sonnet-4-6",        label: "Claude Sonnet 4.6", hint: "Anthropic workhorse" },
-      { provider: "openrouter", model_id: "openai/gpt-5.5-pro",                 label: "GPT-5.5 Pro",       hint: "OpenAI flagship" },
-      { provider: "openrouter", model_id: "openai/gpt-5.4-mini",                label: "GPT-5.4 mini",      hint: "cheap OpenAI" },
-      { provider: "openrouter", model_id: "google/gemini-3.1-pro-preview",      label: "Gemini 3.1 Pro",    hint: "Google flagship, huge context" },
+      { provider: "openrouter", model_id: "anthropic/claude-opus-4-7",            label: "Claude Opus 4.7 (via OR)" },
+      { provider: "openrouter", model_id: "anthropic/claude-sonnet-4-6",          label: "Claude Sonnet 4.6 (via OR)" },
+      { provider: "openrouter", model_id: "openai/gpt-5.5-pro",                   label: "GPT-5.5 Pro",       hint: "OpenAI flagship" },
+      { provider: "openrouter", model_id: "openai/gpt-5.4-mini",                  label: "GPT-5.4 mini",      hint: "cheap OpenAI" },
+      { provider: "openrouter", model_id: "google/gemini-3.1-pro-preview",        label: "Gemini 3.1 Pro",    hint: "huge context" },
       { provider: "openrouter", model_id: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash-Lite", hint: "cheap + fast Google" },
-      { provider: "openrouter", model_id: "x-ai/grok-4.20",                     label: "Grok 4.20",         hint: "xAI flagship" },
+      { provider: "openrouter", model_id: "x-ai/grok-4.20",                       label: "Grok 4.20",         hint: "xAI flagship" },
     ],
   },
 ]
