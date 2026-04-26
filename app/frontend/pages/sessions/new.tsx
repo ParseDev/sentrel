@@ -5,7 +5,11 @@ import { AuthLayout } from "@/layouts/auth/auth-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { userSessionPath, newUserRegistrationPath } from "@/routes"
+import {
+  userSessionPath,
+  newUserRegistrationPath,
+  newUserPasswordPath,
+} from "@/routes"
 
 export default function SessionNew() {
   const { data, setData, post, processing } = useForm({
@@ -53,12 +57,12 @@ export default function SessionNew() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
-              <a
-                href="#"
+              <Link
+                href={newUserPasswordPath()}
                 className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground hover:text-foreground"
               >
                 Forgot?
-              </a>
+              </Link>
             </div>
             <Input
               id="password"
