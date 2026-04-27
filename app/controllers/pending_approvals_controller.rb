@@ -10,18 +10,41 @@ class PendingApprovalsController < ApplicationController
 
   def update
     approval = current_tenant.pending_approvals.find(params[:id])
+    decision_value = params[:decision].presence || params[:status]
     approval.update!(
-      status: params[:status],
+      status: decision_value == "approve" || decision_value == "approved" ? "approved" : "rejected",
+      decision: decision_value,
+      decision_text: params[:decision_text].presence,
       reviewed_by: current_user,
-      reviewed_at: Time.current
+      reviewed_at: Time.current,
     )
 
-    # Execute approved actions
-    if params[:status] == "approved"
+    if approval.payload_type.present? && approval.approval_token.present?
+      publish_action_approval(approval)
+    elsif decision_value == "approved" || decision_value == "approve"
       execute_approved_action(approval)
     end
 
-    redirect_to pending_approvals_path, notice: "Approval #{params[:status]}"
+    respond_to do |format|
+      format.json { render json: { ok: true } }
+      format.html { redirect_to pending_approvals_path, notice: "Approval #{decision_value}" }
+    end
+  end
+
+  # Item 4 — generic approval flow. Push the user's decision into the engine's
+  # approval pubsub channel so the request_approval tool's await unblocks.
+  def publish_action_approval(approval)
+    msg = {
+      type: "action_approval_response",
+      approvalToken: approval.approval_token,
+      value: approval.decision,
+      text: approval.decision_text,
+    }.to_json
+    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+    redis.publish("agent-#{approval.agent_id}-approvals", msg)
+    Rails.logger.info "ActionApproval ##{approval.id}: published #{approval.decision} to engine"
+  rescue => e
+    Rails.logger.error "ActionApproval publish failed: #{e.message}"
   end
 
   private
@@ -39,10 +62,13 @@ class PendingApprovalsController < ApplicationController
   end
 
   def approval_json(approval)
-    approval.as_json(only: [:id, :tool_name, :tool_input, :context, :status, :reviewed_at, :created_at]).merge(
+    approval.as_json(only: [
+      :id, :tool_name, :tool_input, :context, :status, :reviewed_at, :created_at,
+      :summary, :payload_type, :options, :risk_tier, :decision, :decision_text,
+    ]).merge(
       agent: approval.agent.as_json(only: [:id, :name, :slug]),
       reviewed_by: approval.reviewed_by&.as_json(only: [:id, :name]),
-      attachments: resolve_attachments(approval.tool_input)
+      attachments: resolve_attachments(approval.tool_input),
     )
   end
 

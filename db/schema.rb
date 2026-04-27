@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_27_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_27_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -345,21 +345,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_130000) do
 
   create_table "pending_approvals", force: :cascade do |t|
     t.bigint "agent_id", null: false
+    t.string "approval_token"
     t.text "context"
     t.datetime "created_at", null: false
+    t.string "decision"
+    t.text "decision_text"
     t.bigint "message_id"
+    t.jsonb "options", default: [], null: false
     t.bigint "organization_id", null: false
+    t.string "payload_type"
     t.datetime "reviewed_at"
     t.bigint "reviewed_by_id"
+    t.string "risk_tier", default: "medium", null: false
     t.string "status", default: "pending", null: false
+    t.text "summary"
     t.jsonb "tool_input", default: {}
     t.string "tool_name", null: false
     t.datetime "updated_at", null: false
     t.index ["agent_id"], name: "index_pending_approvals_on_agent_id"
+    t.index ["approval_token"], name: "index_pending_approvals_on_approval_token", unique: true
     t.index ["message_id"], name: "index_pending_approvals_on_message_id"
     t.index ["organization_id", "status"], name: "index_pending_approvals_on_organization_id_and_status"
     t.index ["organization_id"], name: "index_pending_approvals_on_organization_id"
+    t.index ["payload_type"], name: "index_pending_approvals_on_payload_type"
     t.index ["reviewed_by_id"], name: "index_pending_approvals_on_reviewed_by_id"
+    t.index ["risk_tier"], name: "index_pending_approvals_on_risk_tier"
   end
 
   create_table "scheduled_work", force: :cascade do |t|
