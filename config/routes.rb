@@ -111,6 +111,9 @@ Rails.application.routes.draw do
            constraints: { provider: /anthropic|openai/ }
     delete "oauth/:provider/disconnect", to: "oauth#disconnect", as: :oauth_disconnect,
            constraints: { provider: /anthropic|openai/ }
+    # Manual token paste flow — claude /login locally, paste the result here.
+    # Works because claude.ai/oauth/authorize rejects unregistered client_ids.
+    post   "oauth/anthropic/import_token", to: "oauth#import_token", as: :oauth_import_anthropic
   end
 
   # OAuth 2.0 self-identifying client metadata documents (RFC-style, public).

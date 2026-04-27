@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { Head, router } from "@inertiajs/react"
-import { Plug, Trash2, Check, Sparkles, AlertTriangle } from "lucide-react"
+import { Plug, Trash2, Check, Sparkles, AlertTriangle, Terminal } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -67,6 +68,26 @@ const AI_PROVIDER_META: Record<string, { label: string; description: string; rat
 }
 
 export default function IntegrationsIndex({ integrations, ai_accounts = [], oauth_configured = { anthropic: false, openai: false } }: Props) {
+  const [pasteOpen, setPasteOpen] = useState<null | "anthropic">(null)
+  const [pasteValue, setPasteValue] = useState("")
+  const [pasteBusy, setPasteBusy] = useState(false)
+
+  async function submitPaste() {
+    if (!pasteValue.trim()) return
+    setPasteBusy(true)
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    const form = document.createElement("form")
+    form.method = "POST"
+    form.action = "/oauth/anthropic/import_token"
+    const t = document.createElement("input")
+    t.type = "hidden"; t.name = "authenticity_token"; t.value = csrf
+    const c = document.createElement("input")
+    c.type = "hidden"; c.name = "credentials"; c.value = pasteValue
+    form.appendChild(t); form.appendChild(c)
+    document.body.appendChild(form)
+    form.submit()
+  }
+
   async function connect(serviceName: string) {
     // Get the Composio OAuth URL from Rails, then open in a popup
     const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""

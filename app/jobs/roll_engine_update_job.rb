@@ -8,7 +8,7 @@ class RollEngineUpdateJob < ApplicationJob
   queue_as :default
 
   def perform(image: nil, organization_id: nil)
-    scope = Agent.joins(:instances).where(instances: { status: "running" }).distinct
+    scope = Agent.joins(:instance).where(instance: { status: "running" }).distinct
     scope = scope.where(organization_id: organization_id) if organization_id
     count = 0
     scope.find_each do |agent|

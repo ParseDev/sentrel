@@ -48,6 +48,57 @@ class OauthController < ApplicationController
     }
   end
 
+  # POST /oauth/anthropic/import_token — accepts the JSON blob from
+  # ~/.claude/.credentials.json (or the raw access_token) the user copied
+  # after running `claude /login` locally. Stores it in oauth_credentials
+  # exactly as if the OAuth flow had completed. Refresh job picks it up.
+  #
+  # This is the practical path since claude.ai/oauth/authorize requires a
+  # registered UUID client_id we don't own; the user does the OAuth dance
+  # in the official CLI and just hands us the resulting token.
+  def import_token
+    raw = params[:credentials].to_s.strip
+    raise "Empty credentials" if raw.empty?
+
+    parsed = begin
+      json = JSON.parse(raw)
+      json["claudeAiOauth"] || json
+    rescue JSON::ParserError
+      { "accessToken" => raw }
+    end
+
+    access = parsed["accessToken"] || parsed["access_token"]
+    raise "No accessToken in supplied JSON" if access.blank?
+
+    cred = OauthCredential.find_or_initialize_by(
+      organization_id: current_user.organization_id,
+      provider: "anthropic",
+    )
+    cred.kind             = "ai_provider"
+    cred.access_token     = access
+    cred.refresh_token    = parsed["refreshToken"] || parsed["refresh_token"]
+    if parsed["expiresAt"].present?
+      cred.expires_at = Time.zone.at(parsed["expiresAt"].to_i / 1000)
+    elsif parsed["expires_at"].present?
+      cred.expires_at = Time.zone.at(parsed["expires_at"].to_i)
+    end
+    cred.scope = (parsed["scopes"] || parsed["scope"]).is_a?(Array) ? parsed["scopes"].join(" ") : parsed["scope"]
+    cred.account_email = parsed["email"] || "Claude Code OAuth"
+    cred.last_refreshed_at = Time.current
+    cred.save!
+
+    Agent
+      .where(organization_id: current_user.organization_id)
+      .find_each do |agent|
+        next unless agent.ai_config&.provider == "anthropic_account"
+        AgentMachineOps.reload(agent) rescue nil
+      end
+
+    redirect_to integrations_path, notice: "Claude Code token imported"
+  rescue => e
+    redirect_to integrations_path, alert: "Token import failed: #{e.message}"
+  end
+
   # GET /oauth/:provider/connect → redirect user to provider's authorize URL.
   def connect
     provider = sanitize_provider(params[:provider])

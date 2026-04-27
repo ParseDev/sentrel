@@ -7,8 +7,19 @@ class IntegrationsController < ApplicationController
 
     # Subscription OAuth credentials (Anthropic Pro/Max, ChatGPT Plus/Pro).
     # Separate from tool integrations — these never get loaded as MCP servers.
-    ai_accounts = OauthCredential.where(organization_id: current_tenant.id, kind: "ai_provider")
-                                  .index_by(&:provider)
+    # Wrapped in rescue: until db:migrate has created oauth_credentials on this
+    # environment, the rest of /integrations should still render.
+    ai_accounts = begin
+      if ActiveRecord::Base.connection.table_exists?("oauth_credentials")
+        OauthCredential.where(organization_id: current_tenant.id, kind: "ai_provider")
+                       .index_by(&:provider)
+      else
+        {}
+      end
+    rescue ActiveRecord::StatementInvalid, NameError => e
+      Rails.logger.warn("oauth_credentials lookup failed (migration pending?): #{e.message}")
+      {}
+    end
 
     render inertia: "integrations/index", props: {
       integrations: current_tenant.integrations.order(:service_name).as_json(
