@@ -39,7 +39,7 @@ class RefreshOauthTokensJob < ApplicationJob
                post_json("https://auth.openai.com/oauth/token", {
                  grant_type: "refresh_token",
                  refresh_token: cred.refresh_token,
-                 client_id: "#{base}/oauth/openai/client-metadata",
+                 client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
                })
              end
 

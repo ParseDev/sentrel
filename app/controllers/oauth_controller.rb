@@ -126,6 +126,10 @@ class OauthController < ApplicationController
   def authorize_url(provider, state:, code_challenge:)
     case provider
     when "anthropic"
+      # Anthropic accepts the OAuth 2.0 self-identifying client pattern:
+      # the URL of our hosted metadata document IS the client_id. Anthropic
+      # fetches that URL out-of-band to validate, so WEBHOOK_BASE_URL must
+      # be publicly reachable (won't work from localhost).
       params = {
         client_id: client_metadata_url(provider),
         response_type: "code",
@@ -137,8 +141,13 @@ class OauthController < ApplicationController
       }
       "https://claude.ai/oauth/authorize?#{params.to_query}"
     when "openai"
+      # OpenAI's auth.openai.com rejects URL-shaped client_ids ("expected
+      # UUID, found 'h'"). They only accept a UUID registered via their
+      # Developer App console. Fall back to an env-var-supplied client_id.
+      cid = ENV["OPENAI_OAUTH_CLIENT_ID"].presence
+      raise "OpenAI OAuth requires OPENAI_OAUTH_CLIENT_ID env var to be set with a UUID client_id (auth.openai.com doesn't accept URL client_ids)." if cid.blank?
       params = {
-        client_id: client_metadata_url(provider),
+        client_id: cid,
         response_type: "code",
         redirect_uri: callback_url(provider),
         scope: "openid profile email offline_access",
@@ -176,7 +185,7 @@ class OauthController < ApplicationController
       post_json("https://auth.openai.com/oauth/token", {
         grant_type: "authorization_code",
         code: code,
-        client_id: client_metadata_url("openai"),
+        client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
         redirect_uri: callback_url("openai"),
         code_verifier: code_verifier,
       })
