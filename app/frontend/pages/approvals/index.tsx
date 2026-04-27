@@ -1,5 +1,5 @@
 import { Head, router } from "@inertiajs/react"
-import { ShieldCheck, Check, X, Mail, ChevronDown, ChevronUp, Clock, Paperclip, Linkedin, Twitter, DollarSign, Share2, AlertTriangle, Mails, FileText, Pencil } from "lucide-react"
+import { ShieldCheck, Check, X, Mail, ChevronDown, ChevronUp, Clock, Paperclip, Briefcase, MessageSquare, DollarSign, Share2, AlertTriangle, Mails, FileText, Pencil } from "lucide-react"
 import { useState } from "react"
 
 import { Overline } from "@/components/brand"
@@ -363,8 +363,8 @@ function PendingCard({ approval, onAction }: { approval: Approval; onAction: (id
 }
 
 const PAYLOAD_TYPE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
-  linkedin_post:        { icon: Linkedin,        label: "LinkedIn post" },
-  tweet:                { icon: Twitter,         label: "Tweet" },
+  linkedin_post:        { icon: Briefcase,       label: "LinkedIn post" },
+  tweet:                { icon: MessageSquare,   label: "Tweet" },
   email_draft:          { icon: Mail,            label: "Email draft" },
   cold_email_bulk:      { icon: Mails,           label: "Bulk email" },
   spend_request:        { icon: DollarSign,      label: "Spend request" },
