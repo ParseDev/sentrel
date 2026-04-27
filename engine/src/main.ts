@@ -6,6 +6,7 @@ import { syncWorkspace } from "./memory.js";
 import { provisionSkills } from "./skills.js";
 import { startWorkScheduler } from "./work-scheduler.js";
 import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
+import { startSupportedIntegrationsCache, stopSupportedIntegrationsCache } from "./integrations/supported-cache.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
 import { startGateway, setSyncHandler } from "./gateway.js";
@@ -59,6 +60,13 @@ async function main() {
       }, 30_000),
     ),
   ]);
+
+  // Item 5 — pull the supported-integrations list from Rails (which proxies
+  // Composio's auth_configs). Cached + auto-refreshed every 30 min so adding
+  // a new auth_config in the Composio dashboard makes it usable here without
+  // a code change. Boot doesn't block on this — fallback list takes over if
+  // the fetch fails.
+  void startSupportedIntegrationsCache();
 
   // 5. Update agent status
   await host.updateAgentStatus(agent.id, "running");
@@ -140,6 +148,7 @@ async function main() {
     logger.info("Shutting down...");
     stopAnthropicBillingProxy();
     stopOpenAITranslatorProxy();
+    stopSupportedIntegrationsCache();
     await host.updateAgentStatus(agent.id, "stopped");
     await worker.close();
     await flushLogs();

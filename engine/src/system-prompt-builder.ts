@@ -1,6 +1,7 @@
 import type { Agent } from "./types.js";
 import type { AgentSkill } from "./host/host.js";
 import { resolveCapabilities } from "./capabilities.js";
+import { getSupportedSlugs } from "./integrations/supported-cache.js";
 
 // Builds the agent's full system prompt. Passed to the Claude Agent SDK as
 // `options.systemPrompt` (string form), which fully replaces the default
@@ -262,17 +263,15 @@ export function buildSystemPrompt(
       `- User: "Schedule a tweet." No twitter. → \`propose_connection({ service: "twitter", why: "to schedule the tweet" })\`.\n\n` +
       `Rule of thumb: if you would otherwise say "you'll need to connect X first" or "set up integration Y", call propose_connection instead.\n\n` +
       `## SUPPORTED services (only these are valid for propose_connection):\n` +
-      `apollo, hubspot, linkedin, gmail, slack, intercom, googlecalendar, googlesheets, googledrive, notion, airtable, calendly, github, linear, vercel, stripe, twitter, figma, mailchimp, typeform, digital_ocean.\n\n` +
-      `If the user asks for an unsupported service (Salesforce, Pipedrive, Zoho, Outlook, Asana, Trello, Zendesk, Freshdesk, Intercom, Front, Help Scout, Pipefy, Jira, Bitbucket, GitLab, AWS, GCP, Azure, etc.) — DO NOT call propose_connection. Tell the user honestly: "We don't support <service> yet — but I can use <closest supported alternative> if that fits." Suggest a real alternative from the supported list.`
+      `${getSupportedSlugs().join(", ")}.\n\n` +
+      `If the user asks for an unsupported service (Salesforce, Pipedrive, Zoho, Outlook, Asana, Trello, Zendesk, Freshdesk, Front, Help Scout, Jira, Bitbucket, GitLab, AWS, GCP, Azure, etc.) — DO NOT call propose_connection. Tell the user honestly: "We don't support <service> yet — but I can use <closest supported alternative> if that fits." Suggest a real alternative from the supported list.`
     );
   } else if (caps.integrations.enabled) {
-    // No integrations connected at all — agent should still propose_connection
-    // when asked for a SUPPORTED external service.
     parts.push(
       `# CONNECTING INTEGRATIONS\n\n` +
       `This organization has not connected any integrations yet. When the user asks you to do something in one of our supported third-party services, call \`propose_connection({ service, why })\` to surface a one-tap Connect button in the chat.\n\n` +
       `## SUPPORTED services:\n` +
-      `apollo, hubspot, linkedin, gmail, slack, intercom, googlecalendar, googlesheets, googledrive, notion, airtable, calendly, github, linear, vercel, stripe, twitter, figma, mailchimp, typeform, digital_ocean.\n\n` +
+      `${getSupportedSlugs().join(", ")}.\n\n` +
       `For anything outside that list, tell the user we don't support it yet — don't surface a connect card that will fail.`
     );
   }
