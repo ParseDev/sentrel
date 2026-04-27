@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 
 import { GlowCard, Overline, StatTile, StatusDot } from "@/components/brand"
+import { TokenUsagePopover, type SpendSummary } from "@/components/token-usage-popover"
 import { Button } from "@/components/ui/button"
 import AppLayout from "@/layouts/app-layout"
 import { agentPath, dashboardPath, newAgentPath, pendingApprovalsPath, tasksPath } from "@/routes"
@@ -20,6 +21,7 @@ import type { Agent, DashboardStats } from "@/types"
 interface Props {
   agents: Agent[]
   stats: DashboardStats
+  spend: SpendSummary
 }
 
 const STATUS_MAP: Record<string, { dot: "online" | "working" | "idle" | "error" | "offline"; label: string }> = {
@@ -30,7 +32,7 @@ const STATUS_MAP: Record<string, { dot: "online" | "working" | "idle" | "error" 
   starting: { dot: "working", label: "Starting" },
 }
 
-export default function DashboardIndex({ agents, stats }: Props) {
+export default function DashboardIndex({ agents, stats, spend }: Props) {
   const runningCount = agents.filter((a) => a.status === "running").length
 
   return (
@@ -38,12 +40,15 @@ export default function DashboardIndex({ agents, stats }: Props) {
       fullBleed
       crumbs={[{ label: "Workspace", href: dashboardPath() }, { label: "Dashboard" }]}
       topBarActions={
-        <Button asChild size="sm" className="gap-1.5 h-8">
-          <Link href={newAgentPath()}>
-            <Plus className="size-3.5" />
-            New agent
-          </Link>
-        </Button>
+        <>
+          <TokenUsagePopover spend={spend} />
+          <Button asChild size="sm" className="gap-1.5 h-8">
+            <Link href={newAgentPath()}>
+              <Plus className="size-3.5" />
+              New agent
+            </Link>
+          </Button>
+        </>
       }
     >
       <Head title="Dashboard" />

@@ -25,6 +25,10 @@ class Users::RegistrationsController < Devise::RegistrationsController
 
   private
 
+  def after_sign_up_path_for(_resource)
+    dashboard_path
+  end
+
   def sign_up_params
     params.require(:user).permit(:name, :email, :password, :password_confirmation, :organization_name)
   end

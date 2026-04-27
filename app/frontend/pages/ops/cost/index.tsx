@@ -1,20 +1,32 @@
 import { Head, router, Link } from "@inertiajs/react"
-import { Zap, TrendingDown, Activity } from "lucide-react"
+import { Zap, TrendingDown, Activity, Cpu } from "lucide-react"
 
 import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+interface PerModel {
+  model_id: string
+  cost: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+}
+
 interface Props {
   days: number
   total_cost_usd: number
   total_runs: number
+  total_tokens: number
+  total_input_tokens: number
+  total_output_tokens: number
   cache_savings_usd: number
   cache_read_tokens: number
   daily: { date: string; agent_id: number; cost: number }[]
   per_agent: { agent_id: number; agent_name: string | null; cost: number }[]
   per_job_type: { action: string; cost: number }[]
+  per_model: PerModel[]
 }
 
 function fmtCost(usd: number): string {
@@ -22,7 +34,17 @@ function fmtCost(usd: number): string {
   return `$${usd.toFixed(4)}`
 }
 
-export default function OpsCostIndex({ days, total_cost_usd, total_runs, cache_savings_usd, cache_read_tokens, daily, per_agent, per_job_type }: Props) {
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toString()
+}
+
+function modelLabel(id: string): string {
+  return id.replace(/^claude-/, "").replace(/^gpt-/, "")
+}
+
+export default function OpsCostIndex({ days, total_cost_usd, total_runs, total_tokens, total_input_tokens, total_output_tokens, cache_savings_usd, cache_read_tokens, daily, per_agent, per_job_type, per_model }: Props) {
   function updateDays(v: string) {
     router.get("/ops/cost", { days: v }, { preserveState: true })
   }
@@ -72,15 +94,14 @@ export default function OpsCostIndex({ days, total_cost_usd, total_runs, cache_s
       {/* Top stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatBig icon={Zap} label="Total spent" value={fmtCost(total_cost_usd)} sublabel={`over ${days} days`} />
+        <StatBig
+          icon={Cpu}
+          label="Total tokens"
+          value={fmtTokens(total_tokens)}
+          sublabel={`${fmtTokens(total_input_tokens)} in · ${fmtTokens(total_output_tokens)} out`}
+        />
         <StatBig icon={Activity} label="Runs" value={total_runs.toString()} sublabel={`${(total_cost_usd / Math.max(1, total_runs)).toFixed(4)}$ avg`} />
         <StatBig icon={TrendingDown} label="Cache savings" value={fmtCost(cache_savings_usd)} sublabel={`${(cache_read_tokens / 1_000_000).toFixed(2)}M cached reads`} tone="good" />
-        <StatBig
-          icon={TrendingDown}
-          label="Effective rate"
-          value={`${((cache_savings_usd / Math.max(0.0001, total_cost_usd + cache_savings_usd)) * 100).toFixed(0)}%`}
-          sublabel="saved via cache"
-          tone="good"
-        />
       </div>
 
       {/* Daily chart */}
@@ -109,6 +130,16 @@ export default function OpsCostIndex({ days, total_cost_usd, total_runs, cache_s
               )
             })}
           </div>
+        )}
+      </div>
+
+      {/* Per model — tokens + cost */}
+      <div className="rounded-lg border border-border p-4 mb-6">
+        <h2 className="text-sm font-medium mb-3">By model</h2>
+        {per_model.length === 0 ? (
+          <div className="text-xs text-muted-foreground italic">No data</div>
+        ) : (
+          <PerModelChart per_model={per_model} total_cost_usd={total_cost_usd} total_tokens={total_tokens} />
         )}
       </div>
 
@@ -189,6 +220,79 @@ function StatBig({
       </div>
       <div className={`text-2xl font-semibold tabular-nums ${toneClasses}`}>{value}</div>
       {sublabel && <div className="text-[11px] text-muted-foreground mt-1">{sublabel}</div>}
+    </div>
+  )
+}
+
+function PerModelChart({
+  per_model,
+  total_cost_usd,
+  total_tokens,
+}: {
+  per_model: PerModel[]
+  total_cost_usd: number
+  total_tokens: number
+}) {
+  const sorted = [...per_model].sort((a, b) => b.cost - a.cost)
+  const maxTokens = Math.max(...sorted.map((m) => m.total_tokens), 1)
+  const maxCost = Math.max(...sorted.map((m) => m.cost), 0.0001)
+
+  return (
+    <div className="space-y-4">
+      {/* Side-by-side histogram: tokens (blue) and cost (purple) per model */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${sorted.length}, minmax(0, 1fr))` }}>
+        {sorted.map((m) => {
+          const tokenH = Math.max(4, (m.total_tokens / maxTokens) * 100)
+          const costH = Math.max(4, (m.cost / maxCost) * 100)
+          return (
+            <div key={m.model_id} className="flex flex-col items-center gap-1.5">
+              <div className="flex h-32 w-full items-end justify-center gap-1">
+                <div
+                  className="w-1/2 rounded-t bg-blue-500 hover:bg-blue-600 transition-colors"
+                  style={{ height: `${tokenH}%` }}
+                  title={`${fmtTokens(m.total_tokens)} tokens`}
+                />
+                <div
+                  className="w-1/2 rounded-t bg-purple-500 hover:bg-purple-600 transition-colors"
+                  style={{ height: `${costH}%` }}
+                  title={fmtCost(m.cost)}
+                />
+              </div>
+              <div className="font-mono text-[10px] text-muted-foreground truncate w-full text-center">
+                {modelLabel(m.model_id)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Legend + per-row totals table */}
+      <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-blue-500" /> Tokens
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-purple-500" /> Cost
+        </span>
+      </div>
+
+      <div className="border-t pt-3 space-y-2">
+        {sorted.map((m) => {
+          const costPct = (m.cost / Math.max(0.0001, total_cost_usd)) * 100
+          const tokenPct = (m.total_tokens / Math.max(1, total_tokens)) * 100
+          return (
+            <div key={m.model_id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-xs">
+              <span className="font-mono truncate">{modelLabel(m.model_id)}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {fmtTokens(m.total_tokens)} ({tokenPct.toFixed(1)}%)
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {fmtCost(m.cost)} ({costPct.toFixed(1)}%)
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
