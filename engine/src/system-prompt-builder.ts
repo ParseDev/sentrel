@@ -164,18 +164,45 @@ export function buildSystemPrompt(
     );
 
     parts.push(
-      `# Approvals — when to ask the human first\n` +
-      `Whenever the user asks you to do something user-visible and irreversible — publish a post, send an email/email batch, spend money, share something externally, delete a record, modify a CRM record, or any "draft and ask before doing" request — you MUST call \`request_approval\` instead of asking in plain text.\n\n` +
+      `# CRITICAL — request_approval is REQUIRED for any user-visible action\n` +
+      `\n` +
+      `**HARD RULE.** You MUST call the \`request_approval\` MCP tool — not text — every time you would otherwise ask the user "ok to send/publish/spend/delete?" in plain prose.\n` +
+      `\n` +
+      `## Trigger phrases — when the user says ANY of these, you MUST call request_approval BEFORE doing the work:\n` +
+      `- "ask me first" / "ask before" / "confirm with me" / "confirm first" / "with my approval" / "before you do it"\n` +
+      `- "draft and ask" / "show me the draft" / "review with me" / "preview" / "let me see"\n` +
+      `- "before publishing" / "before sending" / "before posting" / "before spending"\n` +
+      `- "schedule" + any external action (tweet/email/post)\n` +
+      `\n` +
+      `## Action categories — call request_approval automatically (no trigger phrase needed) when:\n` +
+      `- Publishing/posting externally (LinkedIn, Twitter/X, Slack, Reddit, WhatsApp, Telegram broadcast)\n` +
+      `- Sending email — single or batch\n` +
+      `- Spending money or making a financial commitment\n` +
+      `- Modifying CRM/external records (HubSpot, Salesforce, Apollo, Notion)\n` +
+      `- Deleting / cancelling anything irreversible\n` +
+      `- Booking, scheduling, or accepting commitments on the user's behalf\n` +
+      `\n` +
+      `## What NOT to do — these are wrong and will be rejected:\n` +
+      `- ❌ Drafting text in your reply and saying "reply 'ship it' or tell me changes" — there are NO inline reply parsers, the user expects a button card.\n` +
+      `- ❌ Saying "I'll publish this once you approve" without calling the tool first.\n` +
+      `- ❌ Drafting and waiting passively — the user can't give you a structured decision through prose.\n` +
+      `\n` +
+      `## Tool signature\n` +
       `\`request_approval({ summary, payload_type, payload, options?, allow_amendment?, preview_markdown?, preview_attachments? })\`\n` +
-      `- summary: one-line user-facing description ("Publish post to LinkedIn", "Send 12 cold emails", "Spend $200 on LinkedIn ads")\n` +
-      `- payload_type: one of linkedin_post / tweet / email_draft / cold_email_bulk / spend_request / external_share / destructive_action / generic — picks a built-in renderer when one fits, otherwise use 'generic'.\n` +
-      `- payload: structured data the action handler will consume (e.g. linkedin_post → { text }, email_draft → { to, subject, body }, refund → { amount_usd, customer_id, reason }, calendar_invite → { attendees, when, where, agenda }).\n` +
-      `- options: defaults to [{label:"Approve",value:"approve"},{label:"Reject",value:"reject"}]; override for non-binary choices (e.g. add a third "Edit" button that returns "edit")\n` +
-      `- allow_amendment: true if the user should be able to type a free-text amendment (e.g. "make the headline punchier")\n` +
-      `- **preview_markdown**: ALWAYS set this when payload_type='generic' AND it's nice to set even for known types when the structured payload would render dryly. Markdown the user actually reads — title, key fields, the actual content, a one-line consequence. The renderer prefers this over the JSON fallback.\n` +
-      `- preview_attachments: optional [{type:'image|link|file|audio|video', url, label?}] for screenshot mockups, links to the doc being shared, audio samples, etc.\n\n` +
-      `**Why this matters:** the user gets an inline button card on whatever channel they're on (Telegram inline keyboard, web approval card). Their click resolves the tool call with their decision, and you act on the result. Asking in plain text means the user has no buttons and you risk re-drafting in a loop.\n\n` +
-      `Even for low-stakes drafts, prefer request_approval — it captures the "I want a button to ship this" UX users expect.`
+      `- summary: one-line user-facing description ("Publish LinkedIn post about Alchemy", "Send 12 cold emails", "Spend $200 on LinkedIn ads", "Delete duplicate row from prospects sheet")\n` +
+      `- payload_type: one of linkedin_post / tweet / email_draft / cold_email_bulk / spend_request / external_share / destructive_action / generic. Pick the closest fit; use 'generic' for anything else (refunds, calendar invites, slack DMs, code changes, scheduling tweets, deleting rows, etc.) and ALWAYS pair with preview_markdown.\n` +
+      `- payload: structured data the action will consume. linkedin_post → { text }; email_draft → { to, subject, body }; spend_request → { amount_usd, vendor, purpose }; tweet → { text, scheduled_for? }; destructive_action → { resource, what_will_change }; generic → anything you want.\n` +
+      `- options: defaults to Approve/Reject. Override for richer choices, e.g. for a tweet: [{label:"Post now",value:"post_now"},{label:"Schedule 9am",value:"schedule_9am"},{label:"Cancel",value:"cancel"}].\n` +
+      `- allow_amendment: true if the user should be able to type a free-text edit ("make it punchier", "shorter").\n` +
+      `- preview_markdown: human-readable Markdown of WHAT will happen. ALWAYS set for payload_type='generic'. Recommended even for known types when structured fields render dryly.\n` +
+      `- preview_attachments: optional [{type:'image|link|file|audio|video', url, label?}] for screenshots, doc links, audio samples.\n` +
+      `\n` +
+      `## Few-shot example\n` +
+      `User: "Schedule a tweet for 9am tomorrow about our launch."\n` +
+      `Wrong: "Here's a draft: 🚀 We just launched Alchemy! Reply 'ship it' or tell me changes."\n` +
+      `Right: call \`request_approval({ summary: "Schedule tweet for 9am tomorrow", payload_type: "tweet", payload: { text: "🚀 We just launched Alchemy!", scheduled_for: "2026-04-28T09:00:00" }, options: [{label:"Post now",value:"post_now"},{label:"Schedule 9am",value:"schedule"},{label:"Cancel",value:"cancel"}], allow_amendment: true })\`. Then wait for the tool result.\n` +
+      `\n` +
+      `When the tool returns, the result text contains "User decision: <value>" (and optionally "amendment: <text>"). Act on the decision: execute, re-draft with the amendment, or stop.`
     );
   }
 
