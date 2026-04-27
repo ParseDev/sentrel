@@ -135,7 +135,29 @@ class AgentsController < ApplicationController
       agents: current_tenant.agents.select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
+      org_email_domain: current_tenant.try(:email_domain).presence || ENV["DEFAULT_AGENT_EMAIL_DOMAIN"].presence || "alchemy.scribemd.ai",
     }
+  end
+
+  # POST /agents/draft — turn a free-text description ("an SDR that books demos
+  # for our SaaS") into a pre-fill payload for the new-agent form. Picks the
+  # best matching template, suggests skills/model/capabilities, and proposes a
+  # first name. Used by the new-agent wizard's intro step.
+  def draft
+    description = params[:description].to_s.strip
+    if description.blank?
+      render json: { error: "Tell us what you want this agent to do." }, status: :unprocessable_entity
+      return
+    end
+
+    drafter = AgentDrafter.new(
+      description: description,
+      tools_preference: params[:tools_preference],
+      tools_description: params[:tools_description],
+      templates: AgentTemplate.all.to_a,
+      skills: SkillDefinition.all.to_a,
+    )
+    render json: drafter.to_h
   end
 
   def create
@@ -171,6 +193,8 @@ class AgentsController < ApplicationController
         defs = SkillDefinition.where(slug: template.suggested_skill_slugs)
         defs.each { |d| @agent.agent_skills.find_or_create_by!(skill_definition: d).update!(enabled: true) }
       end
+
+      apply_initial_channels!(@agent)
 
       EngineSync.trigger(@agent)
       # Spawn the agent's machine (Fly / Hetzner / local depending on
@@ -283,6 +307,49 @@ class AgentsController < ApplicationController
 
   def ai_config_params
     params.fetch(:ai_config, {}).permit(:provider, :model_id, :temperature, :max_tokens, :thinking_level)
+  end
+
+  # Stores the channel preferences captured in the new-agent wizard intro.
+  # Email gets a fully-provisioned address (auto-generated as
+  # "{slug}@{org_domain}" if the user didn't override). Other channels are
+  # recorded as "pending" — the user finishes connecting them on the
+  # agent's Channels page (Telegram bot token, Twilio number, etc.).
+  def apply_initial_channels!(agent)
+    # Inertia POSTs are JSON, which wrap_parameters duplicates under :agent.
+    # Read either shape so the controller works regardless.
+    requested = params[:channel_configs].presence || params.dig(:agent, :channel_configs)
+    return if requested.blank?
+
+    requested = requested.values if requested.is_a?(ActionController::Parameters)
+    Array(requested).each do |raw|
+      attrs = raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw.to_h
+      kind = attrs["channel_type"] || attrs[:channel_type]
+      next if kind.blank?
+      next unless agent.channel_configs.where(channel_type: kind).empty?
+
+      cfg = (attrs["config"] || attrs[:config] || {}).to_h.stringify_keys
+      status = "pending"
+      if kind == "email"
+        cfg["address"] = cfg["address"].presence || default_email_address_for(agent)
+        status = "connected"
+      end
+
+      agent.channel_configs.create(
+        channel_type: kind,
+        enabled: kind == "email",
+        status: status,
+        config: cfg,
+      )
+    end
+  rescue => e
+    Rails.logger.warn "[AgentsController] apply_initial_channels failed for #{agent.id}: #{e.message}"
+  end
+
+  def default_email_address_for(agent)
+    domain = current_tenant.try(:email_domain).presence ||
+             ENV["DEFAULT_AGENT_EMAIL_DOMAIN"].presence ||
+             "alchemy.scribemd.ai"
+    "#{agent.slug}@#{domain}"
   end
 
   def agent_json(agent)
