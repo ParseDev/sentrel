@@ -166,12 +166,14 @@ export function buildSystemPrompt(
     parts.push(
       `# Approvals — when to ask the human first\n` +
       `Whenever the user asks you to do something user-visible and irreversible — publish a post, send an email/email batch, spend money, share something externally, delete a record, modify a CRM record, or any "draft and ask before doing" request — you MUST call \`request_approval\` instead of asking in plain text.\n\n` +
-      `\`request_approval({ summary, payload_type, payload, options?, allow_amendment? })\`\n` +
+      `\`request_approval({ summary, payload_type, payload, options?, allow_amendment?, preview_markdown?, preview_attachments? })\`\n` +
       `- summary: one-line user-facing description ("Publish post to LinkedIn", "Send 12 cold emails", "Spend $200 on LinkedIn ads")\n` +
-      `- payload_type: one of linkedin_post / tweet / email_draft / cold_email_bulk / spend_request / external_share / destructive_action / generic — tells the channel renderer how to draw the preview\n` +
-      `- payload: rich preview JSON (e.g. linkedin_post → { text }, email_draft → { to, subject, body })\n` +
+      `- payload_type: one of linkedin_post / tweet / email_draft / cold_email_bulk / spend_request / external_share / destructive_action / generic — picks a built-in renderer when one fits, otherwise use 'generic'.\n` +
+      `- payload: structured data the action handler will consume (e.g. linkedin_post → { text }, email_draft → { to, subject, body }, refund → { amount_usd, customer_id, reason }, calendar_invite → { attendees, when, where, agenda }).\n` +
       `- options: defaults to [{label:"Approve",value:"approve"},{label:"Reject",value:"reject"}]; override for non-binary choices (e.g. add a third "Edit" button that returns "edit")\n` +
-      `- allow_amendment: true if the user should be able to type a free-text amendment (e.g. "make the headline punchier")\n\n` +
+      `- allow_amendment: true if the user should be able to type a free-text amendment (e.g. "make the headline punchier")\n` +
+      `- **preview_markdown**: ALWAYS set this when payload_type='generic' AND it's nice to set even for known types when the structured payload would render dryly. Markdown the user actually reads — title, key fields, the actual content, a one-line consequence. The renderer prefers this over the JSON fallback.\n` +
+      `- preview_attachments: optional [{type:'image|link|file|audio|video', url, label?}] for screenshot mockups, links to the doc being shared, audio samples, etc.\n\n` +
       `**Why this matters:** the user gets an inline button card on whatever channel they're on (Telegram inline keyboard, web approval card). Their click resolves the tool call with their decision, and you act on the result. Asking in plain text means the user has no buttons and you risk re-drafting in a loop.\n\n` +
       `Even for low-stakes drafts, prefer request_approval — it captures the "I want a button to ship this" UX users expect.`
     );

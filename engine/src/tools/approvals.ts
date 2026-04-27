@@ -63,6 +63,16 @@ export function buildApprovalsMcpServer(ctx: ApprovalsContext) {
       ),
       risk_tier: z.enum(RISK_TIERS).optional().describe("low / medium / high — defaults to medium. Used for analytics + standing-rules auto-approval (low-risk may auto-approve in the future)."),
       allow_amendment: z.boolean().optional().describe("Set true if the user should be able to type a free-text amendment ('change the headline to X'). Returned in decision_text."),
+      preview_markdown: z.string().optional().describe(
+        "Universal human-readable preview of the action, in Markdown. Use this for ANY action type the dedicated renderers don't cover natively — slack_dm, calendar_invite, refund, feature flag toggle, code change, meeting reschedule, anything. Render the action as the user would want to read it: short title, key fields, the actual content, a one-line consequence statement. Always set this when payload_type='generic'.",
+      ),
+      preview_attachments: z.array(z.object({
+        type: z.enum(["image", "link", "file", "audio", "video"]),
+        url: z.string(),
+        label: z.string().optional(),
+      })).optional().describe(
+        "Optional attachments for the preview card — screenshot mockups, links to the doc being shared, audio samples, etc. Rendered as chips/inline below the markdown.",
+      ),
     },
     async (args) => {
       const options = args.options && args.options.length > 0
@@ -72,13 +82,19 @@ export function buildApprovalsMcpServer(ctx: ApprovalsContext) {
 
       const { id: localId, promise } = createActionApproval(args.summary, args.payload_type);
 
+      // Embed preview hints inside the persisted payload so they survive
+      // round-trip through the DB to the side-panel render too.
+      const enrichedPayload: Record<string, unknown> = { ...args.payload };
+      if (args.preview_markdown) enrichedPayload._preview_markdown = args.preview_markdown;
+      if (args.preview_attachments) enrichedPayload._preview_attachments = args.preview_attachments;
+
       try {
         const dbRow = await host.createPendingActionApproval({
           orgId: ctx.orgId,
           agentId: ctx.agentId,
           summary: args.summary,
           payloadType: args.payload_type,
-          payload: args.payload,
+          payload: enrichedPayload,
           options,
           riskTier,
           approvalToken: localId,
@@ -93,7 +109,7 @@ export function buildApprovalsMcpServer(ctx: ApprovalsContext) {
           approvalToken: localId,
           summary: args.summary,
           payloadType: args.payload_type,
-          payload: args.payload,
+          payload: enrichedPayload,
           options,
           riskTier,
           allowAmendment: args.allow_amendment === true,
