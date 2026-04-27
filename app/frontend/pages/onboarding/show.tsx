@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import AppLogo from "@/components/app-logo"
+import { useTheme } from "@/hooks/use-theme"
 import { Overline } from "@/components/brand"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -280,6 +281,8 @@ export default function OnboardingShow({
   organization,
   suggested_website,
 }: Props) {
+  useTheme()
+
   const [step, setStep] = useState<Step>(
     organization.company_summary ? "summary" : "website"
   )
@@ -467,7 +470,7 @@ export default function OnboardingShow({
     <>
       <Head title="Set up your workspace" />
 
-      <div className="flex min-h-screen bg-background">
+      <div className="flex h-screen bg-background">
         {/* Left: Brand panel (same style as auth) */}
         <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden border-r bg-card p-12 lg:flex">
           <div
@@ -559,7 +562,7 @@ export default function OnboardingShow({
         </aside>
 
         {/* Right: Content panel */}
-        <main className="flex w-full items-center justify-center p-6 sm:p-10 lg:w-1/2">
+        <main className="flex w-full justify-center overflow-y-auto p-6 py-16 sm:p-10 sm:py-16 lg:w-1/2">
           <div className="w-full max-w-md">
             {/* Mobile logo */}
             <div className="mb-10 lg:hidden">
