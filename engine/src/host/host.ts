@@ -198,7 +198,7 @@ export interface Host {
   updateScheduledWorkLastRun(id: number): Promise<void>;
 
   // ── Tasks ──
-  createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number }): Promise<number>;
+  createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number; parentTaskId?: number }): Promise<number>;
   findAgentBySlugOrRole(orgId: number, slug?: string | null, role?: string | null): Promise<{ id: number; name: string; slug: string; role: string } | null>;
   getTeammates(orgId: number, excludeAgentId: number): Promise<Array<{ id: number; name: string; slug: string; role: string; manager_id: number | null; summary: string | null; skills: string[] }>>;
   publishInboundToAgent(targetAgentId: number, payload: {

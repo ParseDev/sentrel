@@ -759,7 +759,7 @@ async function buildQueryOptions(
       : job.channel
         ? { channel: job.channel, metadata: job.payload?.metadata || {}, conversationId: job.conversationId ?? null }
         : undefined;
-    const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id, taskOrigin);
+    const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id, taskOrigin, job.payload?.taskId);
     mcpServers.tasks = tasksServer;
     baseMcpServers.tasks = tasksServer;
   }

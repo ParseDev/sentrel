@@ -474,10 +474,10 @@ export class PostgresHost implements Host {
 
   // ── Tasks ──
 
-  async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number }): Promise<number> {
+  async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number; parentTaskId?: number }): Promise<number> {
     const { rows } = await this.pool.query(
-      `INSERT INTO tasks (organization_id, agent_id, title, description, instruction, status, priority, due_at, assigned_by_agent_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, $8, NOW(), NOW()) RETURNING id`,
+      `INSERT INTO tasks (organization_id, agent_id, title, description, instruction, status, priority, due_at, assigned_by_agent_id, parent_task_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, $8, $9, NOW(), NOW()) RETURNING id`,
       [
         orgId, agentId, title,
         opts?.description || null,
@@ -485,6 +485,7 @@ export class PostgresHost implements Host {
         opts?.priority || "normal",
         opts?.due_at || null,
         opts?.assignedByAgentId ?? null,
+        opts?.parentTaskId ?? null,
       ],
     );
     return rows[0].id;

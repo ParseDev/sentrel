@@ -21,7 +21,10 @@ function asOrigin(ctx?: TaskOriginContext): Origin | undefined {
   return { channel: ctx.channel, metadata: ctx.metadata || {}, conversationId: ctx.conversationId ?? null };
 }
 
-export function buildTasksMcpServer(agentId: number, orgId: number, origin?: TaskOriginContext) {
+// currentTaskId is the task this agent is presently processing (if any).
+// Used as parent_task_id on any sub-task created via create_task / ask_agent /
+// escalate so cancellation propagates correctly.
+export function buildTasksMcpServer(agentId: number, orgId: number, origin?: TaskOriginContext, currentTaskId?: number) {
   const createTaskTool = tool(
     "create_task",
     "Create a task. By default it's assigned to you. To delegate to another agent in the org, pass `assign_to_slug` or `assign_to_role` — they'll be notified and start immediately.",
@@ -63,6 +66,7 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
           priority: args.priority,
           due_at: args.due_at,
           assignedByAgentId: targetAgentId === agentId ? undefined : agentId,
+          parentTaskId: targetAgentId === agentId ? undefined : currentTaskId,
         });
         logger.info(`Task created: ${args.title}`, { id, priority: args.priority || "normal", assignedTo: targetDescription });
 
@@ -307,6 +311,7 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
           instruction,
           priority: "high",
           assignedByAgentId: agentId,
+          parentTaskId: args.task_id ?? currentTaskId,
         });
 
         await host.publishInboundToAgent(target.id, {
@@ -377,6 +382,7 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
           instruction: `One of your teammates is blocked on task ${args.task_id} and needs your help.\n\nBlocker:\n${args.blocker}\n\nDecide what to do: unblock them with a directive, reassign, or cancel. Reply with what you've decided — it will be reported back automatically.`,
           priority: "urgent",
           assignedByAgentId: agentId,
+          parentTaskId: args.task_id,
         });
 
         await host.publishInboundToAgent(target.id, {
