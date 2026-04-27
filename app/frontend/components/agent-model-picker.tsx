@@ -28,26 +28,9 @@ const MODELS: Array<{
       { provider: "anthropic", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  hint: "fastest + cheapest" },
     ],
   },
-  {
-    // Subscription auth — uses the org's connected Claude Pro/Max/Team OAuth
-    // token. Same models as direct, but billing flows through the user's
-    // subscription. Visible regardless of connection state — connection
-    // happens at /integrations.
-    group: "Anthropic Account (subscription)",
-    options: [
-      { provider: "anthropic_account", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7 (your subscription)",   hint: "billed against your Claude Pro/Max" },
-      { provider: "anthropic_account", model_id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6 (your subscription)", hint: "billed against your Claude Pro/Max" },
-      { provider: "anthropic_account", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5 (your subscription)",  hint: "billed against your Claude Pro/Max" },
-    ],
-  },
-  {
-    group: "OpenAI Account (subscription)",
-    options: [
-      { provider: "openai_account", model_id: "gpt-5.5-pro",  label: "GPT-5.5 Pro (your ChatGPT)",  hint: "billed against your ChatGPT Plus/Pro" },
-      { provider: "openai_account", model_id: "gpt-5.5",      label: "GPT-5.5 (your ChatGPT)",      hint: "billed against your ChatGPT Plus/Pro" },
-      { provider: "openai_account", model_id: "gpt-5.4-mini", label: "GPT-5.4 mini (your ChatGPT)", hint: "billed against your ChatGPT Plus/Pro" },
-    ],
-  },
+  // Subscription auth (anthropic_account / openai_account) — temporarily
+  // hidden from the picker. Backend routing in agent_provisioner stays in
+  // place; flip these back on once the OAuth flow is registered.
   {
     // Non-Anthropic OR models resolve via ANTHROPIC_DEFAULT_*_MODEL env vars
     // (set by Rails agent_provisioner) — the engine doesn't pass the slug to

@@ -132,6 +132,12 @@ export default function IntegrationsIndex({ integrations, ai_accounts = [], oaut
       />
 
       <div className="space-y-8">
+        {/* AI accounts (subscription auth) — temporarily hidden. claude.ai/oauth/authorize
+            requires a UUID client_id, not a self-identifying URL, so OAuth flow is on hold
+            until we either register an Anthropic developer app or ship a paste-token UX.
+            Backend scaffolding (oauth_credentials table, refresh job, billing proxy) stays
+            in place so the section can be re-enabled without re-doing the wiring. */}
+        {false && (
         <div>
           <Overline className="mb-3 flex items-center gap-2">
             <Sparkles className="size-3.5" /> AI accounts (subscription auth)
@@ -207,6 +213,7 @@ export default function IntegrationsIndex({ integrations, ai_accounts = [], oaut
             })}
           </div>
         </div>
+        )}
 
         {categories.map((category) => (
           <div key={category}>
