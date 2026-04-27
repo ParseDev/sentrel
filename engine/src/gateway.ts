@@ -596,6 +596,21 @@ export function emitCommandApproval(data: {
   broadcast({ type: "command_approval", ...data, timestamp: Date.now() });
 }
 
+// Item 4 — generic action approval (LinkedIn post, email batch, spend, etc.)
+// Pushed to the chat surface so the user sees an inline card with buttons,
+// not just a side-panel row.
+export function emitActionApproval(data: {
+  approvalToken: string;
+  summary: string;
+  payloadType: string;
+  payload: Record<string, unknown>;
+  options: Array<{ label: string; value: string }>;
+  riskTier: string;
+  allowAmendment: boolean;
+}): void {
+  broadcast({ type: "action_approval", ...data, timestamp: Date.now() });
+}
+
 // Sprint 3 — media sent during the current agent run. Collected here so
 // agent-runner can persist them on the assistant message after the run.
 let pendingMedia: Array<{ url: string; filename: string; contentType: string; byteSize: number; signedId?: string }> = [];

@@ -14,6 +14,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 import { createActionApproval } from "../security/action-approval.js";
+import { emitActionApproval } from "../gateway.js";
 import type { Origin } from "../channels/origin-delivery.js";
 
 const PAYLOAD_TYPES = [
@@ -85,6 +86,18 @@ export function buildApprovalsMcpServer(ctx: ApprovalsContext) {
           origin: ctx.origin,
         });
         logger.info(`Approval requested: ${args.summary}`, { id: localId, dbId: dbRow?.id, payloadType: args.payload_type });
+
+        // Push the inline card to the chat thread (web channel listens via
+        // AgentChatChannel; Telegram delivery handled in a separate hop).
+        emitActionApproval({
+          approvalToken: localId,
+          summary: args.summary,
+          payloadType: args.payload_type,
+          payload: args.payload,
+          options,
+          riskTier,
+          allowAmendment: args.allow_amendment === true,
+        });
 
         const decision = await promise;
         return {
