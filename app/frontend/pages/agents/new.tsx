@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { agentsPath } from "@/routes"
+import { randomAgentName, slugify } from "@/lib/random-names"
 
 interface Template {
   slug: string
@@ -36,6 +37,23 @@ interface AgentSummary {
 interface Props {
   templates: Template[]
   agents: AgentSummary[]
+  org_email_domain: string
+}
+
+interface DraftResponse {
+  template_slug: string | null
+  role: string | null
+  skill_slugs: string[]
+  capabilities: Record<string, { enabled?: boolean }>
+  provider: string
+  model_id: string
+  name_suggestion: string | null
+  reasoning: string | null
+}
+
+interface ChannelChoice {
+  channel_type: string
+  config: Record<string, string>
 }
 
 const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; hint?: string }>> = {
@@ -46,8 +64,6 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; h
     { value: "claude-sonnet-4-20250514",   label: "Claude Sonnet 4",   hint: "stable earlier Sonnet" },
     { value: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  hint: "fastest + cheapest, good for background tasks" },
   ],
-  // Non-anthropic OR slugs work because the engine routes them via
-  // ANTHROPIC_DEFAULT_*_MODEL env vars, not by passing the slug to the SDK.
   openrouter: [
     { value: "moonshotai/kimi-k2.6",            label: "Kimi K2.6 (Moonshot)", hint: "top agentic tool use" },
     { value: "minimax/minimax-m2.7",            label: "MiniMax M2.7",         hint: "long-context reasoning" },
@@ -102,10 +118,24 @@ const CAPABILITIES: Array<{ key: string; label: string; description: string }> =
   },
 ]
 
-export default function AgentNew({ templates, agents }: Props) {
+type Step = "intro" | "template" | "details"
+
+export default function AgentNew({ templates, agents, org_email_domain }: Props) {
+  const [step, setStep] = useState<Step>("intro")
   const [picked, setPicked] = useState<Template | null>(null)
 
-  const { data, setData, post, processing } = useForm({
+  // Intro form state
+  const [description, setDescription] = useState("")
+  const [toolsPreference, setToolsPreference] = useState<"recommend" | "specify">("recommend")
+  const [toolsDescription, setToolsDescription] = useState("")
+  const [wantEmail, setWantEmail] = useState(true)
+  const [wantTelegram, setWantTelegram] = useState(false)
+  const [introName, setIntroName] = useState(() => randomAgentName())
+  const [drafting, setDrafting] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
+  const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
+
+  const { data, setData, post, processing, transform } = useForm({
     name: "",
     slug: "",
     role: "",
@@ -119,19 +149,139 @@ export default function AgentNew({ templates, agents }: Props) {
       thinking_level: "none",
     },
     capabilities: {} as Record<string, { enabled?: boolean; [k: string]: unknown }>,
+    channels: { email: true, telegram: false } as Record<string, boolean>,
   })
 
-  function choose(t: Template) {
+  // Inertia ships the form as flat params; reshape `channels` into the
+  // channel_configs[] array our controller's apply_initial_channels! expects.
+  transform((d) => {
+    const channel_configs: ChannelChoice[] = []
+    if (d.channels.email)    channel_configs.push({ channel_type: "email",    config: {} })
+    if (d.channels.telegram) channel_configs.push({ channel_type: "telegram", config: {} })
+    return {
+      name: d.name,
+      slug: d.slug,
+      role: d.role,
+      manager_id: d.manager_id,
+      template_slug: d.template_slug,
+      ai_config: d.ai_config,
+      capabilities: d.capabilities,
+      channel_configs,
+    }
+  })
+
+  function rerollName() {
+    const next = randomAgentName(introName)
+    setIntroName(next)
+  }
+
+  // Synthesizes a minimal Template-shaped object so the details step can
+  // render even when the templates table is empty (e.g. fresh install with
+  // no seeds). The controller already handles a missing template_slug — it
+  // just skips the markdown pre-fill.
+  function blankTemplate(role: string | null): Template {
+    return {
+      slug: "",
+      name: "Custom agent",
+      role: role || "Custom",
+      description: "Built from your description — no template applied. You can fine-tune identity, personality, and instructions on the agent's Identity tab after creation.",
+      icon: "User",
+      capabilities: {},
+      suggested_skill_slugs: [],
+      suggested_manager_role: null,
+      suggested_provider: null,
+      suggested_model: null,
+      variables: [],
+    }
+  }
+
+  function applyDraft(name: string, draft: DraftResponse) {
+    const tpl = draft.template_slug
+      ? templates.find((t) => t.slug === draft.template_slug)
+      : null
+    // Prefer the LLM's pick → otherwise the first available template →
+    // otherwise a blank custom shell so the user is never blocked.
+    const fallback = tpl || templates[0] || blankTemplate(draft.role)
+    setPicked(fallback)
+
+    const mgr = fallback.suggested_manager_role
+      ? agents.find((a) => a.role.toLowerCase() === fallback.suggested_manager_role!.toLowerCase())
+      : null
+
+    const merged = { ...fallback.capabilities, ...(draft.capabilities || {}) }
+
+    setData({
+      ...data,
+      name,
+      slug: slugify(name),
+      role: draft.role || fallback.role,
+      template_slug: fallback.slug,
+      manager_id: mgr?.id || "none",
+      capabilities: merged,
+      ai_config: {
+        ...data.ai_config,
+        provider: draft.provider || fallback.suggested_provider || data.ai_config.provider,
+        model_id: draft.model_id || fallback.suggested_model || data.ai_config.model_id,
+      },
+      channels: { email: wantEmail, telegram: wantTelegram },
+    })
+    setDraftReasoning(draft.reasoning)
+    setStep("details")
+    return true
+  }
+
+  async function handleIntroSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setDraftError(null)
+    if (!description.trim()) {
+      setDraftError("Tell us what you want this agent to do.")
+      return
+    }
+
+    setDrafting(true)
+    try {
+      const csrfToken = document
+        .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+        ?.getAttribute("content")
+
+      const res = await fetch("/agents/draft", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
+        body: JSON.stringify({
+          description,
+          tools_preference: toolsPreference,
+          tools_description: toolsPreference === "specify" ? toolsDescription : "",
+        }),
+      })
+      const body = (await res.json()) as DraftResponse | { error?: string }
+      if (!res.ok) {
+        setDraftError((body as { error?: string }).error || "Couldn't draft an agent. Try again.")
+        return
+      }
+      const draft = body as DraftResponse
+      const name = introName.trim() || draft.name_suggestion || randomAgentName()
+      applyDraft(name, draft)
+    } catch (err) {
+      setDraftError("Network error. Try again.")
+    } finally {
+      setDrafting(false)
+    }
+  }
+
+  function chooseTemplate(t: Template) {
     setPicked(t)
-    // Prefill defaults from the template. Manager defaults to the first agent
-    // whose role matches suggested_manager_role (if any). Model + provider
-    // use the template's recommendation (Opus for CEO/Engineer, Sonnet for
-    // most, Haiku for Support/SDR).
     const mgr = t.suggested_manager_role
       ? agents.find((a) => a.role.toLowerCase() === t.suggested_manager_role!.toLowerCase())
       : null
+    const name = introName.trim() || randomAgentName()
     setData({
       ...data,
+      name,
+      slug: slugify(name),
       role: t.role,
       template_slug: t.slug,
       manager_id: mgr?.id || "none",
@@ -141,15 +291,22 @@ export default function AgentNew({ templates, agents }: Props) {
         provider: t.suggested_provider || data.ai_config.provider,
         model_id: t.suggested_model  || data.ai_config.model_id,
       },
+      channels: { email: wantEmail, telegram: wantTelegram },
     })
+    setStep("details")
   }
 
   function handleNameChange(name: string) {
     setData({
       ...data,
       name,
-      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+      slug: slugify(name),
     })
+  }
+
+  function rerollDetailsName() {
+    const next = randomAgentName(data.name)
+    setData({ ...data, name: next, slug: slugify(next) })
   }
 
   function toggleCap(key: string, enabled: boolean) {
@@ -159,13 +316,177 @@ export default function AgentNew({ templates, agents }: Props) {
     })
   }
 
+  function toggleChannel(key: "email" | "telegram", enabled: boolean) {
+    setData("channels", { ...data.channels, [key]: enabled })
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     post(agentsPath())
   }
 
-  // Step 1 — template picker
-  if (!picked) {
+  // ── Step 1: intro wizard ───────────────────────────────────────────────
+  if (step === "intro") {
+    return (
+      <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
+        <Head title="New agent" />
+        <PageHeader
+          eyebrow="Hire"
+          title="Describe your new agent"
+          description="Tell us what you want this teammate to do. We'll match it to the right template, skills, and model — you can fine-tune everything in the next step."
+        />
+
+        <form onSubmit={handleIntroSubmit} className="max-w-2xl space-y-6">
+          <section>
+            <Overline className="mb-3">What should this agent do?</Overline>
+            <div className="rounded-lg border bg-card p-5 space-y-2">
+              <Label htmlFor="description">Job description</Label>
+              <textarea
+                id="description"
+                rows={5}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. An SDR that books demos for our B2B SaaS — sources leads from LinkedIn, drafts personalized cold emails, and hands warm replies to AEs."
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+                required
+              />
+              <p className="text-[10px] text-muted-foreground">A sentence or two is enough — be specific about what success looks like.</p>
+            </div>
+          </section>
+
+          <section>
+            <Overline className="mb-3">Tools</Overline>
+            <div className="rounded-lg border bg-card p-5 space-y-4">
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tools_preference"
+                    value="recommend"
+                    checked={toolsPreference === "recommend"}
+                    onChange={() => setToolsPreference("recommend")}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Recommend tools for me</div>
+                    <div className="text-xs text-muted-foreground">We'll pick the right skills based on the role (e.g. Apollo for SDRs, Ahrefs for SEO).</div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tools_preference"
+                    value="specify"
+                    checked={toolsPreference === "specify"}
+                    onChange={() => setToolsPreference("specify")}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">I'll specify the tools</div>
+                    <div className="text-xs text-muted-foreground">List the tools you want — we'll wire up matching skills.</div>
+                  </div>
+                </label>
+              </div>
+              {toolsPreference === "specify" && (
+                <div className="space-y-2 pt-2 border-t">
+                  <Label htmlFor="tools_description">Tools to use</Label>
+                  <textarea
+                    id="tools_description"
+                    rows={3}
+                    value={toolsDescription}
+                    onChange={(e) => setToolsDescription(e.target.value)}
+                    placeholder="e.g. Apollo for lead generation, Gmail for outreach, HubSpot to log activity"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <Overline className="mb-3">Channels</Overline>
+            <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+              How should people reach this agent? You can connect more later.
+            </p>
+            <div className="rounded-lg border bg-card divide-y">
+              <label className="flex items-start justify-between gap-4 p-4 cursor-pointer">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">Email address</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    We'll provision <span className="font-mono">{slugify(introName) || "name"}@{org_email_domain}</span>. Replies route to the agent automatically.
+                  </div>
+                </div>
+                <Checkbox checked={wantEmail} onCheckedChange={(v) => setWantEmail(!!v)} className="mt-1" />
+              </label>
+              <label className="flex items-start justify-between gap-4 p-4 cursor-pointer">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">Telegram bot</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Reserve a Telegram channel for this agent. You'll paste a bot token from @BotFather after creation.
+                  </div>
+                </div>
+                <Checkbox checked={wantTelegram} onCheckedChange={(v) => setWantTelegram(!!v)} className="mt-1" />
+              </label>
+            </div>
+          </section>
+
+          <section>
+            <Overline className="mb-3">Name</Overline>
+            <div className="rounded-lg border bg-card p-5 space-y-2">
+              <Label htmlFor="intro_name">Agent name</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="intro_name"
+                  value={introName}
+                  onChange={(e) => setIntroName(e.target.value)}
+                  placeholder="e.g. Sarah, Atlas, Mira"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={rerollName}
+                  title="Roll a new random name"
+                  aria-label="Roll a new random name"
+                >
+                  <icons.Dices className="size-4" />
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                We pre-fill a random name. Click the dice to re-roll, or type your own.
+              </p>
+            </div>
+          </section>
+
+          {draftError && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {draftError}
+            </div>
+          )}
+
+          <div className="flex justify-between items-center pb-8 max-w-2xl">
+            {templates.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setStep("template")}
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+              >
+                Browse templates instead →
+              </button>
+            ) : (
+              <span />
+            )}
+            <Button type="submit" disabled={drafting || !description.trim()}>
+              {drafting ? "Drafting…" : "Draft my agent"}
+            </Button>
+          </div>
+        </form>
+      </AppLayout>
+    )
+  }
+
+  // ── Step 2a: template grid (legacy/manual path) ────────────────────────
+  if (step === "template") {
     return (
       <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
         <Head title="New agent" />
@@ -174,6 +495,15 @@ export default function AgentNew({ templates, agents }: Props) {
           title="Pick a role"
           description="Each template ships with ready-made identity, personality, instructions, and a suggested skill pack. You can edit them once the agent is created."
         />
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setStep("intro")}
+            className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >
+            ← Back to describe your agent
+          </button>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
           {templates.map((t) => {
             const Icon = (icons as any)[t.icon] || icons.User
@@ -181,7 +511,7 @@ export default function AgentNew({ templates, agents }: Props) {
               <button
                 key={t.slug}
                 type="button"
-                onClick={() => choose(t)}
+                onClick={() => chooseTemplate(t)}
                 className="group rounded-lg border bg-card p-4 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30"
               >
                 <div className="flex items-center gap-2.5 mb-2">
@@ -209,7 +539,13 @@ export default function AgentNew({ templates, agents }: Props) {
     )
   }
 
-  // Step 2 — minimal details form
+  // ── Step 3: details (pre-filled from intro draft or template grid) ────
+  if (!picked) {
+    // Defensive: if we somehow landed here without a picked template, send
+    // the user back to the intro.
+    setStep("intro")
+    return null
+  }
   const PickedIcon = (icons as any)[picked.icon] || icons.User
 
   return (
@@ -217,9 +553,15 @@ export default function AgentNew({ templates, agents }: Props) {
       <Head title={`New ${picked.name}`} />
       <PageHeader
         eyebrow={picked.name}
-        title={`Hire your ${picked.role}`}
+        title={`Hire your ${data.role || picked.role}`}
         description={picked.description}
       />
+
+      {draftReasoning && (
+        <div className="max-w-2xl mb-6 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Why this template:</span> {draftReasoning}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
         <section>
@@ -233,15 +575,27 @@ export default function AgentNew({ templates, agents }: Props) {
                 <div className="text-sm font-medium">{picked.name} template</div>
                 <div className="text-xs text-muted-foreground">Identity, personality, and instructions will be filled in from the template. You can edit them on the agent's Identity tab after creation.</div>
               </div>
-              <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={() => setPicked(null)}>
-                Change template
+              <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={() => setStep("intro")}>
+                Start over
               </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" placeholder="e.g. Alex, Sarah, Marcus" value={data.name} onChange={(e) => handleNameChange(e.target.value)} required />
+                <div className="flex gap-2">
+                  <Input id="name" placeholder="e.g. Alex, Sarah, Marcus" value={data.name} onChange={(e) => handleNameChange(e.target.value)} required />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={rerollDetailsName}
+                    title="Roll a new random name"
+                    aria-label="Roll a new random name"
+                  >
+                    <icons.Dices className="size-4" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="slug">Slug</Label>
@@ -343,8 +697,35 @@ export default function AgentNew({ templates, agents }: Props) {
           </div>
         </section>
 
+        <section>
+          <Overline className="mb-3">Channels</Overline>
+          <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+            We'll provision these when the agent is created. You can add more (SMS, WhatsApp, Slack) on the Channels tab.
+          </p>
+          <div className="rounded-lg border bg-card divide-y">
+            <div className="flex items-start justify-between gap-4 p-4">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">Email</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  <span className="font-mono">{data.slug || "agent"}@{org_email_domain}</span>
+                </div>
+              </div>
+              <Checkbox checked={data.channels.email} onCheckedChange={(v) => toggleChannel("email", !!v)} className="mt-1" />
+            </div>
+            <div className="flex items-start justify-between gap-4 p-4">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">Telegram bot</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Reserved as pending — paste a bot token in Channels to finish the connection.
+                </div>
+              </div>
+              <Checkbox checked={data.channels.telegram} onCheckedChange={(v) => toggleChannel("telegram", !!v)} className="mt-1" />
+            </div>
+          </div>
+        </section>
+
         <div className="flex justify-end gap-2 pb-8 max-w-2xl">
-          <Button type="button" variant="ghost" onClick={() => setPicked(null)}>Back</Button>
+          <Button type="button" variant="ghost" onClick={() => setStep("intro")}>Back</Button>
           <Button type="submit" disabled={processing || !data.name}>
             {processing ? "Creating…" : `Hire ${data.name || picked.name}`}
           </Button>
@@ -353,4 +734,3 @@ export default function AgentNew({ templates, agents }: Props) {
     </AppLayout>
   )
 }
-

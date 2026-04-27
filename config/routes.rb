@@ -56,6 +56,7 @@ Rails.application.routes.draw do
     get "dashboard", to: "dashboard#index", as: :dashboard
 
     get "agents/tree", to: "agents#tree", as: :agents_tree
+    post "agents/draft", to: "agents#draft", as: :agents_draft
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
       resources :conversations, only: [:index, :show]
