@@ -1,0 +1,157 @@
+require "net/http"
+require "uri"
+require "securerandom"
+require "base64"
+require "digest"
+
+# OAuth flows for AI provider subscriptions (Anthropic Pro/Max/Team, ChatGPT
+# Plus/Pro/Business). PKCE-based — matches what Claude Code and Codex CLI use,
+# which is what Anthropic / OpenAI sanction for third-party clients.
+#
+# The shape (Anthropic specifically) is fragile — Anthropic has tightened
+# server-side validation on third-party OAuth multiple times. If billing-pool
+# weirdness shows up, the engine-side billing proxy injects the Claude Code
+# identifier header to keep usage on the right pool.
+class OauthController < ApplicationController
+  before_action :authenticate_user!
+
+  # GET /oauth/:provider/connect → redirect user to provider's authorize URL.
+  def connect
+    provider = sanitize_provider(params[:provider])
+    state = SecureRandom.urlsafe_base64(32)
+    code_verifier = SecureRandom.urlsafe_base64(64)
+    code_challenge = Base64.urlsafe_encode64(Digest::SHA256.digest(code_verifier), padding: false)
+
+    session[:oauth_pkce] = {
+      "provider"      => provider,
+      "state"         => state,
+      "code_verifier" => code_verifier,
+      "org_id"        => current_user.organization_id,
+    }
+
+    redirect_to authorize_url(provider, state: state, code_challenge: code_challenge), allow_other_host: true
+  end
+
+  # GET /oauth/:provider/callback?code=...&state=... → exchange + persist.
+  def callback
+    provider = sanitize_provider(params[:provider])
+    pkce = session.delete(:oauth_pkce) || {}
+
+    if pkce["state"].blank? || pkce["state"] != params[:state]
+      redirect_to integrations_path, alert: "OAuth state mismatch — try connecting again." and return
+    end
+    if params[:code].blank?
+      redirect_to integrations_path, alert: "OAuth callback missing authorization code." and return
+    end
+    if pkce["org_id"].to_i != current_user.organization_id
+      redirect_to integrations_path, alert: "OAuth session mismatch." and return
+    end
+
+    tokens = exchange_code(provider, code: params[:code], code_verifier: pkce["code_verifier"])
+    persist_credential!(provider, tokens)
+
+    # Push the new token into every Fly Machine for agents using this provider.
+    Agent
+      .where(organization_id: current_user.organization_id)
+      .where("ai_config_id IS NOT NULL")
+      .find_each do |agent|
+        next unless agent.ai_config&.provider == "#{provider}_account"
+        AgentMachineOps.reload(agent) rescue nil
+      end
+
+    redirect_to integrations_path, notice: "Connected #{provider.titleize} account"
+  rescue => e
+    Rails.logger.error("OAuth callback (#{provider}) failed: #{e.class}: #{e.message}")
+    redirect_to integrations_path, alert: "OAuth failed: #{e.message}"
+  end
+
+  private
+
+  def sanitize_provider(p)
+    raise ArgumentError, "unsupported provider" unless OauthCredential::PROVIDERS.include?(p.to_s)
+    p.to_s
+  end
+
+  def authorize_url(provider, state:, code_challenge:)
+    case provider
+    when "anthropic"
+      params = {
+        client_id: ENV.fetch("ANTHROPIC_OAUTH_CLIENT_ID", ""),
+        response_type: "code",
+        redirect_uri: callback_url(provider),
+        scope: "org:create_api_key user:profile user:inference",
+        code_challenge: code_challenge,
+        code_challenge_method: "S256",
+        state: state,
+      }
+      "https://claude.ai/oauth/authorize?#{params.to_query}"
+    when "openai"
+      params = {
+        client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
+        response_type: "code",
+        redirect_uri: callback_url(provider),
+        scope: "openid profile email offline_access",
+        code_challenge: code_challenge,
+        code_challenge_method: "S256",
+        state: state,
+      }
+      "https://auth.openai.com/oauth/authorize?#{params.to_query}"
+    end
+  end
+
+  def callback_url(provider)
+    base = ENV.fetch("WEBHOOK_BASE_URL", "http://localhost:3000")
+    "#{base}/oauth/#{provider}/callback"
+  end
+
+  def exchange_code(provider, code:, code_verifier:)
+    case provider
+    when "anthropic"
+      post_json("https://console.anthropic.com/v1/oauth/token", {
+        grant_type: "authorization_code",
+        code: code,
+        client_id: ENV.fetch("ANTHROPIC_OAUTH_CLIENT_ID", ""),
+        redirect_uri: callback_url("anthropic"),
+        code_verifier: code_verifier,
+      })
+    when "openai"
+      post_json("https://auth.openai.com/oauth/token", {
+        grant_type: "authorization_code",
+        code: code,
+        client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
+        redirect_uri: callback_url("openai"),
+        code_verifier: code_verifier,
+      })
+    end
+  end
+
+  def post_json(url, body)
+    uri = URI.parse(url)
+    req = Net::HTTP::Post.new(uri)
+    req["Content-Type"] = "application/json"
+    req["Accept"] = "application/json"
+    req.body = body.to_json
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 30, open_timeout: 5) { |http| http.request(req) }
+    raise "token endpoint #{res.code}: #{res.body.to_s[0..300]}" unless res.is_a?(Net::HTTPSuccess)
+    JSON.parse(res.body)
+  end
+
+  def persist_credential!(provider, tokens)
+    ActsAsTenant.with_tenant(current_user.organization) do
+      cred = OauthCredential.find_or_initialize_by(organization_id: current_user.organization_id, provider: provider)
+      cred.kind             = "ai_provider"
+      cred.access_token     = tokens["access_token"]
+      cred.refresh_token    = tokens["refresh_token"] if tokens["refresh_token"].present?
+      if tokens["expires_in"].present?
+        cred.expires_at = Time.current + tokens["expires_in"].to_i.seconds
+      elsif tokens["expires_at"].present?
+        cred.expires_at = Time.zone.at(tokens["expires_at"].to_i)
+      end
+      cred.scope         = tokens["scope"] if tokens["scope"].present?
+      cred.account_email = tokens["email"] || tokens.dig("account", "email")
+      cred.account_id    = tokens["account_id"] || tokens.dig("account", "id") || tokens.dig("account", "uuid")
+      cred.last_refreshed_at = Time.current
+      cred.save!
+    end
+  end
+end

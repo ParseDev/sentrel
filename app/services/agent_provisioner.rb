@@ -138,20 +138,24 @@ module AgentProvisioner
     end
 
     def env_for(agent)
-      # Provider routing for the Claude Agent SDK.
+      # Provider routing for the Claude Agent SDK. Four supported providers:
       #
-      # The SDK's CLI validates model slugs client-side against Anthropic's
-      # known list — passing "moonshotai/kimi-k2.6" or "deepseek/deepseek-v4"
-      # directly fails with "model may not exist or you may not have access".
-      # The supported escape hatch is the three ANTHROPIC_DEFAULT_*_MODEL env
-      # vars: the SDK picks a tier (haiku/sonnet/opus) per call, we wire all
-      # three to the same OpenRouter slug so whichever tier the SDK picks, it
-      # ends up on the user-chosen model. ANTHROPIC_API_KEY must be explicitly
-      # empty (not unset) so the SDK doesn't fall back to Anthropic direct;
-      # auth travels via ANTHROPIC_AUTH_TOKEN. Base URL is openrouter.ai/api
-      # (no /v1 — OR's Anthropic-compat skin lives at /api).
+      #   anthropic          — direct API key (ANTHROPIC_API_KEY env)
+      #   openrouter         — API key, routed through OR with the three
+      #                        ANTHROPIC_DEFAULT_*_MODEL tier vars (the SDK
+      #                        rejects non-Claude slugs otherwise).
+      #   anthropic_account  — user's Pro/Max/Team subscription via OAuth.
+      #                        Engine talks to a localhost billing proxy that
+      #                        injects the Claude Code identifier header so
+      #                        billing routes to the right pool. Token swap
+      #                        + refresh are managed by RefreshOauthTokensJob.
+      #   openai_account     — user's ChatGPT Plus/Pro/Business via OAuth.
+      #                        Engine talks to a localhost translator proxy
+      #                        that converts Anthropic Messages ↔ OpenAI
+      #                        Responses so the SDK still works.
       #
-      # Reference: https://code.claude.com/docs/en/model-config (ANTHROPIC_DEFAULT_*_MODEL)
+      # AI-provider OAuth credentials live in oauth_credentials (kind=
+      # "ai_provider") — never exposed to agents as MCP tools.
       provider = agent.ai_config&.provider.to_s
       model_id = agent.ai_config&.model_id.to_s
 
@@ -173,18 +177,52 @@ module AgentProvisioner
         "RESUME_ENABLED"      => "true",
       }
 
-      if provider == "openrouter" && ENV["OPENROUTER_API_KEY"].present?
-        env["ANTHROPIC_BASE_URL"]           = "https://openrouter.ai/api"
-        env["ANTHROPIC_AUTH_TOKEN"]         = ENV["OPENROUTER_API_KEY"]
-        env["ANTHROPIC_API_KEY"]            = ""
-        env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]  = model_id
-        env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model_id
-        env["ANTHROPIC_DEFAULT_OPUS_MODEL"]   = model_id
+      case provider
+      when "openrouter"
+        if ENV["OPENROUTER_API_KEY"].present?
+          env["ANTHROPIC_BASE_URL"]             = "https://openrouter.ai/api"
+          env["ANTHROPIC_AUTH_TOKEN"]           = ENV["OPENROUTER_API_KEY"]
+          env["ANTHROPIC_API_KEY"]              = ""
+          env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]  = model_id
+          env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model_id
+          env["ANTHROPIC_DEFAULT_OPUS_MODEL"]   = model_id
+        end
+      when "anthropic_account"
+        cred = ai_provider_credential(agent.organization_id, "anthropic")
+        if cred&.access_token.present?
+          # Engine starts an in-process billing proxy on this port (see
+          # alchemy_engine/src/proxy/anthropic-billing-proxy.ts). Proxy reads
+          # ANTHROPIC_OAUTH_TOKEN from env, injects the Claude Code identifier
+          # header, forwards to api.anthropic.com.
+          env["ANTHROPIC_BASE_URL"]    = "http://127.0.0.1:18801"
+          env["ANTHROPIC_OAUTH_TOKEN"] = cred.access_token
+          env["ANTHROPIC_API_KEY"]     = ""
+        end
+      when "openai_account"
+        cred = ai_provider_credential(agent.organization_id, "openai")
+        if cred&.access_token.present?
+          # Engine starts a translator proxy that accepts Anthropic Messages
+          # shape and forwards to api.openai.com/v1/responses with the OAuth
+          # token. See alchemy_engine/src/proxy/openai-translator-proxy.ts.
+          env["ANTHROPIC_BASE_URL"]              = "http://127.0.0.1:18802"
+          env["OPENAI_OAUTH_TOKEN"]              = cred.access_token
+          env["OPENAI_ACCOUNT_ID"]               = cred.account_id.to_s
+          env["ANTHROPIC_API_KEY"]               = ""
+          env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]   = model_id
+          env["ANTHROPIC_DEFAULT_SONNET_MODEL"]  = model_id
+          env["ANTHROPIC_DEFAULT_OPUS_MODEL"]    = model_id
+        end
       else
         env["ANTHROPIC_API_KEY"] = ENV["ANTHROPIC_API_KEY"].to_s
       end
 
       env.compact
+    end
+
+    def ai_provider_credential(org_id, provider)
+      ActsAsTenant.without_tenant do
+        OauthCredential.find_by(organization_id: org_id, provider: provider, kind: "ai_provider")
+      end
     end
 
     def ensure_app!(app_name)

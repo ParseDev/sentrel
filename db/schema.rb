@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_27_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_27_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -303,6 +303,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_120000) do
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
   end
 
+  create_table "oauth_credentials", force: :cascade do |t|
+    t.text "access_token_ciphertext"
+    t.string "account_email"
+    t.string "account_id"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at"
+    t.string "kind", default: "ai_provider", null: false
+    t.datetime "last_refreshed_at"
+    t.bigint "organization_id", null: false
+    t.string "provider", null: false
+    t.text "refresh_token_ciphertext"
+    t.string "scope"
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_oauth_credentials_on_expires_at"
+    t.index ["kind"], name: "index_oauth_credentials_on_kind"
+    t.index ["organization_id", "provider"], name: "index_oauth_credentials_on_organization_id_and_provider", unique: true
+    t.index ["organization_id"], name: "index_oauth_credentials_on_organization_id"
+  end
+
   create_table "organizations", force: :cascade do |t|
     t.text "composio_api_key_encrypted"
     t.text "context_md"
@@ -460,6 +479,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_120000) do
   add_foreign_key "invitations", "organizations"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "conversations"
+  add_foreign_key "oauth_credentials", "organizations"
   add_foreign_key "pending_approvals", "agents"
   add_foreign_key "pending_approvals", "messages"
   add_foreign_key "pending_approvals", "organizations"
