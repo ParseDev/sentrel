@@ -133,6 +133,17 @@ interface Props {
   channel_configs: ChannelConfig[]
   scheduled_tasks: ScheduledTask[]
   approvals_by_message: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string; created_at: string }[]>
+  pending_action_approvals?: Array<{
+    id: number
+    approval_token: string
+    summary: string
+    payload_type: string
+    payload: Record<string, unknown>
+    options: Array<{ label: string; value: string }>
+    risk_tier: string
+    allow_amendment: boolean
+    created_at: string
+  }>
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
@@ -383,7 +394,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, installed_skills = [], available_skills = [], knowledge_documents = [] }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [] }: Props) {
   const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
@@ -495,7 +506,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         {/* Chat */}
         {section === "chat" && (
           <div className="flex-1 overflow-hidden">
-            <AgentChat agentId={agent.id} agentName={agent.name} agentStatus={agent.status} initialMessages={chat_messages as any} approvalsByMessage={approvals_by_message} />
+            <AgentChat agentId={agent.id} agentName={agent.name} agentStatus={agent.status} initialMessages={chat_messages as any} approvalsByMessage={approvals_by_message} pendingActionApprovals={pending_action_approvals} />
           </div>
         )}
 

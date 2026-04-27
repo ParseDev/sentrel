@@ -55,6 +55,32 @@ class AgentsController < ApplicationController
         approvals.map { |a| a.as_json(only: [:id, :tool_name, :tool_input, :status, :created_at]) }
       }
 
+    # Item 4 — pending generic action approvals (request_approval) so the
+    # inline chat card survives a page refresh. The card is hydrated from
+    # this prop on mount; its DB row stays the source of truth.
+    pending_action_approvals = @agent.pending_approvals
+      .where(status: "pending")
+      .where.not(payload_type: nil)
+      .where("created_at > ?", 24.hours.ago)
+      .order(created_at: :desc)
+      .limit(5)
+      .map { |a|
+        {
+          id: a.id,
+          approval_token: a.approval_token,
+          summary: a.summary,
+          payload_type: a.payload_type,
+          payload: a.tool_input,
+          options: a.options.presence || [
+            { label: "Approve", value: "approve" },
+            { label: "Reject", value: "reject" },
+          ],
+          risk_tier: a.risk_tier,
+          allow_amendment: a.tool_input.is_a?(Hash) && a.tool_input["_allow_amendment"] == true,
+          created_at: a.created_at,
+        }
+      }
+
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
       spend: AgentSpend.for_agent(@agent),
@@ -84,6 +110,7 @@ class AgentsController < ApplicationController
         },
       chat_messages: chat_messages,
       approvals_by_message: approvals_by_message,
+      pending_action_approvals: pending_action_approvals,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
         only: [:id, :title, :status, :priority, :due_at, :completed_at]
       ),

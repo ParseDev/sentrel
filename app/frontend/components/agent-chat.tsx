@@ -457,17 +457,60 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
   }
 }
 
+interface PendingActionApprovalSeed {
+  id: number
+  approval_token: string
+  summary: string
+  payload_type: string
+  payload: Record<string, unknown>
+  options: Array<{ label: string; value: string }>
+  risk_tier: string
+  allow_amendment: boolean
+  created_at: string
+}
+
 interface AgentChatProps {
   agentId: number
   agentName: string
   agentStatus?: string
   initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown> }[]
   approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
+  pendingActionApprovals?: PendingActionApprovalSeed[]
 }
 
-export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {} }: AgentChatProps) {
+export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [] }: AgentChatProps) {
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
-  const [actionApproval, setActionApproval] = useState<ActionApprovalState>(null)
+  // Item 4 — hydrate the inline approval card from server-side state on mount
+  // so a page refresh (or coming back to the tab later) still shows pending
+  // approvals. Without this, the card was driven only by the live ActionCable
+  // event and disappeared on reload.
+  const [actionApproval, setActionApproval] = useState<ActionApprovalState>(() => {
+    const seed = pendingActionApprovals[0]
+    if (!seed) return null
+    return {
+      approvalToken: seed.approval_token,
+      summary: seed.summary,
+      payloadType: seed.payload_type,
+      payload: seed.payload || {},
+      options: seed.options && seed.options.length > 0 ? seed.options : [{ label: "Approve", value: "approve" }, { label: "Reject", value: "reject" }],
+      riskTier: seed.risk_tier || "medium",
+      allowAmendment: seed.allow_amendment === true,
+      resolve: async (decision) => {
+        const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+        setActionApproval(null)
+        await fetch(`/pending_approvals/${seed.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken },
+          body: JSON.stringify({
+            decision: decision.value,
+            decision_text: decision.text,
+            status: decision.value === "reject" || decision.value === "rejected" || decision.value === "cancel" ? "rejected" : "approved",
+          }),
+        })
+        setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
+      },
+    }
+  })
   const adapter = useRef(createAgentAdapter(agentId)).current
 
   // Persistent listener — stays open while on the chat page, receives
@@ -569,7 +612,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
           // for short text, longer for additional tool calls — we land on
           // the safer side and rely on the existing message list to show
           // whatever was persisted by then).
-          setTimeout(() => router.reload({ only: ["initialMessages"], preserveScroll: true }), 3500)
+          setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
         },
       })
     }
