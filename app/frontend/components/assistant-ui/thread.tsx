@@ -39,7 +39,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import { ShieldAlertIcon, CheckIcon as CheckCircleIcon, XIcon as XCircleIcon } from "lucide-react";
-import { type FC, useState, createContext, useContext } from "react";
+import { type FC, useState, useEffect, createContext, useContext } from "react";
 
 // Command approval context — set by AgentChat, consumed by Thread
 type CmdApprovalData = {
@@ -296,6 +296,12 @@ const InlineActionApproval: FC = () => {
 };
 
 function ActionPreview({ payloadType, payload }: { payloadType: string; payload: Record<string, unknown> }) {
+  const previewMd = typeof payload._preview_markdown === "string" ? payload._preview_markdown : null;
+  const previewAtt = Array.isArray(payload._preview_attachments)
+    ? (payload._preview_attachments as Array<{ type: string; url: string; label?: string }>)
+    : [];
+
+  // For known payload types, prefer the dedicated renderer.
   if (payloadType === "linkedin_post" || payloadType === "tweet") {
     const text = String(payload.text || "");
     return (
@@ -342,10 +348,66 @@ function ActionPreview({ payloadType, payload }: { payloadType: string; payload:
       </div>
     );
   }
+  // Universal fallback — agent-supplied markdown preview wins over JSON dump.
+  if (previewMd) {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-md border bg-muted/40 p-3 text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0">
+          <PreviewMarkdown text={previewMd} />
+        </div>
+        {previewAtt.length > 0 && <PreviewAttachments items={previewAtt} />}
+      </div>
+    );
+  }
+
+  const cleanForJson: Record<string, unknown> = { ...payload };
+  delete cleanForJson._preview_markdown;
+  delete cleanForJson._preview_attachments;
   return (
-    <pre className="text-xs bg-muted p-2.5 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap">
-      {JSON.stringify(payload, null, 2)}
-    </pre>
+    <div className="space-y-2">
+      <pre className="text-xs bg-muted p-2.5 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap">
+        {JSON.stringify(cleanForJson, null, 2)}
+      </pre>
+      {previewAtt.length > 0 && <PreviewAttachments items={previewAtt} />}
+    </div>
+  );
+}
+
+function PreviewMarkdown({ text }: { text: string }) {
+  // Lazy-import react-markdown so we don't bloat the chat bundle.
+  const [Md, setMd] = useState<any>(null);
+  const [Gfm, setGfm] = useState<any>(null);
+  useEffect(() => {
+    Promise.all([import("react-markdown"), import("remark-gfm")]).then(([m, g]) => {
+      setMd(() => m.default);
+      setGfm(() => g.default);
+    }).catch(() => {});
+  }, []);
+  if (!Md) return <div className="whitespace-pre-wrap">{text}</div>;
+  return <Md remarkPlugins={Gfm ? [Gfm] : []}>{text}</Md>;
+}
+
+function PreviewAttachments({ items }: { items: Array<{ type: string; url: string; label?: string }> }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((a, i) => {
+        if (a.type === "image") {
+          return <img key={i} src={a.url} alt={a.label || ""} className="max-h-32 rounded border object-contain" />;
+        }
+        return (
+          <a
+            key={i}
+            href={a.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            <span className="font-mono text-[10px] uppercase text-muted-foreground">{a.type}</span>
+            <span>{a.label || a.url}</span>
+          </a>
+        );
+      })}
+    </div>
   );
 }
 
