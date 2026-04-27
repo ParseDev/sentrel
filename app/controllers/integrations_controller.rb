@@ -1,23 +1,28 @@
 class IntegrationsController < ApplicationController
   before_action :authenticate_user!
 
+  # Locally enumerated so the controller can render even if the OauthCredential
+  # constant fails to autoload (encryption-keys not configured yet, etc.).
+  AI_PROVIDERS = %w[anthropic openai].freeze
+
   def index
     # Sync connection state from Composio on every page load
     sync_composio_connections if ENV["COMPOSIO_API_KEY"].present?
 
     # Subscription OAuth credentials (Anthropic Pro/Max, ChatGPT Plus/Pro).
-    # Separate from tool integrations — these never get loaded as MCP servers.
     # Wrapped in rescue: until db:migrate has created oauth_credentials on this
-    # environment, the rest of /integrations should still render.
-    ai_accounts = begin
-      if ActiveRecord::Base.connection.table_exists?("oauth_credentials")
+    # environment AND active_record_encryption keys are set, the rest of
+    # /integrations should still render — Composio toolkits don't depend on
+    # any of this.
+    ai_accounts_by_provider = begin
+      if defined?(OauthCredential) && ActiveRecord::Base.connection.table_exists?("oauth_credentials")
         OauthCredential.where(organization_id: current_tenant.id, kind: "ai_provider")
                        .index_by(&:provider)
       else
         {}
       end
-    rescue ActiveRecord::StatementInvalid, NameError => e
-      Rails.logger.warn("oauth_credentials lookup failed (migration pending?): #{e.message}")
+    rescue StandardError => e
+      Rails.logger.warn("AI accounts lookup skipped: #{e.class}: #{e.message}")
       {}
     end
 
@@ -25,8 +30,8 @@ class IntegrationsController < ApplicationController
       integrations: current_tenant.integrations.order(:service_name).as_json(
         only: [:id, :service_name, :status, :composio_connection_id, :created_at]
       ),
-      ai_accounts: OauthCredential::PROVIDERS.map { |provider|
-        cred = ai_accounts[provider]
+      ai_accounts: AI_PROVIDERS.map { |provider|
+        cred = ai_accounts_by_provider[provider]
         {
           provider: provider,
           connected: cred.present?,
@@ -35,9 +40,6 @@ class IntegrationsController < ApplicationController
           last_refreshed_at: cred&.last_refreshed_at,
         }
       },
-      # Anthropic uses self-identifying client metadata — needs a public
-      # WEBHOOK_BASE_URL. OpenAI rejects URL client_ids ("expected UUID"),
-      # so it requires an env-supplied registered client_id.
       oauth_configured: {
         "anthropic" => ENV["WEBHOOK_BASE_URL"].present?,
         "openai"    => ENV["OPENAI_OAUTH_CLIENT_ID"].present?,
