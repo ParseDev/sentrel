@@ -30,6 +30,9 @@ class IntegrationsController < ApplicationController
       integrations: current_tenant.integrations.order(:service_name).as_json(
         only: [:id, :service_name, :status, :composio_connection_id, :created_at]
       ),
+      # Single source of truth — fetched from Composio + curated catalog.
+      # Each row: { slug, label, category, description, available, logo }.
+      supported_services: ComposioSupported.list,
       ai_accounts: AI_PROVIDERS.map { |provider|
         cred = ai_accounts_by_provider[provider]
         {

@@ -11,42 +11,13 @@ class Api::IntegrationsController < ActionController::API
 
   # GET /api/integrations/supported
   def supported
-    api_key = ENV["COMPOSIO_API_KEY"]
-    return render(json: { items: [] }) if api_key.blank?
-
-    items = fetch_auth_configs(api_key)
-    render json: { items: items }
+    render json: { items: ComposioSupported.list_for_engine }
   rescue => e
     Rails.logger.warn "GET /api/integrations/supported failed: #{e.class}: #{e.message}"
     render json: { items: [], error: e.message }, status: :ok # don't break engine boot
   end
 
   private
-
-  def fetch_auth_configs(api_key)
-    uri = URI("https://backend.composio.dev/api/v3/auth_configs?limit=200")
-    req = Net::HTTP::Get.new(uri)
-    req["x-api-key"] = api_key
-    req["Content-Type"] = "application/json"
-    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
-    return [] unless res.is_a?(Net::HTTPSuccess)
-
-    data = JSON.parse(res.body)
-    raw = data["items"] || data || []
-
-    # Dedupe by slug — multiple auth_configs per toolkit are possible (OAuth
-    # vs API key etc.); we only need to know the toolkit is connectable.
-    seen = {}
-    Array(raw).each do |cfg|
-      slug = (cfg.dig("toolkit", "slug") || "").downcase
-      next if slug.blank?
-      seen[slug] ||= {
-        slug: slug,
-        label: cfg.dig("toolkit", "name") || slug.titleize,
-      }
-    end
-    seen.values.sort_by { |i| i[:label].to_s }
-  end
 
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]

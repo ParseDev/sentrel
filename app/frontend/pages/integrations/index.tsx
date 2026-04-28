@@ -8,29 +8,14 @@ import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
-const AVAILABLE_INTEGRATIONS = [
-  { name: "apollo", label: "Apollo", description: "CRM and lead generation", category: "Sales" },
-  { name: "hubspot", label: "HubSpot", description: "CRM, marketing, and sales", category: "Sales" },
-  { name: "linkedin", label: "LinkedIn", description: "Professional network and outreach", category: "Sales" },
-  { name: "gmail", label: "Gmail", description: "Email via Google", category: "Communication" },
-  { name: "slack", label: "Slack", description: "Team messaging", category: "Communication" },
-  { name: "intercom", label: "Intercom", description: "Customer support", category: "Communication" },
-  { name: "googlecalendar", label: "Google Calendar", description: "Scheduling", category: "Productivity" },
-  { name: "googlesheets", label: "Google Sheets", description: "Spreadsheets", category: "Productivity" },
-  { name: "googledrive", label: "Google Drive", description: "Documents and files", category: "Productivity" },
-  { name: "notion", label: "Notion", description: "Docs and wiki", category: "Productivity" },
-  { name: "airtable", label: "Airtable", description: "Flexible database", category: "Productivity" },
-  { name: "calendly", label: "Calendly", description: "Booking and scheduling", category: "Productivity" },
-  { name: "github", label: "GitHub", description: "Code and PRs", category: "Engineering" },
-  { name: "linear", label: "Linear", description: "Issue tracking", category: "Engineering" },
-  { name: "vercel", label: "Vercel", description: "Frontend deployment", category: "Engineering" },
-  { name: "stripe", label: "Stripe", description: "Payments and billing", category: "Finance" },
-  { name: "twitter", label: "Twitter / X", description: "Social media", category: "Content" },
-  { name: "figma", label: "Figma", description: "Design collaboration", category: "Content" },
-  { name: "mailchimp", label: "Mailchimp", description: "Email marketing", category: "Content" },
-  { name: "typeform", label: "Typeform", description: "Forms and surveys", category: "Content" },
-  { name: "digital_ocean", label: "DigitalOcean", description: "Cloud infrastructure", category: "Engineering" },
-]
+interface SupportedService {
+  slug: string
+  label: string
+  category: string
+  description: string | null
+  available: boolean
+  logo: string | null
+}
 
 interface Integration {
   id: number
@@ -50,6 +35,7 @@ interface AiAccount {
 
 interface Props {
   integrations: Integration[]
+  supported_services: SupportedService[]
   ai_accounts: AiAccount[]
   oauth_configured: { anthropic: boolean; openai: boolean }
 }
@@ -67,7 +53,7 @@ const AI_PROVIDER_META: Record<string, { label: string; description: string; rat
   },
 }
 
-export default function IntegrationsIndex({ integrations, ai_accounts = [], oauth_configured = { anthropic: false, openai: false } }: Props) {
+export default function IntegrationsIndex({ integrations, supported_services = [], ai_accounts = [], oauth_configured = { anthropic: false, openai: false } }: Props) {
   const [pasteOpen, setPasteOpen] = useState<null | "anthropic">(null)
   const [pasteValue, setPasteValue] = useState("")
   const [pasteBusy, setPasteBusy] = useState(false)
@@ -114,7 +100,12 @@ export default function IntegrationsIndex({ integrations, ai_accounts = [], oaut
     router.delete(`/integrations/${id}`)
   }
 
-  const categories = [...new Set(AVAILABLE_INTEGRATIONS.map((i) => i.category))]
+  // Group server-supplied services by category, preserving Composio ordering.
+  const grouped = supported_services.reduce<Record<string, SupportedService[]>>((acc, s) => {
+    (acc[s.category] = acc[s.category] || []).push(s)
+    return acc
+  }, {})
+  const categories = Object.keys(grouped)
 
   return (
     <AppLayout
@@ -219,25 +210,40 @@ export default function IntegrationsIndex({ integrations, ai_accounts = [], oaut
           <div key={category}>
             <Overline className="mb-3">{category}</Overline>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {AVAILABLE_INTEGRATIONS.filter((i) => i.category === category).map((service) => {
-                const connected = integrations.find((i) => i.service_name === service.name)
+              {grouped[category].map((service) => {
+                const connected = integrations.find((i) => i.service_name === service.slug)
+                const setupPending = !service.available
                 return (
                   <div
-                    key={service.name}
+                    key={service.slug}
                     className={`group relative flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-all ${
                       connected
                         ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.04]"
-                        : "hover:border-[var(--border-strong)]"
+                        : setupPending
+                          ? "border-dashed opacity-60"
+                          : "hover:border-[var(--border-strong)]"
                     }`}
                   >
                     <div
-                      className={`relative flex size-9 shrink-0 items-center justify-center rounded-md border ${
+                      className={`relative flex size-9 shrink-0 items-center justify-center rounded-md border overflow-hidden ${
                         connected
                           ? "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]"
                           : "bg-muted text-muted-foreground"
                       }`}
                     >
-                      <Plug className="size-4" />
+                      {service.logo ? (
+                        <img
+                          src={service.logo}
+                          alt={service.label}
+                          className="size-6 object-contain"
+                          onError={(e) => {
+                            // Hide broken images so the Plug fallback shows.
+                            (e.currentTarget as HTMLImageElement).style.display = "none"
+                          }}
+                        />
+                      ) : (
+                        <Plug className="size-4" />
+                      )}
                       {connected && (
                         <span className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-[var(--color-success)] text-white ring-2 ring-background">
                           <Check className="size-2.5" strokeWidth={3} />
@@ -254,6 +260,10 @@ export default function IntegrationsIndex({ integrations, ai_accounts = [], oaut
                             <span className="size-1 rounded-full bg-[var(--color-success)] animate-pulse-glow" />
                             CONNECTED
                           </span>
+                        ) : setupPending ? (
+                          <span className="font-mono uppercase tracking-wide text-[10px] text-muted-foreground/80">
+                            Setup at composio.dev → Auth configs
+                          </span>
                         ) : (
                           service.description
                         )}
@@ -267,12 +277,22 @@ export default function IntegrationsIndex({ integrations, ai_accounts = [], oaut
                       >
                         <Trash2 className="size-3.5" />
                       </button>
+                    ) : setupPending ? (
+                      <a
+                        href="https://app.composio.dev/auth-configs"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                        title="Open Composio dashboard"
+                      >
+                        Set up →
+                      </a>
                     ) : (
                       <Button
                         variant="outline"
                         size="sm"
                         className="h-7 shrink-0 text-xs"
-                        onClick={() => connect(service.name)}
+                        onClick={() => connect(service.slug)}
                       >
                         Connect
                       </Button>
