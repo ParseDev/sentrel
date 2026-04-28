@@ -247,7 +247,13 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   queryState.loadedToolkits = new Set(relevantToolkits);
   // System prompt advertises all connected toolkits (not just the routed subset)
   // so the agent knows what's available if it wants to call search_integrations.
-  const allConnectedToolkits = await getActiveToolkits(agent.organization_id);
+  // Item: per-user vs per-org integrations. The originating user's id (from
+  // the inbound channel poller / Rails webhook) lets us also load that user's
+  // private toolkits — e.g. their personal Gmail — alongside the workspace
+  // shared ones. Falls back to org-only when the job has no associated user.
+  const originatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
+    ?? (job as { user_id?: number }).user_id;
+  const allConnectedToolkits = await getActiveToolkits(agent.organization_id, originatingUserId);
   const teammates = (await host.getTeammates(agent.organization_id, agent.id)).map((t) => ({
     name: t.name, slug: t.slug, role: t.role, managerId: t.manager_id,
   }));
@@ -845,7 +851,9 @@ async function buildQueryOptions(
     // Layer 3 (on-demand): search_integrations MCP tool — agent calls it to
     //   load ADDITIONAL toolkits mid-session if needed.
     // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
-    const availableToolkits = await getActiveToolkits(agent.organization_id);
+    const buildOriginatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
+      ?? (job as { user_id?: number }).user_id;
+    const availableToolkits = await getActiveToolkits(agent.organization_id, buildOriginatingUserId);
     const toolRouting = process.env.TOOL_ROUTING || "smart";
 
     const layer1 = await getRecentComposioToolkits(agent.id);
@@ -868,7 +876,7 @@ async function buildQueryOptions(
       `(layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
     );
 
-    const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits);
+    const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits, buildOriginatingUserId);
     const composioServer = composioResult?.server;
     connectedToolkits = composioResult?.toolkits || [];
     composioToolNames = composioResult?.toolNames || [];

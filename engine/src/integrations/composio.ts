@@ -42,21 +42,33 @@ function getClient(): any {
   return composioClient;
 }
 
-// Cache: orgId → list of active toolkit slugs. TTL 60s. Avoids hitting
-// Composio API on every agent run just to list connections.
-const toolkitsCache = new Map<number, { toolkits: string[]; expiresAt: number }>();
+// Cache key: "org_<id>" or "org_<id>+user_<id>" — the union of buckets being
+// queried. TTL 60s. Avoids hitting Composio on every agent run just to list
+// connections.
+const toolkitsCache = new Map<string, { toolkits: string[]; expiresAt: number }>();
 const TOOLKITS_TTL_MS = 60_000;
 
-export async function getActiveToolkits(orgId: number): Promise<string[]> {
-  const cached = toolkitsCache.get(orgId);
+// Build the Composio user_id list for a given run. Always includes the
+// workspace bucket; optionally includes the originating user's personal
+// bucket so user-scoped integrations (their personal Gmail, LinkedIn, etc.)
+// merge with org-shared ones.
+function composioUserIds(orgId: number, userId?: number | null): string[] {
+  const ids = [`org_${orgId}`];
+  if (userId) ids.push(`user_${userId}`);
+  return ids;
+}
+
+export async function getActiveToolkits(orgId: number, userId?: number | null): Promise<string[]> {
+  const cacheKey = userId ? `org_${orgId}+user_${userId}` : `org_${orgId}`;
+  const cached = toolkitsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.toolkits;
 
   const client = getClient();
   if (!client) return [];
   try {
-    const userId = `org_${orgId}`;
+    const userIds = composioUserIds(orgId, userId);
     const connections: any = await composioBreaker.call(() =>
-      (client as any).connectedAccounts.list({ userIds: [userId] }),
+      (client as any).connectedAccounts.list({ userIds }),
     );
     const toolkits = Array.from(new Set(
       (connections.items || [])
@@ -64,7 +76,7 @@ export async function getActiveToolkits(orgId: number): Promise<string[]> {
         .map((c: any) => c.toolkit?.slug)
         .filter(Boolean),
     )) as string[];
-    toolkitsCache.set(orgId, { toolkits, expiresAt: Date.now() + TOOLKITS_TTL_MS });
+    toolkitsCache.set(cacheKey, { toolkits, expiresAt: Date.now() + TOOLKITS_TTL_MS });
     return toolkits;
   } catch (err) {
     if (err instanceof CircuitOpenError) {
@@ -76,8 +88,9 @@ export async function getActiveToolkits(orgId: number): Promise<string[]> {
   }
 }
 
-export function invalidateToolkitsCache(orgId: number): void {
-  toolkitsCache.delete(orgId);
+export function invalidateToolkitsCache(orgId: number, userId?: number | null): void {
+  if (userId) toolkitsCache.delete(`org_${orgId}+user_${userId}`);
+  toolkitsCache.delete(`org_${orgId}`);
 }
 
 /**
@@ -92,16 +105,22 @@ export function invalidateToolkitsCache(orgId: number): void {
 export async function getComposioMcpServer(
   orgId: number,
   relevantToolkits?: string[],
+  userId?: number | null,
 ): Promise<{ server: any; toolkits: string[]; toolNames: string[] } | null> {
   const client = getClient();
   if (!client) return null;
 
   try {
-    const userId = `org_${orgId}`;
-    const activeToolkits = await getActiveToolkits(orgId);
+    const composioUserIdList = composioUserIds(orgId, userId);
+    // The SDK's tools.get takes a single user_id; we pass the personal one if
+    // present (which Composio interprets as "this user's connections + the
+    // org-shared ones if Composio supports inheritance"). For tool-level dispatch
+    // we may need to widen later to per-toolkit user_id selection.
+    const primaryUserId = composioUserIdList[composioUserIdList.length - 1] ?? `org_${orgId}`;
+    const activeToolkits = await getActiveToolkits(orgId, userId);
 
     if (activeToolkits.length === 0) {
-      logger.info(`Composio: no active connections for ${userId}`);
+      logger.info(`Composio: no active connections for ${composioUserIdList.join(", ")}`);
       return null;
     }
 
@@ -115,7 +134,7 @@ export async function getComposioMcpServer(
     if (toolkitsToLoad.length === 0) {
       // Search-only mode: load meta-tool so agent can find integrations on demand
       try {
-        const raw = await (client as any).tools.get(userId, { tools: ["COMPOSIO_SEARCH_TOOLS"] });
+        const raw = await (client as any).tools.get(primaryUserId, { tools: ["COMPOSIO_SEARCH_TOOLS"] });
         const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
         toolsArr.push(...arr);
       } catch (err) {
@@ -132,7 +151,7 @@ export async function getComposioMcpServer(
           const params: any = curated.length > 0
             ? { tools: curated, limit: 20 }
             : { toolkits: [toolkit], limit: 20 };
-          const raw = await (client as any).tools.get(userId, params);
+          const raw = await (client as any).tools.get(primaryUserId, params);
           const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
           toolsArr.push(...arr);
         } catch (err) {
@@ -142,7 +161,7 @@ export async function getComposioMcpServer(
     }
 
     if (!toolsArr || toolsArr.length === 0) {
-      logger.info(`Composio: no tools loaded for ${userId} (relevant: ${toolkitsToLoad.join(", ") || "none"})`);
+      logger.info(`Composio: no tools loaded for ${primaryUserId} (relevant: ${toolkitsToLoad.join(", ") || "none"})`);
       return null;
     }
 
@@ -152,7 +171,7 @@ export async function getComposioMcpServer(
       handler: async (args: any) => {
         try {
           const result = await (client as any).tools.execute(t.name, {
-            userId,
+            userId: primaryUserId,
             arguments: args,
             dangerouslySkipVersionCheck: true,
           });
@@ -175,7 +194,7 @@ export async function getComposioMcpServer(
 
     const toolNames = tools.map((t) => t.name).filter(Boolean);
     logger.info(
-      `Composio: ${tools.length} tools loaded for ${userId} (active: ${activeToolkits.join(", ")}; loaded: ${toolkitsToLoad.join(", ") || "search-only"})`,
+      `Composio: ${tools.length} tools loaded for ${composioUserIdList.join(", ")} (active: ${activeToolkits.join(", ")}; loaded: ${toolkitsToLoad.join(", ") || "search-only"})`,
     );
     return { server, toolkits: activeToolkits, toolNames };
   } catch (err) {
