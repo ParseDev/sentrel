@@ -179,6 +179,7 @@ class WebhooksController < ApplicationController
       body: params[:body].to_s,
       attachment_ids: attachment_signed_ids,
       conversationId: conversation.id,
+      user_id: current_user.id,
     })
     head :ok
   end
@@ -353,6 +354,7 @@ class WebhooksController < ApplicationController
 
   def enqueue(agent, channel, payload)
     conversation_id = payload.delete(:conversationId)
+    user_id = payload.delete(:user_id)
     # Idempotency — Twilio / Telegram retry webhooks on timeout / 5xx. Derive
     # a stable job_id from the provider's native message id when present so a
     # double-webhook doesn't enqueue the same inbound twice. Falls back to a
@@ -360,11 +362,29 @@ class WebhooksController < ApplicationController
     meta = payload[:metadata] || {}
     provider_id = meta[:message_sid] || meta[:message_id]
     job_id = provider_id.present? ? "inbound-#{channel}-#{provider_id}" : nil
+    # Build a channel-specific origin so the engine can deliver report-backs
+    # to the user without a live in-memory listener. For Telegram/WhatsApp/SMS
+    # we need the channel-side address (chat_id, bot_token, twilio number,
+    # etc.) inside metadata; for web a conversation_id is enough.
+    origin = {
+      channel: channel,
+      conversationId: conversation_id,
+      metadata: case channel
+                when "telegram"
+                  { bot_token: params[:bot_token], chat_id: meta[:chat_id] }.compact
+                when "whatsapp", "sms"
+                  { from: meta[:from], to: meta[:to] }.compact
+                else
+                  {}
+                end,
+    }
     AgentEventBus.publish(
       type: "inbound_message",
       agent: agent,
       channel: channel,
       conversation_id: conversation_id,
+      user_id: user_id,
+      origin: origin,
       job_id: job_id,
       payload: payload,
     )
