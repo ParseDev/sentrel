@@ -876,7 +876,11 @@ async function buildQueryOptions(
       `(layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
     );
 
-    const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits, buildOriginatingUserId);
+    // Per-agent ACL — engine drops Composio tools the policy rejects before
+    // the agent ever sees them. Empty array (no rows) = default policy
+    // (allow everything common), preserving back-compat.
+    const toolPolicies = await host.getAgentToolPolicies(agent.id);
+    const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits, buildOriginatingUserId, toolPolicies);
     const composioServer = composioResult?.server;
     connectedToolkits = composioResult?.toolkits || [];
     composioToolNames = composioResult?.toolNames || [];

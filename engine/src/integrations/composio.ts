@@ -106,7 +106,10 @@ export async function getComposioMcpServer(
   orgId: number,
   relevantToolkits?: string[],
   userId?: number | null,
+  policies?: import("./tool-acl.js").ToolPolicy[],
 ): Promise<{ server: any; toolkits: string[]; toolNames: string[] } | null> {
+  const { indexPolicies, policyAllows, toolkitSlugFor } = await import("./tool-acl.js");
+  const policyByToolkit = indexPolicies(policies || []);
   const client = getClient();
   if (!client) return null;
 
@@ -165,8 +168,26 @@ export async function getComposioMcpServer(
       return null;
     }
 
+    // ACL pass: drop tools that this agent's policy rejects. The agent never
+    // sees denied tools — cleaner than runtime PreToolUse blocks because the
+    // agent can't even attempt the call.
+    const beforeFilter = toolsArr.length;
+    const filteredToolsArr = (toolsArr as any[]).filter((t) => {
+      const slug = toolkitSlugFor(t.name || "");
+      const policy = policyByToolkit.get(slug);
+      return policyAllows(policy, t.name || "");
+    });
+    const droppedCount = beforeFilter - filteredToolsArr.length;
+    if (droppedCount > 0) {
+      logger.info(`Composio ACL: dropped ${droppedCount}/${beforeFilter} tools per agent policy`);
+    }
+    if (filteredToolsArr.length === 0) {
+      logger.warn("Composio ACL: every tool denied by policy — agent has no Composio surface");
+      return null;
+    }
+
     // Wrap handlers: Composio requires dangerouslySkipVersionCheck for "latest" tool version.
-    const tools = (toolsArr as any[]).map((t) => ({
+    const tools = (filteredToolsArr as any[]).map((t) => ({
       ...t,
       handler: async (args: any) => {
         try {

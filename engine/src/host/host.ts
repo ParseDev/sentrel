@@ -200,6 +200,16 @@ export interface Host {
   // ── Skills ──
   getAgentSkills(agentId: number): Promise<AgentSkill[]>;
 
+  // Per-agent tool ACL (Item: permissions). One row per (agent, toolkit).
+  // Engine filters Composio tools by policy at MCP server build time.
+  // No row → preset='read_write' (default, all common tools usable).
+  getAgentToolPolicies(agentId: number): Promise<Array<{
+    toolkit_slug: string;
+    preset: string;
+    allowed_tools: string[];
+    denied_tools: string[];
+  }>>;
+
   // Layer 1 tool routing: recent Composio tool names from audit logs
   getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]>;
 

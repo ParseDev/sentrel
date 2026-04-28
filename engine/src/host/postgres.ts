@@ -414,6 +414,26 @@ export class PostgresHost implements Host {
     }));
   }
 
+  async getAgentToolPolicies(agentId: number): Promise<Array<{
+    toolkit_slug: string;
+    preset: string;
+    allowed_tools: string[];
+    denied_tools: string[];
+  }>> {
+    const { rows } = await this.pool.query(
+      `SELECT toolkit_slug, preset, allowed_tools, denied_tools
+       FROM agent_tool_policies
+       WHERE agent_id = $1`,
+      [agentId],
+    );
+    return rows.map((r) => ({
+      toolkit_slug: r.toolkit_slug,
+      preset: r.preset,
+      allowed_tools: Array.isArray(r.allowed_tools) ? r.allowed_tools : [],
+      denied_tools: Array.isArray(r.denied_tools) ? r.denied_tools : [],
+    }));
+  }
+
   async updateAgentCommandAllowlist(agentId: number, allowlist: string[]): Promise<void> {
     await this.pool.query(
       `UPDATE agents SET command_allowlist = $1, updated_at = NOW() WHERE id = $2`,
