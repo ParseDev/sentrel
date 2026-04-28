@@ -23,6 +23,9 @@ interface Integration {
   status: string
   scopes: string[]
   created_at: string
+  scope?: "org" | "user"
+  owner_user_id?: number | null
+  is_mine?: boolean
 }
 
 interface AiAccount {
@@ -74,12 +77,13 @@ export default function IntegrationsIndex({ integrations, supported_services = [
     form.submit()
   }
 
-  async function connect(serviceName: string) {
+  async function connect(serviceName: string, scope: "org" | "user" = "org") {
     // Get the Composio OAuth URL from Rails, then open in a popup
     const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
     const res = await fetch(`/integrations/${serviceName}/connect`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ scope }),
     })
     const data = await res.json()
     if (data.redirect_url) {
@@ -101,6 +105,10 @@ export default function IntegrationsIndex({ integrations, supported_services = [
   }
 
   const [query, setQuery] = useState("")
+  // Scope toggle — managing the workspace bucket (everyone shares) or your
+  // personal bucket (just you). Default to workspace; flip to 'yours' for
+  // personal Gmail / LinkedIn / etc.
+  const [scopeView, setScopeView] = useState<"org" | "user">("org")
 
   // Show only what's actually wired up at the workspace level. The full
   // 500+ Composio catalog is reachable via "Add more services in Composio"
@@ -137,12 +145,41 @@ export default function IntegrationsIndex({ integrations, supported_services = [
         description="Connect the services your agents work inside. OAuth once, they use them forever."
       />
 
+      <div className="mb-3 flex items-center gap-1 rounded-md border bg-card p-1 w-fit">
+        <button
+          onClick={() => setScopeView("org")}
+          className={`rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+            scopeView === "org"
+              ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Workspace · everyone
+        </button>
+        <button
+          onClick={() => setScopeView("user")}
+          className={`rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+            scopeView === "user"
+              ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Yours · just you
+        </button>
+      </div>
+
+      <p className="mb-4 text-xs text-muted-foreground">
+        {scopeView === "org"
+          ? "Connections shared across the workspace. Your teammates' agents can use these too."
+          : "Personal connections. Only your chats and your agents see these — your teammates can't."}
+      </p>
+
       <div className="mb-4 flex items-center gap-3">
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search your connected services…"
+          placeholder={scopeView === "org" ? "Search workspace integrations…" : "Search your personal integrations…"}
           className="h-9 w-full max-w-md rounded-md border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[var(--color-indigo)] focus:outline-none focus:ring-2 focus:ring-[var(--indigo-surface)]"
         />
         <a
@@ -246,7 +283,12 @@ export default function IntegrationsIndex({ integrations, supported_services = [
             <Overline className="mb-3">{category}</Overline>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {visible.map((service) => {
-                const connected = integrations.find((i) => i.service_name === service.slug)
+                // Match integrations to the active scope view: workspace ↔
+                // org-scoped rows; "yours" ↔ rows owned by current user.
+                const connected = integrations.find((i) =>
+                  i.service_name === service.slug &&
+                  (scopeView === "org" ? i.scope !== "user" : i.is_mine)
+                )
                 return (
                   <div
                     key={service.slug}
@@ -310,7 +352,7 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                         variant="outline"
                         size="sm"
                         className="h-7 shrink-0 text-xs"
-                        onClick={() => connect(service.slug)}
+                        onClick={() => connect(service.slug, scopeView)}
                       >
                         Connect
                       </Button>

@@ -25,9 +25,14 @@ module AgentEventBus
   # @param job_id [String, nil] optional correlation ID. Generated if absent.
   #   Channel handlers that need to route the engine's emitDone back to a
   #   specific caller (e.g. web UI waiting on SSE) should pass one they control.
-  def publish(type:, agent:, payload: {}, channel: nil, conversation_id: nil, job_id: nil)
+  def publish(type:, agent:, payload: {}, channel: nil, conversation_id: nil, job_id: nil, user_id: nil)
     job_id ||= SecureRandom.uuid
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+    # user_id is the originating human's id (when the inbound came from a
+    # logged-in user, a known Telegram chat tied to a user, etc). Engine uses
+    # this to pick up the user's private (scope='user') integrations alongside
+    # the workspace shared ones.
+    enriched_payload = user_id ? payload.merge(metadata: (payload[:metadata] || payload["metadata"] || {}).merge(user_id: user_id)) : payload
     redis.lpush("#{INBOX_KEY_PREFIX}#{agent.id}", {
       type: type,
       jobId: job_id,
@@ -35,7 +40,7 @@ module AgentEventBus
       orgId: agent.organization_id,
       channel: channel,
       conversationId: conversation_id,
-      payload: payload,
+      payload: enriched_payload,
     }.to_json)
     job_id
   rescue => e
