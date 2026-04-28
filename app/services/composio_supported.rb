@@ -1,102 +1,163 @@
 require "net/http"
 require "json"
 
-# Single source of truth for which integrations the workspace supports.
+# Source of truth for which integrations the workspace can use.
 #
-# Pulls Composio's /api/v3/auth_configs (the user's connected toolkits at
-# the workspace level) and merges with a curated catalog so the integrations
-# page can also show "coming soon — set up at composio.dev" rows for known
-# services the user hasn't wired up yet.
+# Three Composio endpoints:
+#   /api/v3/toolkits     — Composio's FULL catalog (250+ services). Labels +
+#                          logos + descriptions live here.
+#   /api/v3/auth_configs — what this workspace has wired up. Drives the
+#                          `available: true|false` flag.
+#   /api/v3/tools        — actions a toolkit exposes. Cached per-slug for
+#                          the future privilege/permission system.
 #
-# Consumers:
-# - Api::IntegrationsController#supported (engine boot + 30-min refresh).
-#   Engine uses slug + label only.
-# - IntegrationsController#index (page render). Uses the full record:
-#   slug, label, category, logo, available, description.
+# The page (/integrations) and the engine cache both call this service so
+# they never drift.
 class ComposioSupported
   COMPOSIO_BASE = "https://backend.composio.dev".freeze
 
-  # Curated catalog. Anything in here renders on the /integrations page;
-  # anything connected at Composio (auth_config exists) is "available".
-  # New entry checklist:
-  #   1. Add here with the correct slug (matches Composio's toolkit.slug)
-  #   2. Optionally set the category for grouping
-  #   3. Add the auth_config in the Composio dashboard so it goes "available"
-  CATALOG = [
-    { slug: "apollo",         label: "Apollo",          category: "Sales",         description: "CRM and lead generation" },
-    { slug: "hubspot",        label: "HubSpot",         category: "Sales",         description: "CRM, marketing, and sales" },
-    { slug: "linkedin",       label: "LinkedIn",        category: "Sales",         description: "Professional network and outreach" },
-    { slug: "salesforce",     label: "Salesforce",      category: "Sales",         description: "Enterprise CRM" },
-    { slug: "pipedrive",      label: "Pipedrive",       category: "Sales",         description: "Sales pipeline" },
-    { slug: "gmail",          label: "Gmail",           category: "Communication", description: "Email via Google" },
-    { slug: "slack",          label: "Slack",           category: "Communication", description: "Team messaging" },
-    { slug: "intercom",       label: "Intercom",        category: "Communication", description: "Customer support" },
-    { slug: "discord",        label: "Discord",         category: "Communication", description: "Community chat" },
-    { slug: "googlecalendar", label: "Google Calendar", category: "Productivity",  description: "Scheduling" },
-    { slug: "googlesheets",   label: "Google Sheets",   category: "Productivity",  description: "Spreadsheets" },
-    { slug: "googledrive",    label: "Google Drive",    category: "Productivity",  description: "Documents and files" },
-    { slug: "notion",         label: "Notion",          category: "Productivity",  description: "Docs and wiki" },
-    { slug: "airtable",       label: "Airtable",        category: "Productivity",  description: "Flexible database" },
-    { slug: "calendly",       label: "Calendly",        category: "Productivity",  description: "Booking and scheduling" },
-    { slug: "github",         label: "GitHub",          category: "Engineering",   description: "Code and PRs" },
-    { slug: "linear",         label: "Linear",          category: "Engineering",   description: "Issue tracking" },
-    { slug: "vercel",         label: "Vercel",          category: "Engineering",   description: "Frontend deployment" },
-    { slug: "digital_ocean",  label: "DigitalOcean",    category: "Engineering",   description: "Cloud infrastructure" },
-    { slug: "stripe",         label: "Stripe",          category: "Finance",       description: "Payments and billing" },
-    { slug: "twitter",        label: "Twitter / X",     category: "Content",       description: "Social media" },
-    { slug: "figma",          label: "Figma",           category: "Content",       description: "Design collaboration" },
-    { slug: "mailchimp",      label: "Mailchimp",       category: "Content",       description: "Email marketing" },
-    { slug: "typeform",       label: "Typeform",        category: "Content",       description: "Forms and surveys" },
-  ].freeze
+  # Light category mapping for the page's grouping. Composio doesn't categorize
+  # toolkits server-side, so we curate this locally. Anything not in the map
+  # lands under 'Other'.
+  CATEGORY_MAP = {
+    # Sales / CRM
+    "apollo"          => "Sales",
+    "hubspot"         => "Sales",
+    "linkedin"        => "Sales",
+    "salesforce"      => "Sales",
+    "pipedrive"       => "Sales",
+    "outreach"        => "Sales",
+    "salesloft"       => "Sales",
+    "zoho"            => "Sales",
 
-  CATALOG_BY_SLUG = CATALOG.index_by { |s| s[:slug] }.freeze
+    # Communication
+    "gmail"           => "Communication",
+    "slack"           => "Communication",
+    "intercom"        => "Communication",
+    "discord"         => "Communication",
+    "outlook"         => "Communication",
+    "zoom"            => "Communication",
+    "telegram"        => "Communication",
+    "whatsapp"        => "Communication",
 
-  # Returns array of { slug, label, category, description, available, logo }.
-  # `available: true` means there's a Composio auth_config for it AND the
-  # engine can surface a Connect card. Greyed-out entries (`available: false`)
-  # show on the page as "coming soon — add at composio.dev" so the user knows
-  # what's possible without surprise.
+    # Productivity
+    "googlecalendar"  => "Productivity",
+    "googlesheets"    => "Productivity",
+    "googledrive"     => "Productivity",
+    "googledocs"      => "Productivity",
+    "google_docs"     => "Productivity",
+    "notion"          => "Productivity",
+    "airtable"        => "Productivity",
+    "calendly"        => "Productivity",
+    "asana"           => "Productivity",
+    "trello"          => "Productivity",
+    "clickup"         => "Productivity",
+    "monday"          => "Productivity",
+
+    # Engineering
+    "github"          => "Engineering",
+    "linear"          => "Engineering",
+    "vercel"          => "Engineering",
+    "digital_ocean"   => "Engineering",
+    "gitlab"          => "Engineering",
+    "bitbucket"       => "Engineering",
+    "jira"            => "Engineering",
+    "sentry"          => "Engineering",
+
+    # Finance
+    "stripe"          => "Finance",
+    "quickbooks"      => "Finance",
+    "xero"            => "Finance",
+
+    # Content / Marketing
+    "twitter"         => "Content",
+    "x"               => "Content",
+    "figma"           => "Content",
+    "mailchimp"       => "Content",
+    "typeform"        => "Content",
+    "youtube"         => "Content",
+    "tiktok"          => "Content",
+    "instagram"       => "Content",
+    "wordpress"       => "Content",
+    "webflow"         => "Content",
+    "framer"          => "Content",
+  }.freeze
+
+  # Toolkits Composio publishes that we don't want surfaced even if available.
+  # Add slugs here to hide them (legacy, dev-only, broken integrations).
+  HIDDEN_SLUGS = Set.new(%w[]).freeze
+
+  # ── Public API ────────────────────────────────────────────────────────────
+
+  # Full list for the integrations page.
+  # Returns: [{ slug, label, category, description, logo, available }]
   def self.list
-    composio = fetch_composio
-    seen = composio.index_by { |c| c[:slug] }
+    toolkits = fetch_toolkits
+    available = fetch_auth_configs.map { |c| c[:slug] }.to_set
 
-    # Start from the curated catalog. Catalog label always wins (Composio
-    # returns "Hubspot", "Linkedin", "Googlesheets" — uppercase-broken — so
-    # we keep the curated display name). Composio contributes the logo URL
-    # and availability flag.
-    catalog_rows = CATALOG.map do |entry|
-      cfg = seen[entry[:slug]]
-      entry.merge(
-        available: cfg.present?,
-        logo: cfg&.dig(:logo),
-      )
-    end
-
-    # If Composio has connected auth_configs we don't have in the catalog
-    # (e.g. user added a new toolkit Composio supports but we haven't curated
-    # yet), include those too so they're at least usable.
-    extras = (seen.keys - CATALOG_BY_SLUG.keys).map do |slug|
-      cfg = seen[slug]
+    rows = toolkits.reject { |t| HIDDEN_SLUGS.include?(t[:slug]) }.map do |t|
       {
-        slug: slug,
-        label: cfg[:label] || slug.titleize,
-        category: "Other",
-        description: nil,
-        available: true,
-        logo: cfg[:logo],
+        slug:        t[:slug],
+        label:       prettify_label(t[:label]),
+        category:    CATEGORY_MAP[t[:slug]] || "Other",
+        description: t[:description],
+        logo:        t[:logo],
+        available:   available.include?(t[:slug]),
       }
     end
 
-    catalog_rows + extras
+    # Sort: connected first, then alphabetical within category. Page groups
+    # by category later so this sort is mostly cosmetic for that grouping.
+    rows.sort_by { |r| [r[:available] ? 0 : 1, r[:label].to_s.downcase] }
   end
 
-  # Engine-facing helper: only the connected services (available: true),
-  # collapsed to the slug + label fields the engine cache needs.
+  # Slim list for the engine — only services with a working auth_config.
   def self.list_for_engine
     list.select { |s| s[:available] }.map { |s| s.slice(:slug, :label) }
   end
 
-  def self.fetch_composio
+  # Tools (actions) a toolkit exposes. Cached for the future privilege system
+  # so users can grant agents per-action access (e.g. "GMAIL_SEND_EMAIL but
+  # not GMAIL_DELETE_THREAD"). Returns [{slug, name, description}].
+  def self.tools_for(toolkit_slug)
+    Rails.cache.fetch("composio:tools:#{toolkit_slug}", expires_in: 1.hour) do
+      fetch_tools(toolkit_slug)
+    end
+  end
+
+  # ── Composio fetchers ─────────────────────────────────────────────────────
+
+  def self.fetch_toolkits
+    api_key = ENV["COMPOSIO_API_KEY"]
+    return fallback_toolkits if api_key.blank?
+
+    Rails.cache.fetch("composio:toolkits", expires_in: 1.hour) do
+      uri = URI("#{COMPOSIO_BASE}/api/v3/toolkits?limit=500")
+      req = Net::HTTP::Get.new(uri)
+      req["x-api-key"] = api_key
+      req["Content-Type"] = "application/json"
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 15) { |http| http.request(req) }
+      raise "Composio /toolkits #{res.code}" unless res.is_a?(Net::HTTPSuccess)
+
+      data = JSON.parse(res.body)
+      raw = data["items"] || data || []
+      Array(raw).filter_map do |t|
+        slug = (t["slug"] || t["name"] || "").to_s.downcase
+        next if slug.blank?
+        {
+          slug: slug,
+          label: t["name"] || slug.titleize,
+          description: t["description"] || t["meta"]&.dig("description"),
+          logo: t["logo"] || t.dig("meta", "logo"),
+        }
+      end
+    end
+  rescue => e
+    Rails.logger.warn "ComposioSupported.fetch_toolkits failed: #{e.class}: #{e.message}"
+    fallback_toolkits
+  end
+
+  def self.fetch_auth_configs
     api_key = ENV["COMPOSIO_API_KEY"]
     return [] if api_key.blank?
 
@@ -109,22 +170,82 @@ class ComposioSupported
 
     data = JSON.parse(res.body)
     raw = data["items"] || data || []
-
-    # Dedupe by slug — Composio may have multiple auth_configs per toolkit
-    # (OAuth + API key variants); we only need to know it's connectable.
     seen = {}
     Array(raw).each do |cfg|
       slug = (cfg.dig("toolkit", "slug") || "").downcase
       next if slug.blank?
-      seen[slug] ||= {
-        slug: slug,
-        label: cfg.dig("toolkit", "name") || slug.titleize,
-        logo: cfg.dig("toolkit", "logo") || cfg.dig("toolkit", "meta", "logo"),
-      }
+      seen[slug] ||= { slug: slug }
     end
     seen.values
   rescue => e
-    Rails.logger.warn "ComposioSupported.fetch_composio failed: #{e.class}: #{e.message}"
+    Rails.logger.warn "ComposioSupported.fetch_auth_configs failed: #{e.class}: #{e.message}"
     []
+  end
+
+  def self.fetch_tools(toolkit_slug)
+    api_key = ENV["COMPOSIO_API_KEY"]
+    return [] if api_key.blank?
+
+    uri = URI("#{COMPOSIO_BASE}/api/v3/tools?toolkits=#{toolkit_slug}&limit=200")
+    req = Net::HTTP::Get.new(uri)
+    req["x-api-key"] = api_key
+    req["Content-Type"] = "application/json"
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
+    return [] unless res.is_a?(Net::HTTPSuccess)
+
+    data = JSON.parse(res.body)
+    raw = data["items"] || data || []
+    Array(raw).filter_map do |t|
+      slug = (t["slug"] || t["name"] || "").to_s
+      next if slug.blank?
+      {
+        slug: slug,
+        name: t["display_name"] || t["name"] || slug,
+        description: t["description"],
+      }
+    end
+  rescue => e
+    Rails.logger.warn "ComposioSupported.fetch_tools(#{toolkit_slug}) failed: #{e.class}: #{e.message}"
+    []
+  end
+
+  # Minimal fallback when the Composio API is unreachable on first boot.
+  # The cache picks up the real list as soon as Composio is reachable again.
+  def self.fallback_toolkits
+    [
+      { slug: "apollo",         label: "Apollo",          description: "CRM and lead generation",   logo: nil },
+      { slug: "googlesheets",   label: "Google Sheets",   description: "Spreadsheets",              logo: nil },
+      { slug: "gmail",          label: "Gmail",           description: "Email via Google",          logo: nil },
+      { slug: "linkedin",       label: "LinkedIn",        description: "Professional network",      logo: nil },
+      { slug: "hubspot",        label: "HubSpot",         description: "CRM, marketing, sales",     logo: nil },
+      { slug: "slack",          label: "Slack",           description: "Team messaging",            logo: nil },
+      { slug: "notion",         label: "Notion",          description: "Docs and wiki",             logo: nil },
+    ]
+  end
+
+  # Composio's display names ("Hubspot", "Linkedin", "Googlesheets") have
+  # broken casing for some toolkits. Apply a small set of overrides.
+  LABEL_OVERRIDES = {
+    "hubspot"        => "HubSpot",
+    "linkedin"       => "LinkedIn",
+    "googlesheets"   => "Google Sheets",
+    "googlecalendar" => "Google Calendar",
+    "googledrive"    => "Google Drive",
+    "googledocs"     => "Google Docs",
+    "google_docs"    => "Google Docs",
+    "github"         => "GitHub",
+    "gitlab"         => "GitLab",
+    "youtube"        => "YouTube",
+    "tiktok"         => "TikTok",
+    "wordpress"      => "WordPress",
+    "digital_ocean"  => "DigitalOcean",
+    "x"              => "X (Twitter)",
+    "twitter"        => "Twitter / X",
+  }.freeze
+
+  def self.prettify_label(name)
+    return name if name.blank?
+    slug = name.to_s.downcase.gsub(/\s+/, "")
+    LABEL_OVERRIDES[slug] || name
   end
 end

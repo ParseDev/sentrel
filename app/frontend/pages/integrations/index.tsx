@@ -100,12 +100,26 @@ export default function IntegrationsIndex({ integrations, supported_services = [
     router.delete(`/integrations/${id}`)
   }
 
-  // Group server-supplied services by category, preserving Composio ordering.
-  const grouped = supported_services.reduce<Record<string, SupportedService[]>>((acc, s) => {
+  const [query, setQuery] = useState("")
+  const [showAll, setShowAll] = useState(false)
+
+  // Filter by search, then group by category. With ~500 toolkits in Composio
+  // we limit each category to its top 12 unless the user opens the full list,
+  // OR they're searching (search results always show all matches).
+  const filtered = supported_services.filter((s) => {
+    if (!query) return true
+    const q = query.toLowerCase()
+    return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
+  })
+  const grouped = filtered.reduce<Record<string, SupportedService[]>>((acc, s) => {
     (acc[s.category] = acc[s.category] || []).push(s)
     return acc
   }, {})
-  const categories = Object.keys(grouped)
+  // Stable category order: known buckets first, Other last.
+  const CATEGORY_ORDER = ["Sales", "Communication", "Productivity", "Engineering", "Finance", "Content", "Other"]
+  const categories = CATEGORY_ORDER.filter((c) => grouped[c]).concat(
+    Object.keys(grouped).filter((c) => !CATEGORY_ORDER.includes(c))
+  )
 
   return (
     <AppLayout
@@ -121,6 +135,24 @@ export default function IntegrationsIndex({ integrations, supported_services = [
         title="Integrations"
         description="Connect the services your agents work inside. OAuth once, they use them forever."
       />
+
+      <div className="mb-4 flex items-center gap-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search 500+ services — Gmail, Notion, Salesforce, Stripe…"
+          className="h-9 w-full max-w-md rounded-md border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[var(--color-indigo)] focus:outline-none focus:ring-2 focus:ring-[var(--indigo-surface)]"
+        />
+        {!query && (
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className="text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
+          >
+            {showAll ? "Show curated only" : "Show all 500+"}
+          </button>
+        )}
+      </div>
 
       <div className="space-y-8">
         {/* AI accounts (subscription auth) — temporarily hidden. claude.ai/oauth/authorize
@@ -206,11 +238,19 @@ export default function IntegrationsIndex({ integrations, supported_services = [
         </div>
         )}
 
-        {categories.map((category) => (
+        {categories.map((category) => {
+          // When the user is searching OR clicked "Show all 500+", render
+          // every match. Otherwise cap each category at 12 with a "+N more"
+          // chip linking to the showAll toggle.
+          const all = grouped[category]
+          const cap = (query || showAll) ? all.length : 12
+          const visible = all.slice(0, cap)
+          const overflow = all.length - visible.length
+          return (
           <div key={category}>
             <Overline className="mb-3">{category}</Overline>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {grouped[category].map((service) => {
+              {visible.map((service) => {
                 const connected = integrations.find((i) => i.service_name === service.slug)
                 const setupPending = !service.available
                 return (
@@ -300,9 +340,18 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                   </div>
                 )
               })}
+              {overflow > 0 && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="flex items-center justify-center rounded-lg border border-dashed px-3 py-3 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
+                >
+                  + {overflow} more in {category}
+                </button>
+              )}
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
     </AppLayout>
   )
