@@ -101,16 +101,17 @@ export default function IntegrationsIndex({ integrations, supported_services = [
   }
 
   const [query, setQuery] = useState("")
-  const [showAll, setShowAll] = useState(false)
 
-  // Filter by search, then group by category. With ~500 toolkits in Composio
-  // we limit each category to its top 12 unless the user opens the full list,
-  // OR they're searching (search results always show all matches).
-  const filtered = supported_services.filter((s) => {
-    if (!query) return true
-    const q = query.toLowerCase()
-    return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
-  })
+  // Show only what's actually wired up at the workspace level. The full
+  // 500+ Composio catalog is reachable via "Add more services in Composio"
+  // below — we don't surface setup-pending rows here, they were noise.
+  const filtered = supported_services
+    .filter((s) => s.available)
+    .filter((s) => {
+      if (!query) return true
+      const q = query.toLowerCase()
+      return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
+    })
   const grouped = filtered.reduce<Record<string, SupportedService[]>>((acc, s) => {
     (acc[s.category] = acc[s.category] || []).push(s)
     return acc
@@ -141,17 +142,17 @@ export default function IntegrationsIndex({ integrations, supported_services = [
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search 500+ services — Gmail, Notion, Salesforce, Stripe…"
+          placeholder="Search your connected services…"
           className="h-9 w-full max-w-md rounded-md border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[var(--color-indigo)] focus:outline-none focus:ring-2 focus:ring-[var(--indigo-surface)]"
         />
-        {!query && (
-          <button
-            onClick={() => setShowAll(!showAll)}
-            className="text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
-          >
-            {showAll ? "Show curated only" : "Show all 500+"}
-          </button>
-        )}
+        <a
+          href="https://app.composio.dev/auth-configs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        >
+          + Add more →
+        </a>
       </div>
 
       <div className="space-y-8">
@@ -239,29 +240,20 @@ export default function IntegrationsIndex({ integrations, supported_services = [
         )}
 
         {categories.map((category) => {
-          // When the user is searching OR clicked "Show all 500+", render
-          // every match. Otherwise cap each category at 12 with a "+N more"
-          // chip linking to the showAll toggle.
-          const all = grouped[category]
-          const cap = (query || showAll) ? all.length : 12
-          const visible = all.slice(0, cap)
-          const overflow = all.length - visible.length
+          const visible = grouped[category]
           return (
           <div key={category}>
             <Overline className="mb-3">{category}</Overline>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {visible.map((service) => {
                 const connected = integrations.find((i) => i.service_name === service.slug)
-                const setupPending = !service.available
                 return (
                   <div
                     key={service.slug}
                     className={`group relative flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-all ${
                       connected
                         ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.04]"
-                        : setupPending
-                          ? "border-dashed opacity-60"
-                          : "hover:border-[var(--border-strong)]"
+                        : "hover:border-[var(--border-strong)]"
                     }`}
                   >
                     <div
@@ -300,10 +292,6 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                             <span className="size-1 rounded-full bg-[var(--color-success)] animate-pulse-glow" />
                             CONNECTED
                           </span>
-                        ) : setupPending ? (
-                          <span className="font-mono uppercase tracking-wide text-[10px] text-muted-foreground/80">
-                            Setup at composio.dev → Auth configs
-                          </span>
                         ) : (
                           service.description
                         )}
@@ -317,16 +305,6 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                       >
                         <Trash2 className="size-3.5" />
                       </button>
-                    ) : setupPending ? (
-                      <a
-                        href="https://app.composio.dev/auth-configs"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                        title="Open Composio dashboard"
-                      >
-                        Set up →
-                      </a>
                     ) : (
                       <Button
                         variant="outline"
@@ -340,18 +318,30 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                   </div>
                 )
               })}
-              {overflow > 0 && (
-                <button
-                  onClick={() => setShowAll(true)}
-                  className="flex items-center justify-center rounded-lg border border-dashed px-3 py-3 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
-                >
-                  + {overflow} more in {category}
-                </button>
-              )}
             </div>
           </div>
           )
         })}
+
+        {filtered.length === 0 && !query && (
+          <div className="rounded-lg border border-dashed py-12 text-center">
+            <p className="text-sm font-medium text-foreground mb-1">No integrations connected yet</p>
+            <p className="text-xs text-muted-foreground mb-4">Add an auth config in Composio to get started.</p>
+            <a
+              href="https://app.composio.dev/auth-configs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-mono uppercase tracking-wide text-[var(--color-indigo)] hover:underline"
+            >
+              Open Composio →
+            </a>
+          </div>
+        )}
+        {filtered.length === 0 && query && (
+          <div className="py-8 text-center">
+            <p className="font-mono text-sm text-muted-foreground">No matches for "{query}".</p>
+          </div>
+        )}
       </div>
     </AppLayout>
   )
