@@ -867,13 +867,29 @@ async function buildQueryOptions(
     const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
     const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
 
+    // Layer 0 — brand-name nudge. If the user spelled out a connected toolkit
+    // slug/label in plain text ("...add to Apollo", "push to HubSpot"), force-
+    // include it. This fires regardless of embedding readiness, which means
+    // cold-boot sessions still get the right toolkit pre-loaded instead of
+    // hallucinating about non-existent API keys.
+    const lowerRoutingText = routingText.toLowerCase();
+    const layer0 = availableToolkits.filter((slug) => {
+      const slugLower = slug.toLowerCase();
+      // Match either the slug ("apollo", "googlesheets") or a humanised form
+      // ("google sheets"). Single-word slugs need a wordish boundary so we
+      // don't trigger on substrings ("notion" inside "notional").
+      if (new RegExp(`\\b${slugLower}\\b`).test(lowerRoutingText)) return true;
+      const spaced = slugLower.replace(/(google|micro|smart|hub|sales|click)([a-z]+)/, "$1 $2");
+      return spaced !== slugLower && lowerRoutingText.includes(spaced);
+    });
+
     relevantToolkits = toolRouting === "all"
       ? availableToolkits
-      : [...new Set([...layer1, ...layer2])].filter((t) => availableToolkits.includes(t));
+      : [...new Set([...layer0, ...layer1, ...layer2])].filter((t) => availableToolkits.includes(t));
 
     logger.info(
       `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} ` +
-      `(layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
+      `(layer0=${layer0.join(",") || "-"}, layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
     );
 
     // Per-agent ACL — engine drops Composio tools the policy rejects before

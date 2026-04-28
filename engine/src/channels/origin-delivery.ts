@@ -57,7 +57,25 @@ export async function deliverToOrigin(origin: Origin, content: string): Promise<
       [],
       { source: "origin_delivery" },
     );
-    logger.info(`Origin delivery: saved as message ${msg.id} on web conversation ${convId}`);
+    // Engine inserts via raw SQL, so Message.after_create_commit doesn't fire
+    // and ActionCable wouldn't push the row to the browser. Emit a "message"
+    // event over the gateway → /api/agent_events relay so the AgentChatChannel
+    // delivers it live, even when the original WS listener is gone.
+    try {
+      const { broadcast } = await import("../gateway.js");
+      broadcast({
+        type: "message",
+        id: msg.id,
+        role: "assistant",
+        content,
+        created_at: new Date().toISOString(),
+        metadata: { source: "origin_delivery", conversation_id: convId },
+        timestamp: Date.now(),
+      });
+    } catch (err) {
+      logger.warn("Origin delivery: failed to broadcast message event", { error: (err as Error).message });
+    }
+    logger.info(`Origin delivery: saved + broadcast message ${msg.id} on web conversation ${convId}`);
     return;
   }
 
