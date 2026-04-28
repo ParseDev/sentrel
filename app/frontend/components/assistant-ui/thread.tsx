@@ -407,7 +407,7 @@ const InlineConnectionProposal: FC = () => {
       // parse. Successful path always returns Content-Type: application/json.
       const ct = res.headers.get("content-type") || "";
       if (!ct.includes("application/json")) {
-        setError(`Couldn't reach Composio for ${proposal.label}. Check the integration is set up at composio.dev → Auth configs.`);
+        setError(`Couldn't reach the integration service for ${proposal.label}. Check that the integration is set up in the integration dashboard.`);
         return;
       }
 
@@ -422,7 +422,7 @@ const InlineConnectionProposal: FC = () => {
           }
         }, 500);
       } else {
-        setError(data.error || `Composio rejected the ${proposal.label} connect request.`);
+        setError(data.error || `The integration service rejected the ${proposal.label} connect request.`);
       }
     } catch (err) {
       setError(`Network error: ${(err as Error).message}`);

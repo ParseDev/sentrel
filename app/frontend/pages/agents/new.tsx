@@ -102,7 +102,7 @@ const CAPABILITIES: Array<{ key: string; label: string; description: string }> =
     key: "integrations",
     label: "Third-party integrations",
     description:
-      "Composio-powered access to Gmail, Notion, Slack, GitHub, Google Sheets, and 250+ other apps you've connected at /integrations. Without this, the agent can't touch any external service.",
+      "Access to Gmail, Notion, Slack, GitHub, Google Sheets, and 250+ other apps you've connected at /integrations. Without this, the agent can't touch any external service.",
   },
   {
     key: "recall",

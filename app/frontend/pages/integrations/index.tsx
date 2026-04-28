@@ -302,7 +302,7 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                           </span>
                         ) : setupPending ? (
                           <span className="font-mono uppercase tracking-wide text-[10px] text-muted-foreground/80">
-                            Setup at composio.dev → Auth configs
+                            Setup required in integration dashboard
                           </span>
                         ) : (
                           service.description
@@ -323,7 +323,7 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
-                        title="Open Composio dashboard"
+                        title="Open integration dashboard"
                       >
                         Set up →
                       </a>
