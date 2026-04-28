@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Head, Link, useForm } from "@inertiajs/react"
 
 import { Overline } from "@/components/brand"
@@ -123,7 +124,36 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
         description="Tune the agent's identity, model, permissions, and capabilities."
       />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <EditTabs onSubmit={handleSubmit} processing={processing} agentId={agent.id} />
+    </AppLayout>
+  )
+
+  function EditTabs({ onSubmit, processing, agentId }: { onSubmit: (e: React.FormEvent) => void; processing: boolean; agentId: number }) {
+    const [tab, setTab] = useState<"identity" | "behavior" | "permissions">("identity")
+    const TABS: Array<{ key: "identity" | "behavior" | "permissions"; label: string }> = [
+      { key: "identity",    label: "Identity" },
+      { key: "behavior",    label: "Behavior" },
+      { key: "permissions", label: "Permissions" },
+    ]
+    return (
+      <form onSubmit={onSubmit} className="max-w-2xl space-y-6">
+        <div className="flex items-center gap-1 rounded-md border bg-card p-1 w-fit">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
+                tab === t.key
+                  ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab === "identity" && (<>
         {/* Identity */}
         <section>
           <Overline className="mb-3">Identity</Overline>
@@ -182,7 +212,9 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
             <p className="text-[10px] text-muted-foreground">If empty, a default signature with name and email will be used</p>
           </div>
         </section>
+        </>)}
 
+        {tab === "behavior" && (<>
         {/* Heartbeat */}
         <section>
           <Overline className="mb-3">Heartbeat</Overline>
@@ -261,7 +293,9 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
             })}
           </div>
         </section>
+        </>)}
 
+        {tab === "permissions" && (<>
         {/* Permissions */}
         <section>
           <Overline className="mb-3">Permissions</Overline>
@@ -287,18 +321,19 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
             </div>
           </div>
 
-          <ToolPoliciesSection agentId={agent.id} />
+          <ToolPoliciesSection agentId={agentId} />
         </section>
+        </>)}
 
         <div className="flex justify-end gap-2 pb-8">
           <Button variant="outline" asChild>
-            <Link href={agentPath(agent.id)}>Cancel</Link>
+            <Link href={agentPath(agentId)}>Cancel</Link>
           </Button>
           <Button type="submit" disabled={processing}>
             {processing ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </form>
-    </AppLayout>
-  )
+    )
+  }
 }

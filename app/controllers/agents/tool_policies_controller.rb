@@ -9,21 +9,21 @@ class Agents::ToolPoliciesController < ApplicationController
   def index
     policies = @agent.agent_tool_policies.includes(:agent).index_by(&:toolkit_slug)
 
-    # Catalog of toolkits the agent could have a policy on — only services
-    # connected at workspace OR personal level are surfaced. We fetch tool
-    # lists lazily on the frontend (separate /tools/:slug call) so this
-    # response stays cheap.
-    visible_integrations = @agent.organization.integrations
-      .where(status: "connected")
-      .where("scope = 'org' OR (scope = 'user' AND owner_user_id = ?)", current_user.id)
-      .pluck(:service_name)
-      .uniq
+    # Source of truth = Composio's auth_configs (proxied through
+    # ComposioSupported). Same data the engine uses, so the UI can't drift.
+    # Avoids the "no connected integrations" trap when the local
+    # integrations table hasn't been hydrated yet (sync only runs on the
+    # /integrations page render).
+    available = ComposioSupported.list_for_engine
 
     render json: {
-      policies: visible_integrations.map { |slug|
+      policies: available.map { |svc|
+        slug = svc[:slug] || svc["slug"]
+        label = svc[:label] || svc["label"]
         p = policies[slug]
         {
           toolkit_slug: slug,
+          label: label,
           preset: p&.preset || "read_write",
           allowed_tools: p&.allowed_tools || [],
           denied_tools: p&.denied_tools || [],

@@ -3,6 +3,7 @@ import { Overline } from "@/components/brand"
 
 interface Policy {
   toolkit_slug: string
+  label?: string
   preset: string
   allowed_tools: string[]
   denied_tools: string[]
@@ -126,7 +127,7 @@ export function ToolPoliciesSection({ agentId }: { agentId: number }) {
         {policies.map((p) => (
           <div key={p.toolkit_slug} className="p-3">
             <div className="flex items-center justify-between">
-              <div className="font-medium text-sm capitalize">{p.toolkit_slug}</div>
+              <div className="font-medium text-sm">{p.label || p.toolkit_slug}</div>
               <div className="flex items-center gap-2">
                 <select
                   value={p.preset}
