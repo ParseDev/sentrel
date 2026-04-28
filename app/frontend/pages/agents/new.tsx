@@ -118,7 +118,7 @@ const CAPABILITIES: Array<{ key: string; label: string; description: string }> =
   },
 ]
 
-type Step = "intro" | "template" | "details"
+type Step = "intro" | "details"
 
 export default function AgentNew({ templates, agents, org_email_domain }: Props) {
   const [step, setStep] = useState<Step>("intro")
@@ -337,8 +337,38 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         />
 
         <form onSubmit={handleIntroSubmit} className="max-w-2xl space-y-6">
+          {templates.length > 0 && (
+            <section>
+              <Overline className="mb-3">Pick a preset</Overline>
+              <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+                Skip the description and jump straight to a ready-made role. You can fine-tune everything on the next step.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {templates.map((t) => {
+                  const Icon = (icons as any)[t.icon] || icons.User
+                  return (
+                    <button
+                      key={t.slug}
+                      type="button"
+                      onClick={() => chooseTemplate(t)}
+                      className="group flex items-start gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30"
+                    >
+                      <div className="size-8 rounded-md bg-muted flex items-center justify-center shrink-0">
+                        <Icon className="size-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm">{t.name}</div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
           <section>
-            <Overline className="mb-3">What should this agent do?</Overline>
+            <Overline className="mb-3">{templates.length > 0 ? "Or describe your own" : "What should this agent do?"}</Overline>
             <div className="rounded-lg border bg-card p-5 space-y-2">
               <Label htmlFor="description">Job description</Label>
               <textarea
@@ -464,18 +494,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
             </div>
           )}
 
-          <div className="flex justify-between items-center pb-8 max-w-2xl">
-            {templates.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => setStep("template")}
-                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-              >
-                Browse templates instead →
-              </button>
-            ) : (
-              <span />
-            )}
+          <div className="flex justify-end items-center pb-8 max-w-2xl">
             <Button type="submit" disabled={drafting || !description.trim()}>
               {drafting ? "Drafting…" : "Draft my agent"}
             </Button>
@@ -485,61 +504,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     )
   }
 
-  // ── Step 2a: template grid (legacy/manual path) ────────────────────────
-  if (step === "template") {
-    return (
-      <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
-        <Head title="New agent" />
-        <PageHeader
-          eyebrow="Hire"
-          title="Pick a role"
-          description="Each template ships with ready-made identity, personality, instructions, and a suggested skill pack. You can edit them once the agent is created."
-        />
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={() => setStep("intro")}
-            className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-          >
-            ← Back to describe your agent
-          </button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
-          {templates.map((t) => {
-            const Icon = (icons as any)[t.icon] || icons.User
-            return (
-              <button
-                key={t.slug}
-                type="button"
-                onClick={() => chooseTemplate(t)}
-                className="group rounded-lg border bg-card p-4 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30"
-              >
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="size-8 rounded-md bg-muted flex items-center justify-center">
-                    <Icon className="size-4" />
-                  </div>
-                  <div className="font-medium text-sm">{t.name}</div>
-                </div>
-                <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{t.description}</p>
-                <div className="flex flex-wrap gap-1">
-                  {t.suggested_manager_role && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                      reports to {t.suggested_manager_role}
-                    </span>
-                  )}
-                  {t.suggested_skill_slugs.slice(0, 3).map((s) => (
-                    <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{s}</span>
-                  ))}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </AppLayout>
-    )
-  }
-
-  // ── Step 3: details (pre-filled from intro draft or template grid) ────
+  // ── Step 2: details (pre-filled from intro draft or preset pick) ──────
   if (!picked) {
     // Defensive: if we somehow landed here without a picked template, send
     // the user back to the intro.
