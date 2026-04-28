@@ -9,18 +9,25 @@ class Agents::ToolPoliciesController < ApplicationController
   def index
     policies = @agent.agent_tool_policies.includes(:agent).index_by(&:toolkit_slug)
 
-    # Source of truth = composio_toolkit_caches (durable per-org cache,
-    # populated by RefreshComposioCacheJob). Same data the engine uses.
-    available = ComposioSupported.list_for_engine(@agent.organization_id)
+    # Source of truth = current_tenant.integrations (the local table that
+    # /integrations also renders from). Same data, no Composio HTTP, no
+    # dependency on the new toolkit cache being warm.
+    visible = current_tenant.integrations
+      .where(status: "connected")
+      .where("scope = 'org' OR (scope = 'user' AND owner_user_id = ?)", current_user.id)
+      .pluck(:service_name)
+      .uniq
+
+    # Look up labels from the toolkit cache when available; fall back to a
+    # title-cased slug when the cache is cold.
+    labels = ComposioToolkitCache.where(organization_id: @agent.organization_id, slug: visible).pluck(:slug, :label).to_h
 
     render json: {
-      policies: available.map { |svc|
-        slug = svc[:slug] || svc["slug"]
-        label = svc[:label] || svc["label"]
+      policies: visible.map { |slug|
         p = policies[slug]
         {
           toolkit_slug: slug,
-          label: label,
+          label: labels[slug] || ComposioSupported.prettify_label(slug.titleize),
           preset: p&.preset || "read_write",
           allowed_tools: p&.allowed_tools || [],
           denied_tools: p&.denied_tools || [],
