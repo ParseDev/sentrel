@@ -80,7 +80,7 @@ class Agents::ToolPoliciesController < ApplicationController
   private
 
   def set_agent
-    @agent = current_tenant.agents.find_by!("agents.id = ? OR agents.public_id = ?", params[:agent_id].to_i, params[:agent_id])
+    @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
   rescue ActiveRecord::RecordNotFound
     head :not_found
   end
