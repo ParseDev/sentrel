@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_27_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_27_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -327,6 +327,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_150000) do
     t.text "composio_api_key_encrypted"
     t.text "context_md"
     t.datetime "created_at", null: false
+    t.string "detected_email_provider"
     t.string "email_aws_region", default: "us-east-1"
     t.string "email_bounce_topic_arn"
     t.string "email_complaint_topic_arn"

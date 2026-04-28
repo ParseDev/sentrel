@@ -35,7 +35,6 @@ class ComposioSupported
     { slug: "googlecalendar", label: "Google Calendar", category: "Productivity",  description: "Scheduling" },
     { slug: "googlesheets",   label: "Google Sheets",   category: "Productivity",  description: "Spreadsheets" },
     { slug: "googledrive",    label: "Google Drive",    category: "Productivity",  description: "Documents and files" },
-    { slug: "googledocs",     label: "Google Docs",     category: "Productivity",  description: "Collaborative docs" },
     { slug: "notion",         label: "Notion",          category: "Productivity",  description: "Docs and wiki" },
     { slug: "airtable",       label: "Airtable",        category: "Productivity",  description: "Flexible database" },
     { slug: "calendly",       label: "Calendly",        category: "Productivity",  description: "Booking and scheduling" },
@@ -48,7 +47,6 @@ class ComposioSupported
     { slug: "figma",          label: "Figma",           category: "Content",       description: "Design collaboration" },
     { slug: "mailchimp",      label: "Mailchimp",       category: "Content",       description: "Email marketing" },
     { slug: "typeform",       label: "Typeform",        category: "Content",       description: "Forms and surveys" },
-    { slug: "youtube",        label: "YouTube",         category: "Content",       description: "Video publishing" },
   ].freeze
 
   CATALOG_BY_SLUG = CATALOG.index_by { |s| s[:slug] }.freeze
@@ -62,15 +60,15 @@ class ComposioSupported
     composio = fetch_composio
     seen = composio.index_by { |c| c[:slug] }
 
-    # Start from the curated catalog, mark availability + grab logo from
-    # Composio when present.
+    # Start from the curated catalog. Catalog label always wins (Composio
+    # returns "Hubspot", "Linkedin", "Googlesheets" — uppercase-broken — so
+    # we keep the curated display name). Composio contributes the logo URL
+    # and availability flag.
     catalog_rows = CATALOG.map do |entry|
       cfg = seen[entry[:slug]]
       entry.merge(
         available: cfg.present?,
         logo: cfg&.dig(:logo),
-        # Use Composio's display name when it's connected (more authoritative)
-        label: cfg&.dig(:label) || entry[:label],
       )
     end
 
