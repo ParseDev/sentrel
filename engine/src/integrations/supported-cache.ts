@@ -27,6 +27,22 @@ const FALLBACK: SupportedIntegration[] = [
 let cache: SupportedIntegration[] = [];
 let lastFetchOk = 0;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
+let cachedOrgId: number | null = null;
+
+async function resolveOrgId(): Promise<number | null> {
+  if (cachedOrgId) return cachedOrgId;
+  const employeeId = process.env.EMPLOYEE_ID;
+  if (!employeeId) return null;
+  try {
+    const { host } = await import("../host/index.js");
+    const agent = await host.getAgent(employeeId);
+    cachedOrgId = agent.organization_id;
+    return cachedOrgId;
+  } catch (err) {
+    logger.warn("supported-cache: couldn't resolve org_id", { error: (err as Error).message });
+    return null;
+  }
+}
 
 export function getSupportedIntegrations(): SupportedIntegration[] {
   return cache.length > 0 ? cache : FALLBACK;
@@ -60,15 +76,18 @@ export function stopSupportedIntegrationsCache(): void {
 async function refresh(): Promise<void> {
   const railsUrl = process.env.RAILS_INTERNAL_URL;
   const secret = process.env.ENGINE_API_SECRET;
-  if (!railsUrl || !secret) {
+  // The agent's org_id is needed because the toolkit cache is org-scoped.
+  // Read from EMPLOYEE_ID-resolved agent on first refresh, then cache.
+  const orgId = await resolveOrgId();
+  if (!railsUrl || !secret || !orgId) {
     if (cache.length === 0) {
-      logger.warn("RAILS_INTERNAL_URL or ENGINE_API_SECRET not set — using fallback supported integrations");
+      logger.warn("Missing RAILS_INTERNAL_URL / ENGINE_API_SECRET / org_id — using fallback supported integrations");
       cache = [...FALLBACK];
     }
     return;
   }
   try {
-    const res = await fetch(`${railsUrl}/api/integrations/supported`, {
+    const res = await fetch(`${railsUrl}/api/integrations/supported?organization_id=${orgId}`, {
       headers: { "X-Engine-Secret": secret, Accept: "application/json" },
     });
     if (!res.ok) throw new Error(`Rails ${res.status}`);
