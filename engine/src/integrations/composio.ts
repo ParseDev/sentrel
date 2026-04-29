@@ -196,11 +196,39 @@ export async function getComposioMcpServer(
             arguments: args,
             dangerouslySkipVersionCheck: true,
           });
+          // Composio's tools.execute returns a 200 even when the underlying
+          // call failed — we need to inspect the body to surface the upstream
+          // error to the agent (and to the engine logs).
+          const successful = result?.successful ?? result?.successfull ?? true;
+          if (successful === false) {
+            const errMsg = result?.error || result?.message || JSON.stringify(result?.data ?? {}).slice(0, 500);
+            logger.error(`Composio tool ${t.name} returned !successful`, { error: errMsg, raw: JSON.stringify(result).slice(0, 800) });
+            return {
+              content: [{ type: "text", text: `Tool ${t.name} failed: ${errMsg}` }],
+              isError: true,
+            };
+          }
           return { content: [{ type: "text", text: JSON.stringify(result?.data ?? result, null, 2) }] };
         } catch (err: any) {
-          logger.error(`Composio tool ${t.name} failed`, { error: err?.message });
+          // Composio SDK errors surface upstream details in different shapes
+          // depending on the failure mode. Capture every field we know of so
+          // the agent's observation includes "401 invalid token" / "404 project
+          // not found" instead of the useless "Error executing the tool".
+          const upstream = err?.response?.data || err?.data || err?.body;
+          const upstreamStr = upstream
+            ? (typeof upstream === "string" ? upstream : JSON.stringify(upstream)).slice(0, 800)
+            : null;
+          const status = err?.response?.status || err?.status;
+          const richErr = [err?.message, status && `status=${status}`, upstreamStr && `upstream=${upstreamStr}`]
+            .filter(Boolean).join(" | ");
+          logger.error(`Composio tool ${t.name} failed`, {
+            error: err?.message,
+            status,
+            upstream: upstreamStr,
+            stack: err?.stack?.split("\n").slice(0, 3).join(" | "),
+          });
           return {
-            content: [{ type: "text", text: `Tool ${t.name} failed: ${err?.message || "unknown error"}` }],
+            content: [{ type: "text", text: `Tool ${t.name} failed: ${richErr || "unknown error"}` }],
             isError: true,
           };
         }
