@@ -189,6 +189,21 @@ class IntegrationsController < ApplicationController
     HTML
   end
 
+  # POST /integrations/refresh — full bypass of the 5-min debounce + the
+  # auth_configs Rails cache. Use when an admin just configured a new
+  # auth_config in Composio and wants the integrations page to reflect it
+  # without waiting for the next cron tick.
+  def refresh
+    Rails.cache.delete("composio:refresh_enq:org_#{current_tenant.id}")
+    Rails.cache.delete("composio:auth_configs")
+    Rails.cache.delete("composio:toolkits")
+    RefreshComposioCacheJob.new.perform(current_tenant.id)
+    redirect_to integrations_path, notice: "Integration catalog refreshed."
+  rescue => e
+    Rails.logger.warn "Integrations#refresh failed: #{e.class}: #{e.message}"
+    redirect_to integrations_path, alert: "Refresh failed: #{e.message.truncate(120)}"
+  end
+
   def destroy
     integration = current_tenant.integrations.find(params[:id])
     name = integration.service_name

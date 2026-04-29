@@ -24,7 +24,11 @@ class RefreshComposioCacheJob < ApplicationJob
     toolkits = ComposioSupported.fetch_toolkits
     return if toolkits.empty? # Composio degraded — keep last-known-good rows.
 
-    available_set = ComposioSupported.fetch_auth_configs.map { |c| c[:slug] }.to_set
+    # Force-skip the 5-min auth_configs Rails cache so a freshly-added
+    # auth_config (e.g. a Vercel OAuth setup created in the Composio dashboard)
+    # appears as soon as the next sync runs, rather than waiting up to 5 min
+    # for the cache to expire.
+    available_set = ComposioSupported.fetch_auth_configs(force: true).map { |c| c[:slug] }.to_set
     seen = {}
 
     rows = toolkits.map do |t|

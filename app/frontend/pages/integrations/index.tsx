@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Head, router } from "@inertiajs/react"
-import { Plug, Trash2, Check, Sparkles, AlertTriangle, Terminal } from "lucide-react"
+import { Plug, Trash2, Check, Sparkles, AlertTriangle, Terminal, RefreshCw } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -182,6 +182,14 @@ export default function IntegrationsIndex({ integrations, supported_services = [
           placeholder={scopeView === "org" ? "Search workspace integrations…" : "Search your personal integrations…"}
           className="h-9 w-full max-w-md rounded-md border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-[var(--color-indigo)] focus:outline-none focus:ring-2 focus:ring-[var(--indigo-surface)]"
         />
+        <button
+          type="button"
+          onClick={() => router.post("/integrations/refresh", {}, { preserveScroll: true })}
+          className="flex items-center gap-1 text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
+          title="Refresh the catalog from Composio (use after adding/removing an auth config)"
+        >
+          <RefreshCw className="size-3" /> Refresh
+        </button>
         <a
           href="https://app.composio.dev/auth-configs"
           target="_blank"

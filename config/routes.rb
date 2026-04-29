@@ -121,6 +121,7 @@ Rails.application.routes.draw do
       collection do
         post ":service_name/connect", action: :connect, as: :connect
         get :callback
+        post :refresh
       end
     end
 

@@ -174,11 +174,14 @@ class ComposioSupported
     fallback_toolkits
   end
 
-  def self.fetch_auth_configs
+  def self.fetch_auth_configs(force: false)
     api_key = ENV["COMPOSIO_API_KEY"]
     return [] if api_key.blank?
 
-    Rails.cache.fetch("composio:auth_configs", expires_in: 5.minutes) do
+    cache_key = "composio:auth_configs"
+    Rails.cache.delete(cache_key) if force
+
+    Rails.cache.fetch(cache_key, expires_in: 5.minutes) do
       uri = URI("#{COMPOSIO_BASE}/api/v3/auth_configs?limit=200")
       req = Net::HTTP::Get.new(uri)
       req["x-api-key"] = api_key
