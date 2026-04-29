@@ -48,6 +48,26 @@ class RefreshComposioCacheJob < ApplicationJob
       }
     end
 
+    # Fallback: any auth_config slug missing from the toolkit catalog still
+    # gets a row so it shows up on /integrations. The catalog is paginated
+    # and Composio occasionally lags behind — without this, an auth-configured
+    # slug like `vercel` could be invisible until the catalog catches up.
+    (available_set - seen.keys).each do |slug|
+      seen[slug] = true
+      rows << {
+        organization_id: org.id,
+        slug: slug,
+        label: ComposioSupported.prettify_label(slug.titleize),
+        logo: nil,
+        description: nil,
+        category: ComposioSupported::CATEGORY_MAP[slug] || "Other",
+        available: true,
+        refreshed_at: Time.current,
+        created_at: Time.current,
+        updated_at: Time.current,
+      }
+    end
+
     ComposioToolkitCache.upsert_all(
       rows,
       unique_by: "idx_composio_toolkit_caches_org_slug",
@@ -56,7 +76,7 @@ class RefreshComposioCacheJob < ApplicationJob
     # Drop rows whose slug no longer appears in the catalog (Composio removed
     # a toolkit or rebranded its slug).
     ComposioToolkitCache.where(organization_id: org.id).where.not(slug: seen.keys).delete_all
-    Rails.logger.info "ComposioCache: refreshed org=#{org.id}, #{rows.size} toolkits, #{available_set.size} available"
+    Rails.logger.info "ComposioCache: refreshed org=#{org.id}, #{rows.size} toolkits, #{available_set.size} available (#{(available_set - toolkits.map { |t| t[:slug] }).size} via fallback)"
   rescue => e
     Rails.logger.warn "RefreshComposioCacheJob failed for org=#{organization_id}: #{e.class}: #{e.message}"
   end

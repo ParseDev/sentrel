@@ -148,26 +148,41 @@ class ComposioSupported
     return fallback_toolkits if api_key.blank?
 
     Rails.cache.fetch("composio:toolkits", expires_in: 1.hour) do
-      uri = URI("#{COMPOSIO_BASE}/api/v3/toolkits?limit=500")
-      req = Net::HTTP::Get.new(uri)
-      req["x-api-key"] = api_key
-      req["Content-Type"] = "application/json"
-      # Tight timeouts; let the cache-fallback path absorb misses.
-      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 6) { |http| http.request(req) }
-      raise "Composio /toolkits #{res.code}" unless res.is_a?(Net::HTTPSuccess)
+      # Composio's /toolkits is cursor-paginated; a single page can't fit the
+      # full ~600+ toolkit catalog, so a slug like `vercel` may sit on page 2
+      # and never make it into our local cache. Walk every page until empty
+      # or until we hit a sane safety cap.
+      out = []
+      cursor = nil
+      pages = 0
+      loop do
+        pages += 1
+        break if pages > 10 # safety cap (~5000 toolkits)
+        params = +"limit=500"
+        params << "&cursor=#{CGI.escape(cursor)}" if cursor
+        uri = URI("#{COMPOSIO_BASE}/api/v3/toolkits?#{params}")
+        req = Net::HTTP::Get.new(uri)
+        req["x-api-key"] = api_key
+        req["Content-Type"] = "application/json"
+        res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 8) { |http| http.request(req) }
+        raise "Composio /toolkits #{res.code}" unless res.is_a?(Net::HTTPSuccess)
 
-      data = JSON.parse(res.body)
-      raw = data["items"] || data || []
-      Array(raw).filter_map do |t|
-        slug = (t["slug"] || t["name"] || "").to_s.downcase
-        next if slug.blank?
-        {
-          slug: slug,
-          label: t["name"] || slug.titleize,
-          description: t["description"] || t["meta"]&.dig("description"),
-          logo: t["logo"] || t.dig("meta", "logo"),
-        }
+        data = JSON.parse(res.body)
+        raw = data["items"] || data || []
+        Array(raw).each do |t|
+          slug = (t["slug"] || t["name"] || "").to_s.downcase
+          next if slug.blank?
+          out << {
+            slug: slug,
+            label: t["name"] || slug.titleize,
+            description: t["description"] || t["meta"]&.dig("description"),
+            logo: t["logo"] || t.dig("meta", "logo"),
+          }
+        end
+        cursor = data["next_cursor"] || data.dig("pagination", "next_cursor")
+        break if cursor.blank? || raw.empty?
       end
+      out
     end
   rescue => e
     Rails.logger.warn "ComposioSupported.fetch_toolkits failed: #{e.class}: #{e.message}"
