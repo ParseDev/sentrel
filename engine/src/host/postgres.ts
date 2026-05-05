@@ -143,10 +143,22 @@ export class PostgresHost implements Host {
   }
 
   async getConversationHistory(conversationId: number, limit = 20): Promise<Message[]> {
+    // Item 10 — unified-conversation read. If this conversation was spliced
+    // into an existing thread (different channel, same user+agent), pull
+    // messages from the WHOLE unified group so the agent sees one timeline.
+    // Falls back to single-conversation behaviour when unified_conversation_id
+    // is NULL (the common case).
     const { rows } = await this.pool.query(
-      `SELECT * FROM messages
-       WHERE conversation_id = $1
-       ORDER BY created_at DESC
+      `SELECT m.* FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.id = $1
+          OR c.unified_conversation_id = (
+               SELECT COALESCE(unified_conversation_id, id) FROM conversations WHERE id = $1
+             )
+          OR c.id = (
+               SELECT COALESCE(unified_conversation_id, id) FROM conversations WHERE id = $1
+             )
+       ORDER BY m.created_at DESC
        LIMIT $2`,
       [conversationId, limit],
     );
