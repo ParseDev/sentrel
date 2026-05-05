@@ -301,8 +301,13 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                   Complete the browser sign-in.
                 </li>
                 <li>
-                  Copy the contents of <code className="font-mono bg-muted px-1.5 py-0.5 rounded">~/.claude/.credentials.json</code>:
-                  <pre className="mt-1.5 rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">cat ~/.claude/.credentials.json | pbcopy</pre>
+                  Copy the credentials to your clipboard:
+                  <div className="mt-1.5 space-y-1">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">macOS (Keychain)</div>
+                    <pre className="rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">security find-generic-password -s &quot;Claude Code-credentials&quot; -w | pbcopy</pre>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mt-1.5">Linux / WSL</div>
+                    <pre className="rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">cat ~/.claude/.credentials.json | xclip -selection clipboard</pre>
+                  </div>
                 </li>
                 <li>Paste the JSON below and submit. Tokens are stored encrypted at rest.</li>
               </ol>
