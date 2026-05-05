@@ -381,15 +381,15 @@ class WebhooksController < ApplicationController
   # start chatting without a manual link step. Otherwise return nil and the
   # caller treats it as an unknown contact (existing fragmented-thread behaviour).
   def resolve_user_for_channel(channel, external_id, display: nil, organization: nil)
-    return nil if external_id.blank?
-    user = UserIdentity.lookup(channel, external_id)
+    return nil if external_id.blank? || organization.nil?
+    user = UserIdentity.lookup(organization.id, channel, external_id)
     return user.id if user
 
-    if channel == "telegram" && organization
+    if channel == "telegram"
       auto_claim_user = organization.users.where(role: %w[owner admin]).order(:id).first
       if auto_claim_user
         UserIdentity.claim!(user: auto_claim_user, channel: channel, external_id: external_id, display_name: display) rescue nil
-        Rails.logger.info "UserIdentity: auto-claimed #{channel}:#{external_id} for user #{auto_claim_user.id} (#{auto_claim_user.email})"
+        Rails.logger.info "UserIdentity: auto-claimed #{channel}:#{external_id} for user #{auto_claim_user.id} (#{auto_claim_user.email}) in org #{organization.id}"
         return auto_claim_user.id
       end
     end

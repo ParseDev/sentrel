@@ -4,29 +4,38 @@
 class UserIdentity < ApplicationRecord
   CHANNELS = %w[web telegram whatsapp email sms slack].freeze
 
+  acts_as_tenant :organization
+  belongs_to :organization
   belongs_to :user
 
   validates :channel, presence: true, inclusion: { in: CHANNELS }
   validates :external_id, presence: true
-  validates :external_id, uniqueness: { scope: :channel }
+  validates :external_id, uniqueness: { scope: [:organization_id, :channel] }
 
-  # Find the user matching a channel+external_id pair. Returns nil when no
-  # identity has been claimed yet — caller decides whether to auto-create
-  # a stub user (Telegram first contact) or reject (web requires login).
-  def self.lookup(channel, external_id)
-    find_by(channel: channel.to_s, external_id: external_id.to_s)&.user
+  # Find the user within an org matching a channel+external_id pair. Returns
+  # nil when no identity has been claimed yet — caller decides whether to
+  # auto-create a stub identity (Telegram first contact) or reject (web
+  # requires login).
+  def self.lookup(organization_id, channel, external_id)
+    where(organization_id: organization_id, channel: channel.to_s, external_id: external_id.to_s).first&.user
   end
 
-  # Idempotently claim an identity for a user. Used when a logged-in user
-  # connects a new channel (e.g. links their Telegram account from /settings).
+  # Idempotently claim an identity for a user within their org. Used when a
+  # logged-in user connects a new channel (e.g. links Telegram from /settings).
   def self.claim!(user:, channel:, external_id:, display_name: nil)
-    existing = find_by(channel: channel.to_s, external_id: external_id.to_s)
+    existing = where(organization_id: user.organization_id, channel: channel.to_s, external_id: external_id.to_s).first
     if existing
-      raise "Identity already claimed by user #{existing.user_id}" if existing.user_id != user.id
+      raise "Identity already claimed by user #{existing.user_id} in this org" if existing.user_id != user.id
       existing.update(display_name: display_name) if display_name.present? && existing.display_name != display_name
       existing
     else
-      create!(user: user, channel: channel.to_s, external_id: external_id.to_s, display_name: display_name)
+      create!(
+        organization_id: user.organization_id,
+        user: user,
+        channel: channel.to_s,
+        external_id: external_id.to_s,
+        display_name: display_name,
+      )
     end
   end
 end
