@@ -113,11 +113,37 @@ class WebhooksController < ApplicationController
     end
     return head :not_found unless agent
 
+    chat_id = message.dig(:chat, :id)
+    display = "#{message.dig(:from, :first_name)} #{message.dig(:from, :last_name)}".strip
+    user_id = resolve_user_for_channel("telegram", chat_id, display: display, organization: agent.organization)
+
+    # Splice into the user's recent active conversation across any channel.
+    # Item 10b — Telegram inbound on a thread the user already has on web
+    # continues the same conversation; new conversations only created when
+    # there's no recent thread within the 7-day window.
+    conversation = build_or_extend_conversation(
+      agent: agent,
+      user_id: user_id,
+      channel: "telegram",
+      contact_identifier: "tg:#{chat_id}",
+      contact_name: display,
+    )
+
+    conversation.messages.create!(
+      role: "user",
+      content: message[:text].to_s,
+      direction: "inbound",
+      channel: "telegram",
+      metadata: { chat_id: chat_id, message_id: message[:message_id] },
+    )
+
     enqueue(agent, "telegram", {
-      from: "#{message.dig(:from, :first_name)} #{message.dig(:from, :last_name)}".strip,
+      from: display,
       from_name: message.dig(:from, :username),
       body: message[:text],
-      metadata: { chat_id: message.dig(:chat, :id), message_id: message[:message_id] },
+      conversationId: conversation.id,
+      user_id: user_id,
+      metadata: { chat_id: chat_id, message_id: message[:message_id] },
     })
     head :ok
   end
@@ -134,21 +160,17 @@ class WebhooksController < ApplicationController
       return render json: { error: "Agent is not running", status: agent.status }, status: :conflict
     end
 
-    # Use the most recently active internal conv for this user — avoids
-    # fragmenting chat history across multiple conversations when old rows
-    # exist with different contact_identifier values.
-    conversation = agent.conversations
-      .where(kind: "internal", user: current_user)
-      .order(updated_at: :desc)
-      .first
-    conversation ||= agent.conversations.create!(
-      organization: agent.organization,
-      kind: "internal",
-      user: current_user,
+    # Item 10 — splice into the most-recent active conversation FOR THIS USER
+    # across any channel (web, telegram, …). Bypassing the channel restriction
+    # is the whole point: starting on Telegram and continuing on web should
+    # land in the same thread, not fragment.
+    conversation = build_or_extend_conversation(
+      agent: agent,
+      user_id: current_user.id,
+      channel: "web",
       contact_identifier: current_user.email,
       contact_name: current_user.name,
       contact_email: current_user.email,
-      status: "active",
     )
 
     # Sprint 1c (direct upload) — files were already uploaded by the browser
@@ -348,6 +370,68 @@ class WebhooksController < ApplicationController
     end
     Rails.logger.error "download_with_auth_and_redirects: too many redirects for #{uri}"
     nil
+  end
+
+  # ── Item 10 — cross-channel identity + conversation merge ──────
+
+  # Resolve which user owns this channel+external_id pair. Returns the user id
+  # or nil if the channel-side address is unknown and we don't have permission
+  # to claim it. Telegram-first-contact policy: if the agent's organization
+  # has exactly one owner, auto-claim the chat for that owner so they can
+  # start chatting without a manual link step. Otherwise return nil and the
+  # caller treats it as an unknown contact (existing fragmented-thread behaviour).
+  def resolve_user_for_channel(channel, external_id, display: nil, organization: nil)
+    return nil if external_id.blank?
+    user = UserIdentity.lookup(channel, external_id)
+    return user.id if user
+
+    if channel == "telegram" && organization
+      auto_claim_user = organization.users.where(role: %w[owner admin]).order(:id).first
+      if auto_claim_user
+        UserIdentity.claim!(user: auto_claim_user, channel: channel, external_id: external_id, display_name: display) rescue nil
+        Rails.logger.info "UserIdentity: auto-claimed #{channel}:#{external_id} for user #{auto_claim_user.id} (#{auto_claim_user.email})"
+        return auto_claim_user.id
+      end
+    end
+
+    nil
+  end
+
+  # Find an existing recent conversation for this user+agent across ANY
+  # channel and either return it (so the new message extends the same
+  # thread) or create a new conversation pointing at the existing root via
+  # unified_conversation_id.
+  def build_or_extend_conversation(agent:, user_id:, channel:, contact_identifier:, contact_name: nil, contact_email: nil)
+    if user_id
+      existing = Conversation.find_recent_for_user(
+        user_id: user_id, agent_id: agent.id, organization_id: agent.organization_id,
+      )
+    end
+
+    # Same channel + same user → just extend the same conversation row.
+    if existing && existing.contact_identifier == contact_identifier
+      return existing
+    end
+
+    # Different channel for the same user → create a new conversation row but
+    # point it at the existing root so the engine sees a unified history.
+    new_conv = agent.conversations.create!(
+      organization: agent.organization,
+      kind: "internal",
+      user_id: user_id,
+      contact_identifier: contact_identifier,
+      contact_name: contact_name,
+      contact_email: contact_email,
+      status: "active",
+      unified_conversation_id: existing&.unified_conversation_id || existing&.id,
+    )
+    if existing
+      Rails.logger.info(
+        "Conversation #{new_conv.id} (channel=#{channel}) spliced into unified group rooted at " \
+        "#{new_conv.unified_conversation_id}"
+      )
+    end
+    new_conv
   end
 
   # ── Generic enqueue (non-email channels) ───────────────────────

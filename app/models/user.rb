@@ -6,6 +6,7 @@ class User < ApplicationRecord
          :recoverable, :rememberable, :validatable
 
   belongs_to :organization
+  has_many :user_identities, dependent: :destroy
 
   validates :name, presence: true
   validates :role, presence: true, inclusion: { in: %w[owner admin member viewer] }
