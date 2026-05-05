@@ -201,24 +201,17 @@ export default function IntegrationsIndex({ integrations, supported_services = [
       </div>
 
       <div className="space-y-8">
-        {/* AI accounts (subscription auth) — temporarily hidden. claude.ai/oauth/authorize
-            requires a UUID client_id, not a self-identifying URL, so OAuth flow is on hold
-            until we either register an Anthropic developer app or ship a paste-token UX.
-            Backend scaffolding (oauth_credentials table, refresh job, billing proxy) stays
-            in place so the section can be re-enabled without re-doing the wiring. */}
-        {false && (
         <div>
           <Overline className="mb-3 flex items-center gap-2">
             <Sparkles className="size-3.5" /> AI accounts (subscription auth)
           </Overline>
           <p className="text-xs text-muted-foreground mb-3">
-            Run agents on your Claude Pro / ChatGPT Plus subscription instead of paying per token.
+            Run agents on your Claude Pro / Max / Team subscription instead of paying per token.
             Subject to subscription rate limits — best for hands-on use, not autonomous fleets.
           </p>
           <div className="grid gap-2 md:grid-cols-2">
-            {ai_accounts.map((acc) => {
+            {ai_accounts.filter((a) => a.provider === "anthropic").map((acc) => {
               const meta = AI_PROVIDER_META[acc.provider]
-              const configured = oauth_configured[acc.provider]
               return (
                 <div
                   key={acc.provider}
@@ -254,27 +247,33 @@ export default function IntegrationsIndex({ integrations, supported_services = [
                       </p>
                     )}
                   </div>
-                  {!configured ? (
-                    <Badge variant="outline" className="text-[10px] gap-1">
-                      <AlertTriangle className="size-3" /> Not configured
-                    </Badge>
-                  ) : acc.connected ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 shrink-0 text-xs"
-                      onClick={() => router.delete(`/oauth/${acc.provider}/disconnect`)}
-                    >
-                      Disconnect
-                    </Button>
+                  {acc.connected ? (
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setPasteOpen("anthropic")}
+                      >
+                        Replace token
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs text-destructive hover:text-destructive"
+                        onClick={() => router.delete(`/oauth/${acc.provider}/disconnect`)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
                   ) : (
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-7 shrink-0 text-xs"
-                      onClick={() => (window.location.href = `/oauth/${acc.provider}/connect`)}
+                      onClick={() => setPasteOpen("anthropic")}
                     >
-                      Connect
+                      Paste token
                     </Button>
                   )}
                 </div>
@@ -282,6 +281,57 @@ export default function IntegrationsIndex({ integrations, supported_services = [
             })}
           </div>
         </div>
+
+        {pasteOpen === "anthropic" && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+            onClick={() => !pasteBusy && setPasteOpen(null)}
+          >
+            <div
+              className="w-full max-w-xl rounded-xl border border-border bg-card p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Terminal className="size-4 text-[var(--color-indigo)]" />
+                <h2 className="text-sm font-semibold">Connect your Claude account</h2>
+              </div>
+              <ol className="text-xs text-muted-foreground space-y-2 mb-4 list-decimal list-inside">
+                <li>
+                  On your laptop, run <code className="font-mono bg-muted px-1.5 py-0.5 rounded">claude /login</code> in any terminal.
+                  Complete the browser sign-in.
+                </li>
+                <li>
+                  Copy the contents of <code className="font-mono bg-muted px-1.5 py-0.5 rounded">~/.claude/.credentials.json</code>:
+                  <pre className="mt-1.5 rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">cat ~/.claude/.credentials.json | pbcopy</pre>
+                </li>
+                <li>Paste the JSON below and submit. Tokens are stored encrypted at rest.</li>
+              </ol>
+              <textarea
+                value={pasteValue}
+                onChange={(e) => setPasteValue(e.target.value)}
+                placeholder='{"claudeAiOauth":{"accessToken":"sk-ant-...","refreshToken":"...","expiresAt":...}}'
+                className="w-full h-32 rounded-md border bg-background p-2 text-[11px] font-mono"
+                disabled={pasteBusy}
+              />
+              <div className="flex justify-end gap-2 mt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setPasteOpen(null); setPasteValue("") }}
+                  disabled={pasteBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={submitPaste}
+                  disabled={pasteBusy || !pasteValue.trim()}
+                >
+                  {pasteBusy ? "Saving…" : "Save token"}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {categories.map((category) => {

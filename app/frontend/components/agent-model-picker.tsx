@@ -63,10 +63,26 @@ interface Props {
   agentId: number
   currentProvider?: string | null
   currentModelId?: string | null
+  // When true, shows the "via your Claude subscription" group at the top.
+  // Set by the agent edit page only when the org has an active anthropic
+  // OauthCredential — otherwise the option would 401 the moment it ran.
+  anthropicAccountConnected?: boolean
 }
 
-export function AgentModelPicker({ agentId, currentProvider, currentModelId }: Props) {
+export function AgentModelPicker({ agentId, currentProvider, currentModelId, anthropicAccountConnected }: Props) {
   const [busy, setBusy] = useState(false)
+
+  const subscriptionGroup = anthropicAccountConnected
+    ? [{
+        group: "Your Claude subscription",
+        options: [
+          { provider: "anthropic_account", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7",   hint: "via your Pro/Max subscription" },
+          { provider: "anthropic_account", model_id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", hint: "via your Pro/Max subscription" },
+          { provider: "anthropic_account", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  hint: "via your Pro/Max subscription" },
+        ],
+      }]
+    : []
+  const groupedModels = [...subscriptionGroup, ...MODELS]
 
   const apply = async (provider: string, model_id: string) => {
     if (provider === currentProvider && model_id === currentModelId) return
@@ -90,7 +106,7 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId }: P
   }
 
   const currentLabel = (() => {
-    const known = MODELS.flatMap((g) => g.options).find(
+    const known = groupedModels.flatMap((g) => g.options).find(
       (m) => m.provider === currentProvider && m.model_id === currentModelId,
     )
     if (known) return known.label
@@ -119,7 +135,7 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId }: P
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
-        {MODELS.map((group, i) => (
+        {groupedModels.map((group, i) => (
           <div key={group.group}>
             {i > 0 && <DropdownMenuSeparator />}
             <DropdownMenuLabel>{group.group}</DropdownMenuLabel>

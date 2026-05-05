@@ -81,8 +81,23 @@ class AgentsController < ApplicationController
         }
       }
 
+    # Whether the org has an active Anthropic-subscription credential
+    # (paste-token flow). The brain picker conditionally shows the
+    # "via your Claude subscription" group only when this is true so the
+    # option doesn't 401 the moment a user picks it.
+    anthropic_account_connected = begin
+      OauthCredential.exists?(
+        organization_id: @agent.organization_id,
+        provider: "anthropic",
+        kind: "ai_provider",
+      )
+    rescue StandardError
+      false
+    end
+
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
+      anthropic_account_connected: anthropic_account_connected,
       spend: AgentSpend.for_agent(@agent),
       conversations: @agent.conversations.where(kind: "external").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
         last_msg = c.messages.order(created_at: :desc).first

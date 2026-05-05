@@ -147,6 +147,7 @@ interface Props {
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
+  anthropic_account_connected?: boolean
 }
 
 type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "spend"
@@ -184,13 +185,14 @@ function AgentTopBarMeta({ agent }: { agent: Agent }) {
   )
 }
 
-function AgentTopBarActions({ agent }: { agent: Agent }) {
+function AgentTopBarActions({ agent, anthropicAccountConnected }: { agent: Agent; anthropicAccountConnected?: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
       <AgentModelPicker
         agentId={agent.id}
         currentProvider={agent.ai_config?.provider}
         currentModelId={agent.ai_config?.model_id}
+        anthropicAccountConnected={anthropicAccountConnected}
       />
       <AgentOpsMenu agentId={agent.id} />
       <Button variant="ghost" size="sm" className="h-8 gap-1.5" asChild>
@@ -394,7 +396,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [] }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected }: Props) {
   const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
@@ -467,7 +469,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         { label: agent.name },
       ]}
       topBarMeta={<AgentTopBarMeta agent={agent} />}
-      topBarActions={<AgentTopBarActions agent={agent} />}
+      topBarActions={<AgentTopBarActions agent={agent} anthropicAccountConnected={anthropic_account_connected} />}
     >
       <Head title={agent.name} />
 
