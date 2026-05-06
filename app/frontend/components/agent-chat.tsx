@@ -709,6 +709,22 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       }
     }
 
+    // User-uploaded attachments (resolved server-side from ActiveStorage).
+    // Without this, files sent by the user vanished on reload because the
+    // signed_ids in metadata are useless on the client. Render the same
+    // markdown shape so an image previews inline and a doc gets a chip-
+    // shaped download link.
+    const userAttachments = Array.isArray((m as any).attachments)
+      ? (m as any).attachments as Array<{ url: string; filename: string; content_type: string; byte_size: number }>
+      : []
+    for (const att of userAttachments) {
+      if (att.content_type?.startsWith("image/")) {
+        content += `\n\n![${att.filename}](${att.url})`
+      } else {
+        content += `\n\n[📎 ${att.filename}](${att.url})`
+      }
+    }
+
     const msgId = String((m as any).id || "")
     const approvals = approvalsByMessage[msgId]
     if (m.role === "assistant" && approvals && approvals.length > 0) {
