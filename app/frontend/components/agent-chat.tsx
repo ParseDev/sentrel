@@ -13,6 +13,7 @@ import {
 import { DirectUpload } from "@rails/activestorage"
 import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
 import { MessageQueueProvider, useMessageQueue } from "@/contexts/message-queue"
+import { FilePreviewProvider } from "@/contexts/file-preview"
 
 // The engine gateway lives on Fly's private 6pn network in production, so
 // the browser can't reach it directly. Only connect when we're on localhost
@@ -790,13 +791,15 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
           <ActionApprovalProvider value={actionApproval}>
             <ConnectionProposalProvider value={connectionProposal}>
               <MessageQueueProvider agentId={agentId}>
-                <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
-                <div className="relative h-full overflow-hidden bg-background">
-                  <Thread />
-                  {thinkingSince && (
-                    <ThinkingIndicator since={thinkingSince} agentName={agentName} />
-                  )}
-                </div>
+                <FilePreviewProvider>
+                  <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
+                  <div className="relative h-full overflow-hidden bg-background">
+                    <Thread />
+                    {thinkingSince && (
+                      <ThinkingIndicator since={thinkingSince} agentName={agentName} />
+                    )}
+                  </div>
+                </FilePreviewProvider>
               </MessageQueueProvider>
             </ConnectionProposalProvider>
           </ActionApprovalProvider>

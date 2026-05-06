@@ -64,15 +64,16 @@ class AgentsController < ApplicationController
       []
     end
 
-    # Surface "agent is thinking" across page reloads. Heuristic: the most
-    # recent message in the chat thread is from the user AND was sent within
-    # the last 5 minutes — reasonable upper-bound for a normal agent run.
-    # Frontend hydrates the indicator from this on mount and clears it when
-    # the cable broadcasts the assistant's message arrival.
+    # Surface "agent is thinking" across page reloads / new tabs. Heuristic:
+    # the most recent message in the chat thread is from the user AND was
+    # sent within the last 15 minutes — long enough to cover slower runs that
+    # touch search/file processing without forever-pinning the indicator if
+    # the engine truly died. Frontend hydrates from this on mount and clears
+    # it when the cable broadcasts the assistant's reply.
     agent_thinking = nil
     if chat_messages.any?
       last_msg = chat_messages.last
-      if last_msg["role"] == "user" && last_msg["created_at"].to_time > 5.minutes.ago
+      if last_msg["role"] == "user" && last_msg["created_at"].to_time > 15.minutes.ago
         agent_thinking = { since: last_msg["created_at"], message_id: last_msg["id"] }
       end
     end

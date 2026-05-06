@@ -1,6 +1,6 @@
 "use client";
 
-import { PropsWithChildren, useEffect, useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import { XIcon, PlusIcon, FileText } from "lucide-react";
 import {
   AttachmentPrimitive,
@@ -10,16 +10,9 @@ import {
   useAui,
 } from "@assistant-ui/react";
 import { useShallow } from "zustand/shallow";
-// Tooltip components no longer used after the chip redesign — filename is
-// shown inline rather than tooltip-only.
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { useFilePreviewOptional } from "@/contexts/file-preview";
 import { cn } from "@/lib/utils";
 
 const useFileSrc = (file: File | undefined) => {
@@ -57,51 +50,12 @@ const useAttachmentSrc = () => {
   return useFileSrc(file) ?? src;
 };
 
-type AttachmentPreviewProps = {
-  src: string;
-};
-
-const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-  return (
-    <img
-      src={src}
-      alt="Image Preview"
-      className={cn(
-        "block h-auto max-h-[80vh] w-auto max-w-full object-contain",
-        isLoaded
-          ? "aui-attachment-preview-image-loaded"
-          : "aui-attachment-preview-image-loading invisible",
-      )}
-      onLoad={() => setIsLoaded(true)}
-    />
-  );
-};
-
-const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
-  const src = useAttachmentSrc();
-
-  if (!src) return children;
-
-  return (
-    <Dialog>
-      <DialogTrigger
-        className="aui-attachment-preview-trigger cursor-pointer transition-colors hover:bg-accent/50"
-        asChild
-      >
-        {children}
-      </DialogTrigger>
-      <DialogContent className="aui-attachment-preview-dialog-content p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:bg-foreground/60 [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0! [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive">
-        <DialogTitle className="aui-sr-only sr-only">
-          Image Attachment Preview
-        </DialogTitle>
-        <div className="aui-attachment-preview relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden bg-background">
-          <AttachmentPreview src={src} />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
+// Read the underlying File for the current attachment (any type — the legacy
+// useAttachmentSrc only returned it for images). Used to feed the side-panel
+// preview with a fresh-sent file blob.
+function useAttachmentFile(): File | undefined {
+  return useAuiState((s) => (s.attachment as { file?: File }).file);
+}
 
 const AttachmentThumb: FC = () => {
   const src = useAttachmentSrc();
@@ -136,32 +90,37 @@ const AttachmentUI: FC = () => {
     : 0;
   const isError = status?.type === "incomplete" && (status as { reason?: string }).reason === "error";
 
-  // Images keep the thumbnail-tile treatment. Documents/files render as a
-  // horizontal chip with filename + extension visible inline so the user
-  // doesn't need to hover-tooltip to see what they sent. Click on either
-  // form opens the preview/download dialog.
+  // Both images and document chips open in the global side-panel previewer
+  // (PDFs render inline via iframe, images full-size, etc.). Falls back to
+  // nothing if no <FilePreviewProvider> is mounted upstream.
+  const previewer = useFilePreviewOptional();
+  const file = useAttachmentFile();
+  const handleOpen = () => {
+    if (isUploading || isError || !previewer) return;
+    if (file) previewer.open(file);
+  };
+
   if (isImage) {
     return (
       <AttachmentPrimitive.Root className="aui-attachment-root relative aui-attachment-root-composer only:*:first:size-24">
-        <AttachmentPreviewDialog>
-          <div
-            className={cn(
-              "aui-attachment-tile relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75",
-              isError && "border-destructive",
-            )}
-            role="button"
-            aria-label={filename || "Image attachment"}
-            title={filename}
-          >
-            <AttachmentThumb />
-            {isUploading && <UploadOverlay progress={uploadProgress} />}
-            {isError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-destructive/15">
-                <XIcon className="size-4 text-destructive" />
-              </div>
-            )}
-          </div>
-        </AttachmentPreviewDialog>
+        <button
+          type="button"
+          onClick={handleOpen}
+          className={cn(
+            "aui-attachment-tile relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75",
+            isError && "border-destructive",
+          )}
+          aria-label={filename || "Image attachment"}
+          title={filename}
+        >
+          <AttachmentThumb />
+          {isUploading && <UploadOverlay progress={uploadProgress} />}
+          {isError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-destructive/15">
+              <XIcon className="size-4 text-destructive" />
+            </div>
+          )}
+        </button>
         {isComposer && !isUploading && <AttachmentRemove />}
       </AttachmentPrimitive.Root>
     );
@@ -175,55 +134,55 @@ const AttachmentUI: FC = () => {
 
   return (
     <AttachmentPrimitive.Root className="aui-attachment-root relative">
-      <AttachmentPreviewDialog>
-        <div
-          className={cn(
-            "aui-attachment-chip group relative inline-flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-xs no-underline hover:border-[var(--border-strong)] transition-colors max-w-[320px]",
-            isError && "border-destructive",
-            isUploading && "pointer-events-none opacity-90",
+      <button
+        type="button"
+        onClick={handleOpen}
+        disabled={isUploading || isError}
+        className={cn(
+          "aui-attachment-chip group relative inline-flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-xs no-underline hover:border-[var(--border-strong)] transition-colors max-w-[320px] disabled:cursor-default",
+          isError && "border-destructive",
+          isUploading && "opacity-90",
+        )}
+        aria-label={filename || "Attachment"}
+        title={filename}
+      >
+        <div className="relative shrink-0 flex size-9 items-center justify-center rounded-md bg-muted">
+          {isUploading ? (
+            <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-muted-foreground/25" />
+              <circle
+                cx="16"
+                cy="16"
+                r="13"
+                fill="none"
+                strokeWidth="3"
+                strokeDasharray={`${2 * Math.PI * 13}`}
+                strokeDashoffset={`${2 * Math.PI * 13 * (1 - uploadProgress)}`}
+                strokeLinecap="round"
+                className="stroke-foreground transition-all duration-150"
+              />
+            </svg>
+          ) : isError ? (
+            <XIcon className="size-4 text-destructive" />
+          ) : isPdf ? (
+            <span className="text-[9px] font-semibold tracking-wider text-red-500">PDF</span>
+          ) : (
+            <FileText className="size-4 text-muted-foreground" />
           )}
-          role="button"
-          aria-label={filename || "Attachment"}
-          title={filename}
-        >
-          <div className="relative shrink-0 flex size-9 items-center justify-center rounded-md bg-muted">
-            {isUploading ? (
-              <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-muted-foreground/25" />
-                <circle
-                  cx="16"
-                  cy="16"
-                  r="13"
-                  fill="none"
-                  strokeWidth="3"
-                  strokeDasharray={`${2 * Math.PI * 13}`}
-                  strokeDashoffset={`${2 * Math.PI * 13 * (1 - uploadProgress)}`}
-                  strokeLinecap="round"
-                  className="stroke-foreground transition-all duration-150"
-                />
-              </svg>
-            ) : isError ? (
-              <XIcon className="size-4 text-destructive" />
-            ) : isPdf ? (
-              <span className="text-[9px] font-semibold tracking-wider text-red-500">PDF</span>
-            ) : (
-              <FileText className="size-4 text-muted-foreground" />
-            )}
+        </div>
+        <div className="min-w-0 flex-1 py-0.5 text-left">
+          <div className="block truncate font-medium text-foreground/90">
+            {filename || <AttachmentPrimitive.Name />}
           </div>
-          <div className="min-w-0 flex-1 py-0.5">
-            <div className="block truncate font-medium text-foreground/90">
-              {filename || <AttachmentPrimitive.Name />}
-            </div>
-            <div className="block text-[10px] text-muted-foreground mt-0.5">
-              {isUploading
-                ? `Uploading ${Math.round(uploadProgress * 100)}%`
-                : isError
-                ? "Upload failed"
-                : "Click to open"}
-            </div>
+          <div className="block text-[10px] text-muted-foreground mt-0.5">
+            {isUploading
+              ? `Uploading ${Math.round(uploadProgress * 100)}%`
+              : isError
+              ? "Upload failed"
+              : "Click to preview"}
           </div>
         </div>
-      </AttachmentPreviewDialog>
+      </button>
       {isComposer && !isUploading && <AttachmentRemove />}
     </AttachmentPrimitive.Root>
   );

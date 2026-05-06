@@ -13,7 +13,27 @@ import { type FC, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { useFilePreviewOptional } from "@/contexts/file-preview";
 import { cn } from "@/lib/utils";
+
+// Best-effort guess at content type from a URL or filename. Used to feed
+// the FilePreview drawer when we only have a markdown link, no headers.
+function guessContentType(href: string, filename: string): string {
+  const lower = (filename || href).toLowerCase()
+  if (lower.endsWith(".pdf")) return "application/pdf"
+  if (lower.endsWith(".png")) return "image/png"
+  if (lower.match(/\.(jpe?g)$/)) return "image/jpeg"
+  if (lower.endsWith(".gif")) return "image/gif"
+  if (lower.endsWith(".webp")) return "image/webp"
+  if (lower.endsWith(".svg")) return "image/svg+xml"
+  if (lower.endsWith(".csv")) return "text/csv"
+  if (lower.endsWith(".json")) return "application/json"
+  if (lower.endsWith(".md")) return "text/markdown"
+  if (lower.endsWith(".txt")) return "text/plain"
+  if (lower.match(/\.(mp4|webm|mov)$/)) return "video/mp4"
+  if (lower.match(/\.(mp3|wav|m4a|ogg)$/)) return "audio/mpeg"
+  return ""
+}
 
 const MarkdownTextImpl = () => {
   return (
@@ -68,20 +88,41 @@ const useCopyToClipboard = ({
 
 const defaultComponents = memoizeMarkdownComponents({
   // Sprint 3 — render images from agent (screenshots, logos, etc.)
-  img: ({ className, src, alt, ...props }) => (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="block my-2">
-      <img
-        src={src}
-        alt={alt || ""}
-        className={cn(
-          "aui-md-img max-w-full rounded-lg border border-border/50 shadow-sm cursor-pointer hover:opacity-90 transition-opacity",
-          className,
-        )}
-        loading="lazy"
-        {...props}
-      />
-    </a>
-  ),
+  img: function MarkdownImage({ className, src, alt, ...props }) {
+    const previewer = useFilePreviewOptional()
+    const onClick = (e: React.MouseEvent) => {
+      if (
+        !previewer || !src ||
+        e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
+      ) return
+      e.preventDefault()
+      previewer.open({
+        url: src,
+        filename: alt || src.split("/").pop() || "image",
+        contentType: guessContentType(src, alt || "") || "image/*",
+      })
+    }
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onClick}
+        className="block my-2"
+      >
+        <img
+          src={src}
+          alt={alt || ""}
+          className={cn(
+            "aui-md-img max-w-full rounded-lg border border-border/50 shadow-sm cursor-pointer hover:opacity-90 transition-opacity",
+            className,
+          )}
+          loading="lazy"
+          {...props}
+        />
+      </a>
+    )
+  },
   h1: ({ className, ...props }) => (
     <h1
       className={cn(
@@ -145,7 +186,7 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  a: ({ className, href, children, ...props }) => {
+  a: function MarkdownLink({ className, href, children, ...props }) {
     // File / blob links — render as a styled chip card with an icon. Catches
     // both Rails ActiveStorage URLs (/rails/active_storage/blobs/...) and
     // the engine's signed-blob proxy (/api/blobs/...). Plus we strip the
@@ -155,20 +196,41 @@ const defaultComponents = memoizeMarkdownComponents({
     const isBlob =
       hrefStr.includes("/api/blobs/") ||
       hrefStr.includes("/rails/active_storage/")
+    const previewer = useFilePreviewOptional()
 
     if (isBlob) {
       const childArray = Array.isArray(children) ? children : [children]
       const cleanChildren = childArray.map((c) =>
         typeof c === "string" ? c.replace(/^📎\s*/, "") : c,
       )
+      const filenameGuess =
+        typeof cleanChildren[0] === "string" ? cleanChildren[0] : ""
       const isPdf = hrefStr.toLowerCase().includes(".pdf") ||
-        (typeof cleanChildren[0] === "string" && cleanChildren[0].toLowerCase().endsWith(".pdf"))
+        filenameGuess.toLowerCase().endsWith(".pdf")
+
+      const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        // Cmd/Ctrl-click, middle-click, modifier keys → let the browser open
+        // the URL in a new tab as the user expects. Otherwise pop the inline
+        // side-panel preview.
+        if (
+          !previewer ||
+          e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+          e.button !== 0
+        ) return
+        e.preventDefault()
+        previewer.open({
+          url: hrefStr,
+          filename: filenameGuess || hrefStr.split("/").pop() || "file",
+          contentType: guessContentType(hrefStr, filenameGuess),
+        })
+      }
 
       return (
         <a
           href={hrefStr}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={onClick}
           className={cn(
             "aui-md-a not-prose inline-flex items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-xs no-underline hover:border-[var(--border-strong)] transition-colors my-1.5 max-w-[320px]",
             className,
@@ -187,7 +249,7 @@ const defaultComponents = memoizeMarkdownComponents({
               {cleanChildren}
             </span>
             <span className="block text-[10px] text-muted-foreground mt-0.5">
-              Click to open
+              Click to preview
             </span>
           </span>
         </a>
