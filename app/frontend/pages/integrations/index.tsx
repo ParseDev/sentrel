@@ -138,32 +138,40 @@ export default function IntegrationsIndex({ integrations, supported_services = [
   // personal Gmail / LinkedIn / etc.
   const [scopeView, setScopeView] = useState<"org" | "user">("org")
 
-  // We split the catalog in two: services we have an auth_config for ("Available"
-  // — always shown, grouped by category) and the ~1000 catalog entries we
-  // don't yet support ("Browse catalog" — collapsed behind a toggle so the
-  // page stays scannable). Search filters across BOTH so a user looking for
-  // "Salesforce" finds it regardless of which side it's on.
+  // Sidebar-driven layout: left rail of categories (with "All" first), right
+  // pane shows the selected category's services. Both Available and Catalog
+  // entries appear in the same grid — Connected/Available items get the
+  // solid Connect treatment, Catalog-only items get the dashed Request
+  // treatment. Sorted available-first within each category so the user
+  // always sees what they can use today before what they can ask for.
   const matchesQuery = (s: SupportedService) => {
     if (!query) return true
     const q = query.toLowerCase()
     return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
   }
-  const availableMatches = supported_services.filter((s) => s.available && matchesQuery(s))
-  const browseMatches = supported_services.filter((s) => !s.available && matchesQuery(s))
+  const allFiltered = supported_services
+    .filter(matchesQuery)
+    .sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1))
 
-  const grouped = availableMatches.reduce<Record<string, SupportedService[]>>((acc, s) => {
-    (acc[s.category] = acc[s.category] || []).push(s)
+  const CATEGORY_ORDER = ["Sales", "Communication", "Productivity", "Engineering", "Finance", "Content", "Other"]
+  const categoryCounts = allFiltered.reduce<Record<string, number>>((acc, s) => {
+    acc[s.category] = (acc[s.category] || 0) + 1
     return acc
   }, {})
-  // Stable category order: known buckets first, Other last.
-  const CATEGORY_ORDER = ["Sales", "Communication", "Productivity", "Engineering", "Finance", "Content", "Other"]
-  const categories = CATEGORY_ORDER.filter((c) => grouped[c]).concat(
-    Object.keys(grouped).filter((c) => !CATEGORY_ORDER.includes(c))
-  )
+  const sidebarCategories = ["All", ...CATEGORY_ORDER.filter((c) => categoryCounts[c]),
+    ...Object.keys(categoryCounts).filter((c) => !CATEGORY_ORDER.includes(c))]
 
-  // Searching collapses the difference — when the user is hunting, just
-  // show whatever matched, don't make them open the "Browse" toggle.
-  const browseAutoOpen = !!query.trim() && browseMatches.length > 0
+  const [selectedCategory, setSelectedCategory] = useState<string>("All")
+  const [pageSize, setPageSize] = useState<number>(60)
+
+  // When a search lands the selected category may have zero hits; jump back
+  // to "All" so the user sees something instead of an empty pane.
+  const visibleForCategory = selectedCategory === "All"
+    ? allFiltered
+    : allFiltered.filter((s) => s.category === selectedCategory)
+
+  const totalInCategory = visibleForCategory.length
+  const pagedSlice = visibleForCategory.slice(0, pageSize)
 
   return (
     <AppLayout
@@ -374,191 +382,168 @@ export default function IntegrationsIndex({ integrations, supported_services = [
           </div>
         )}
 
-        {categories.map((category) => {
-          const visible = grouped[category]
-          return (
-          <div key={category}>
-            <Overline className="mb-3">{category}</Overline>
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {visible.map((service) => {
-                // Match integrations to the active scope view: workspace ↔
-                // org-scoped rows; "yours" ↔ rows owned by current user.
-                const connected = integrations.find((i) =>
-                  i.service_name === service.slug &&
-                  (scopeView === "org" ? i.scope !== "user" : i.is_mine)
-                )
+        {/* Two-pane layout: category sidebar on the left, paginated grid on
+            the right. "All" is the first sidebar entry so users land on the
+            full set without having to pick a category. Load-more pagination
+            replaces the old hard cap so anyone hunting the long tail can
+            scroll without re-running a search. */}
+        <div className="grid grid-cols-[180px_1fr] gap-6">
+          <aside className="border-r border-border pr-4">
+            <Overline className="mb-2">Category</Overline>
+            <ul className="space-y-0.5 text-sm">
+              {sidebarCategories.map((cat) => {
+                const count = cat === "All"
+                  ? allFiltered.length
+                  : (categoryCounts[cat] || 0)
+                const active = selectedCategory === cat
                 return (
-                  <div
-                    key={service.slug}
-                    className={`group relative flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-all ${
-                      connected
-                        ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.04]"
-                        : "hover:border-[var(--border-strong)]"
-                    }`}
-                  >
-                    <div
-                      className={`relative flex size-9 shrink-0 items-center justify-center rounded-md border overflow-hidden ${
-                        connected
-                          ? "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]"
-                          : "bg-muted text-muted-foreground"
+                  <li key={cat}>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedCategory(cat); setPageSize(60) }}
+                      className={`w-full flex items-center justify-between rounded-md px-2 py-1.5 text-left transition ${
+                        active
+                          ? "bg-muted text-foreground font-semibold"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       }`}
                     >
-                      {service.logo ? (
-                        <img
-                          src={service.logo}
-                          alt={service.label}
-                          className="size-6 object-contain"
-                          onError={(e) => {
-                            // Hide broken images so the Plug fallback shows.
-                            (e.currentTarget as HTMLImageElement).style.display = "none"
-                          }}
-                        />
-                      ) : (
-                        <Plug className="size-4" />
-                      )}
-                      {connected && (
-                        <span className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-[var(--color-success)] text-white ring-2 ring-background">
-                          <Check className="size-2.5" strokeWidth={3} />
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm ${connected ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
-                        {service.label}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {connected ? (
-                          <span className="flex items-center gap-1.5 font-mono font-semibold text-[var(--color-success)]">
-                            <span className="size-1 rounded-full bg-[var(--color-success)] animate-pulse-glow" />
-                            CONNECTED
-                          </span>
-                        ) : (
-                          service.description
-                        )}
-                      </p>
-                    </div>
-                    {connected ? (
-                      <button
-                        onClick={() => disconnect(connected.id)}
-                        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                        aria-label={`Disconnect ${service.label}`}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 shrink-0 text-xs"
-                        onClick={() => connect(service.slug, scopeView)}
-                      >
-                        Connect
-                      </Button>
-                    )}
-                  </div>
+                      <span className="truncate">{cat}</span>
+                      <span className={`text-[10px] font-mono ${active ? "text-foreground" : "text-muted-foreground/70"}`}>
+                        {count.toLocaleString()}
+                      </span>
+                    </button>
+                  </li>
                 )
               })}
-            </div>
-          </div>
-          )
-        })}
+            </ul>
+          </aside>
 
-        {availableMatches.length === 0 && !query && (
-          <div className="rounded-lg border border-dashed py-12 text-center">
-            <p className="text-sm font-medium text-foreground mb-1">No integrations connected yet</p>
-            <p className="text-xs text-muted-foreground mb-4">Browse the catalog below or add an auth config in Composio.</p>
-            <a
-              href="https://app.composio.dev/auth-configs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-mono uppercase tracking-wide text-[var(--color-indigo)] hover:underline"
-            >
-              Open Composio →
-            </a>
-          </div>
-        )}
-        {availableMatches.length === 0 && browseMatches.length === 0 && query && (
-          <div className="py-8 text-center">
-            <p className="font-mono text-sm text-muted-foreground">No matches for "{query}".</p>
-          </div>
-        )}
+          <main>
+            {totalInCategory === 0 ? (
+              <div className="py-12 text-center">
+                <p className="font-mono text-sm text-muted-foreground">
+                  {query ? `No matches for "${query}"` : "No services in this category"}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {pagedSlice.length.toLocaleString()} of {totalInCategory.toLocaleString()} services
+                  {selectedCategory !== "All" && <> in <span className="font-medium text-foreground">{selectedCategory}</span></>}
+                </p>
+                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                  {pagedSlice.map((service) => {
+                    const connected = service.available && integrations.find((i) =>
+                      i.service_name === service.slug &&
+                      (scopeView === "org" ? i.scope !== "user" : i.is_mine)
+                    )
+                    const isRequested = !service.available &&
+                      (requestedSet.has(service.slug) || optimisticRequested.has(service.slug))
 
-        {/* Browse-the-catalog section: all 1000+ Composio toolkits we don't
-            yet have an auth_config for, collapsed behind a toggle so the page
-            stays scannable but discoverable via search + the "Show all" link. */}
-        {browseMatches.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <Overline>Browse catalog · {browseMatches.length.toLocaleString()} services</Overline>
-              {!browseAutoOpen && (
-                <button
-                  type="button"
-                  onClick={() => setShowCatalog((v) => !v)}
-                  className="text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
-                >
-                  {showCatalog ? "Hide" : "Show all"} →
-                </button>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              These are in Composio's catalog but not wired up here yet. Click <span className="font-medium text-foreground">Request</span> and we'll prioritise the ones our team asks for.
-            </p>
-            {(showCatalog || browseAutoOpen) && (
-              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                {browseMatches.slice(0, browseAutoOpen ? 200 : 600).map((service) => {
-                  const isRequested = requestedSet.has(service.slug) || optimisticRequested.has(service.slug)
-                  return (
-                    <div
-                      key={service.slug}
-                      className="group relative flex items-center gap-3 rounded-lg border border-dashed border-border/60 px-3.5 py-3 transition-all hover:border-border"
-                    >
-                      <div className="relative flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground overflow-hidden">
-                        {service.logo ? (
-                          <img
-                            src={service.logo}
-                            alt={service.label}
-                            className="size-6 object-contain opacity-70"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = "none"
-                            }}
-                          />
+                    return (
+                      <div
+                        key={service.slug}
+                        className={`group relative flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-all ${
+                          connected
+                            ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.04]"
+                            : service.available
+                            ? "hover:border-[var(--border-strong)]"
+                            : "border-dashed border-border/60 hover:border-border"
+                        }`}
+                      >
+                        <div
+                          className={`relative flex size-9 shrink-0 items-center justify-center rounded-md border overflow-hidden ${
+                            connected
+                              ? "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {service.logo ? (
+                            <img
+                              src={service.logo}
+                              alt={service.label}
+                              className={`size-6 object-contain ${service.available ? "" : "opacity-70"}`}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none"
+                              }}
+                            />
+                          ) : (
+                            <Plug className="size-4" />
+                          )}
+                          {connected && (
+                            <span className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-[var(--color-success)] text-white ring-2 ring-background">
+                              <Check className="size-2.5" strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm truncate ${connected ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
+                            {service.label}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {connected ? (
+                              <span className="flex items-center gap-1.5 font-mono font-semibold text-[var(--color-success)]">
+                                <span className="size-1 rounded-full bg-[var(--color-success)] animate-pulse-glow" />
+                                CONNECTED
+                              </span>
+                            ) : (
+                              service.description || service.category
+                            )}
+                          </p>
+                        </div>
+                        {connected ? (
+                          <button
+                            onClick={() => disconnect(connected.id)}
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                            aria-label={`Disconnect ${service.label}`}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        ) : service.available ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 shrink-0 text-xs"
+                            onClick={() => connect(service.slug, scopeView)}
+                          >
+                            Connect
+                          </Button>
+                        ) : isRequested ? (
+                          <Badge variant="outline" className="h-7 shrink-0 text-[10px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                            <Check className="size-3" /> Requested
+                          </Badge>
                         ) : (
-                          <Plug className="size-4" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 shrink-0 text-xs"
+                            disabled={requesting === service.slug}
+                            onClick={() => requestIntegration(service.slug)}
+                          >
+                            {requesting === service.slug ? "…" : "Request"}
+                          </Button>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground truncate">{service.label}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          {service.description || service.category}
-                        </p>
-                      </div>
-                      {isRequested ? (
-                        <Badge variant="outline" className="h-7 shrink-0 text-[10px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                          <Check className="size-3" /> Requested
-                        </Badge>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 shrink-0 text-xs"
-                          disabled={requesting === service.slug}
-                          onClick={() => requestIntegration(service.slug)}
-                        >
-                          {requesting === service.slug ? "…" : "Request"}
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })}
-                {!browseAutoOpen && browseMatches.length > 600 && (
-                  <div className="md:col-span-2 lg:col-span-3 text-center text-[11px] text-muted-foreground py-2">
-                    Showing 600 of {browseMatches.length.toLocaleString()} — use search to find specific services.
+                    )
+                  })}
+                </div>
+
+                {pageSize < totalInCategory && (
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => setPageSize((s) => s + 60)}
+                    >
+                      Load more · {(totalInCategory - pageSize).toLocaleString()} remaining
+                    </Button>
                   </div>
                 )}
-              </div>
+              </>
             )}
-          </div>
-        )}
+          </main>
+        </div>
       </div>
     </AppLayout>
   )
