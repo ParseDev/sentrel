@@ -738,8 +738,12 @@
   max-width: none !important;
   width: fit-content !important;
   word-break: normal !important;
-  background: var(--color-indigo) !important;
-  color: #ffffff !important;
+  /* Perplexity-style soft surface — no longer the bright indigo block.
+     Uses theme tokens so light + dark mode both render with appropriate
+     contrast against the page background. */
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg) !important;
   padding: 0.625rem 1rem !important;
 }

@@ -10,11 +10,8 @@ import {
   useAui,
 } from "@assistant-ui/react";
 import { useShallow } from "zustand/shallow";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+// Tooltip components no longer used after the chip redesign — filename is
+// shown inline rather than tooltip-only.
 import {
   Dialog,
   DialogTitle,
@@ -128,21 +125,8 @@ const AttachmentUI: FC = () => {
   const isComposer = aui.attachment.source !== "message";
 
   const isImage = useAuiState((s) => s.attachment.type === "image");
-  const typeLabel = useAuiState((s) => {
-    const type = s.attachment.type;
-    switch (type) {
-      case "image":
-        return "Image";
-      case "document":
-        return "Document";
-      case "file":
-        return "File";
-      default:
-        return type;
-    }
-  });
+  const filename = useAuiState((s) => s.attachment.name as string | undefined);
 
-  // Sprint 1c (direct upload) — surface upload progress / error states
   const status = useAuiState(
     useShallow((s) => s.attachment.status),
   );
@@ -152,77 +136,95 @@ const AttachmentUI: FC = () => {
     : 0;
   const isError = status?.type === "incomplete" && (status as { reason?: string }).reason === "error";
 
-  return (
-    <Tooltip>
-      <AttachmentPrimitive.Root
-        className={cn(
-          "aui-attachment-root relative",
-          isImage && "aui-attachment-root-composer only:*:first:size-24",
-        )}
-      >
+  // Images keep the thumbnail-tile treatment. Documents/files render as a
+  // horizontal chip with filename + extension visible inline so the user
+  // doesn't need to hover-tooltip to see what they sent. Click on either
+  // form opens the preview/download dialog.
+  if (isImage) {
+    return (
+      <AttachmentPrimitive.Root className="aui-attachment-root relative aui-attachment-root-composer only:*:first:size-24">
         <AttachmentPreviewDialog>
-          <TooltipTrigger asChild>
-            <div
-              className={cn(
-                "aui-attachment-tile relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75",
-                isError && "border-destructive",
-              )}
-              role="button"
-              aria-label={`${typeLabel} attachment`}
-            >
-              <AttachmentThumb />
-
-              {/* Uploading overlay — semi-transparent dim with circular progress */}
-              {isUploading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
-                  <div className="relative size-7">
-                    <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
-                      <circle
-                        cx="16"
-                        cy="16"
-                        r="13"
-                        fill="none"
-                        strokeWidth="3"
-                        className="stroke-muted-foreground/25"
-                      />
-                      <circle
-                        cx="16"
-                        cy="16"
-                        r="13"
-                        fill="none"
-                        strokeWidth="3"
-                        strokeDasharray={`${2 * Math.PI * 13}`}
-                        strokeDashoffset={`${2 * Math.PI * 13 * (1 - uploadProgress)}`}
-                        strokeLinecap="round"
-                        className="stroke-foreground transition-all duration-150"
-                      />
-                    </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-medium tabular-nums">
-                      {Math.round(uploadProgress * 100)}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Error overlay */}
-              {isError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-destructive/15">
-                  <XIcon className="size-4 text-destructive" />
-                </div>
-              )}
-            </div>
-          </TooltipTrigger>
+          <div
+            className={cn(
+              "aui-attachment-tile relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75",
+              isError && "border-destructive",
+            )}
+            role="button"
+            aria-label={filename || "Image attachment"}
+            title={filename}
+          >
+            <AttachmentThumb />
+            {isUploading && <UploadOverlay progress={uploadProgress} />}
+            {isError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-destructive/15">
+                <XIcon className="size-4 text-destructive" />
+              </div>
+            )}
+          </div>
         </AttachmentPreviewDialog>
         {isComposer && !isUploading && <AttachmentRemove />}
       </AttachmentPrimitive.Root>
-      <TooltipContent side="top">
-        <AttachmentPrimitive.Name />
-        {isUploading && <div className="text-[10px] text-muted-foreground">Uploading {Math.round(uploadProgress * 100)}%</div>}
-        {isError && <div className="text-[10px] text-destructive">Upload failed</div>}
-      </TooltipContent>
-    </Tooltip>
+    );
+  }
+
+  // Document / file chip — filename visible, hover-clickable.
+  return (
+    <AttachmentPrimitive.Root className="aui-attachment-root relative">
+      <AttachmentPreviewDialog>
+        <div
+          className={cn(
+            "aui-attachment-chip group relative flex cursor-pointer items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-xs hover:border-[var(--border-strong)] transition-colors max-w-[260px]",
+            isError && "border-destructive",
+          )}
+          role="button"
+          aria-label={filename || "Attachment"}
+          title={filename}
+        >
+          <div className="relative shrink-0 flex size-7 items-center justify-center rounded bg-muted">
+            <FileText className="size-3.5 text-muted-foreground" />
+            {isUploading && (
+              <span className="absolute inset-0 flex items-center justify-center bg-background/80 rounded">
+                <span className="text-[8px] font-medium tabular-nums">
+                  {Math.round(uploadProgress * 100)}
+                </span>
+              </span>
+            )}
+          </div>
+          <span className="truncate font-medium text-foreground/90">
+            {filename || <AttachmentPrimitive.Name />}
+          </span>
+        </div>
+      </AttachmentPreviewDialog>
+      {isComposer && !isUploading && <AttachmentRemove />}
+    </AttachmentPrimitive.Root>
   );
 };
+
+// Image-tile upload progress overlay (extracted so both image and the chip
+// fallback can share the rendering).
+const UploadOverlay: FC<{ progress: number }> = ({ progress }) => (
+  <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+    <div className="relative size-7">
+      <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-muted-foreground/25" />
+        <circle
+          cx="16"
+          cy="16"
+          r="13"
+          fill="none"
+          strokeWidth="3"
+          strokeDasharray={`${2 * Math.PI * 13}`}
+          strokeDashoffset={`${2 * Math.PI * 13 * (1 - progress)}`}
+          strokeLinecap="round"
+          className="stroke-foreground transition-all duration-150"
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[9px] font-medium tabular-nums">
+        {Math.round(progress * 100)}
+      </span>
+    </div>
+  </div>
+);
 
 const AttachmentRemove: FC = () => {
   return (
