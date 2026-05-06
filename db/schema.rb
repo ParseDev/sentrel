@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_06_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -230,6 +230,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
     t.string "status", default: "active", null: false
     t.string "subject"
     t.jsonb "summaries", default: []
+    t.bigint "unified_conversation_id"
     t.datetime "updated_at", null: false
     t.bigint "user_id"
     t.index ["agent_id", "contact_identifier"], name: "index_conversations_on_agent_id_and_contact_identifier"
@@ -237,6 +238,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
     t.index ["agent_id"], name: "index_conversations_on_agent_id"
     t.index ["claude_session_id"], name: "index_conversations_on_claude_session_id"
     t.index ["organization_id"], name: "index_conversations_on_organization_id"
+    t.index ["unified_conversation_id", "updated_at"], name: "index_conversations_on_unified_and_updated"
+    t.index ["unified_conversation_id"], name: "index_conversations_on_unified_conversation_id"
     t.index ["user_id"], name: "index_conversations_on_user_id"
   end
 
@@ -287,6 +290,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
     t.datetime "updated_at", null: false
     t.index ["agent_id"], name: "index_instances_on_agent_id", unique: true
     t.index ["provider", "machine_id"], name: "index_instances_on_provider_and_machine_id"
+  end
+
+  create_table "integration_requests", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "note"
+    t.bigint "organization_id", null: false
+    t.datetime "resolved_at"
+    t.string "service_name", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "service_name"], name: "index_integration_requests_on_organization_id_and_service_name"
+    t.index ["organization_id"], name: "index_integration_requests_on_organization_id"
+    t.index ["user_id", "service_name"], name: "index_integration_requests_on_user_service", unique: true
+    t.index ["user_id"], name: "index_integration_requests_on_user_id"
   end
 
   create_table "integrations", force: :cascade do |t|
@@ -489,6 +507,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
     t.index ["parent_task_id"], name: "index_tasks_on_parent_task_id"
   end
 
+  create_table "user_identities", force: :cascade do |t|
+    t.string "channel", null: false
+    t.datetime "created_at", null: false
+    t.string "display_name"
+    t.string "external_id", null: false
+    t.bigint "organization_id", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["organization_id", "channel", "external_id"], name: "index_user_identities_on_org_channel_external", unique: true
+    t.index ["organization_id"], name: "index_user_identities_on_organization_id"
+    t.index ["user_id", "channel"], name: "index_user_identities_on_user_id_and_channel"
+    t.index ["user_id"], name: "index_user_identities_on_user_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", default: "", null: false
@@ -522,12 +554,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
   add_foreign_key "channel_configs", "agents"
   add_foreign_key "composio_toolkit_caches", "organizations"
   add_foreign_key "conversations", "agents"
+  add_foreign_key "conversations", "conversations", column: "unified_conversation_id"
   add_foreign_key "conversations", "organizations"
   add_foreign_key "conversations", "users"
   add_foreign_key "email_events", "agents"
   add_foreign_key "email_events", "organizations"
   add_foreign_key "email_suppressions", "organizations"
   add_foreign_key "instances", "agents"
+  add_foreign_key "integration_requests", "organizations"
+  add_foreign_key "integration_requests", "users"
   add_foreign_key "integrations", "organizations"
   add_foreign_key "integrations", "users", column: "owner_user_id"
   add_foreign_key "invitations", "organizations"
@@ -546,5 +581,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
   add_foreign_key "tasks", "organizations"
   add_foreign_key "tasks", "tasks", column: "parent_task_id"
   add_foreign_key "tasks", "users", column: "assigned_by_user_id"
+  add_foreign_key "user_identities", "organizations"
+  add_foreign_key "user_identities", "users"
   add_foreign_key "users", "organizations"
 end
