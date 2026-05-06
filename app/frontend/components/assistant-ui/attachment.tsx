@@ -167,13 +167,18 @@ const AttachmentUI: FC = () => {
     );
   }
 
-  // Document / file chip — filename visible, hover-clickable.
+  // Document / file chip — matches the reload-restored card rendered by
+  // markdown-text.tsx so freshly-sent and historical attachments look the
+  // same. PDF badge, filename, "Click to open" subtitle.
+  const isPdf = (filename || "").toLowerCase().endsWith(".pdf") ||
+    (filename || "").toLowerCase().includes(".pdf");
+
   return (
     <AttachmentPrimitive.Root className="aui-attachment-root relative">
       <AttachmentPreviewDialog>
         <div
           className={cn(
-            "aui-attachment-chip group relative flex cursor-pointer items-center gap-2.5 rounded-md border bg-card pl-1.5 pr-3 py-1.5 text-xs hover:border-[var(--border-strong)] transition-colors max-w-[280px] overflow-hidden",
+            "aui-attachment-chip group relative inline-flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-xs no-underline hover:border-[var(--border-strong)] transition-colors max-w-[320px]",
             isError && "border-destructive",
             isUploading && "pointer-events-none opacity-90",
           )}
@@ -181,7 +186,7 @@ const AttachmentUI: FC = () => {
           aria-label={filename || "Attachment"}
           title={filename}
         >
-          <div className="relative shrink-0 flex size-8 items-center justify-center rounded bg-muted">
+          <div className="relative shrink-0 flex size-9 items-center justify-center rounded-md bg-muted">
             {isUploading ? (
               <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
                 <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-muted-foreground/25" />
@@ -199,22 +204,23 @@ const AttachmentUI: FC = () => {
               </svg>
             ) : isError ? (
               <XIcon className="size-4 text-destructive" />
+            ) : isPdf ? (
+              <span className="text-[9px] font-semibold tracking-wider text-red-500">PDF</span>
             ) : (
               <FileText className="size-4 text-muted-foreground" />
             )}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-foreground/90">
+          <div className="min-w-0 flex-1 py-0.5">
+            <div className="block truncate font-medium text-foreground/90">
               {filename || <AttachmentPrimitive.Name />}
             </div>
-            {isUploading && (
-              <div className="text-[10px] text-muted-foreground tabular-nums">
-                Uploading {Math.round(uploadProgress * 100)}%
-              </div>
-            )}
-            {isError && (
-              <div className="text-[10px] text-destructive">Upload failed</div>
-            )}
+            <div className="block text-[10px] text-muted-foreground mt-0.5">
+              {isUploading
+                ? `Uploading ${Math.round(uploadProgress * 100)}%`
+                : isError
+                ? "Upload failed"
+                : "Click to open"}
+            </div>
           </div>
         </div>
       </AttachmentPreviewDialog>
