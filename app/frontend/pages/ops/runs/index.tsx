@@ -78,7 +78,7 @@ export default function OpsRunsIndex({ runs, totals, agents, filters }: Props) {
   return (
     <AppLayout
       crumbs={[
-        { label: "Control plane", href: "/" },
+        { label: "Control panel", href: "/" },
         { label: "Ops" },
         { label: "Runs" },
       ]}

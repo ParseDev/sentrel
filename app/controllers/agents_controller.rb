@@ -46,21 +46,23 @@ class AgentsController < ApplicationController
     # reload. ActiveStorage stores them on Message via has_many_attached;
     # we surface their URL + filename + content_type so the frontend can
     # render the same attachment chip we use during composition.
-    chat_messages = chat_conversation
-      ? chat_conversation.messages.includes(attachments_attachments: :blob).order(id: :asc).map { |m|
-          base = m.as_json(only: [:id, :role, :content, :channel, :metadata, :created_at])
-          base["attachments"] = m.attachments.map { |att|
-            blob = att.blob
-            {
-              filename: blob.filename.to_s,
-              content_type: blob.content_type,
-              byte_size: blob.byte_size,
-              url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true),
-            }
+    chat_messages = if chat_conversation
+      chat_conversation.messages.includes(attachments_attachments: :blob).order(id: :asc).map do |m|
+        base = m.as_json(only: [:id, :role, :content, :channel, :metadata, :created_at])
+        base["attachments"] = m.attachments.map do |att|
+          blob = att.blob
+          {
+            filename: blob.filename.to_s,
+            content_type: blob.content_type,
+            byte_size: blob.byte_size,
+            url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true),
           }
-          base
-        }
-      : []
+        end
+        base
+      end
+    else
+      []
+    end
 
     # Get approvals keyed by message_id for inline rendering
     approvals_by_message = @agent.pending_approvals

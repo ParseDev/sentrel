@@ -38,7 +38,7 @@ export default function OpsCostIndex({ days, total_cost_usd, total_runs, cache_s
   return (
     <AppLayout
       crumbs={[
-        { label: "Control plane", href: "/" },
+        { label: "Control panel", href: "/" },
         { label: "Ops", href: "/ops/runs" },
         { label: "Cost" },
       ]}

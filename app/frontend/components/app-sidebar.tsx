@@ -105,7 +105,7 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel>Control plane</SidebarGroupLabel>
+          <SidebarGroupLabel>Control panel</SidebarGroupLabel>
           <NavSecondary items={controlNavItems} />
         </SidebarGroup>
       </SidebarContent>

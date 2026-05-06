@@ -51,7 +51,7 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
   return (
     <AppLayout
       crumbs={[
-        { label: "Control plane", href: "/" },
+        { label: "Control panel", href: "/" },
         { label: "Audit log" },
       ]}
       topBarActions={
@@ -83,7 +83,7 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
       <Head title="Audit Log" />
 
       <PageHeader
-        eyebrow="Control plane"
+        eyebrow="Control panel"
         title="Audit log"
         description="A chronological ledger of every tool call, every approval, every run."
       />

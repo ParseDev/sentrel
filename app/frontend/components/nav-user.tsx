@@ -1,4 +1,4 @@
-import { router, usePage } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { ChevronsUpDown, LogOut, Settings } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -16,7 +16,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { destroyUserSessionPath } from "@/routes"
+import { destroyUserSessionPath, settingsPath } from "@/routes"
 import type { SharedProps } from "@/types"
 
 export function NavUser() {
@@ -73,9 +73,11 @@ export function NavUser() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Settings className="mr-2 size-4" />
-              Settings
+            <DropdownMenuItem asChild>
+              <Link href={settingsPath()} className="cursor-pointer">
+                <Settings className="mr-2 size-4" />
+                Settings
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

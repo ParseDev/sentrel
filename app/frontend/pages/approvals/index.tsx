@@ -118,7 +118,7 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
   return (
     <AppLayout
       crumbs={[
-        { label: "Control plane", href: "/" },
+        { label: "Control panel", href: "/" },
         { label: "Approvals" },
       ]}
       topBarActions={
@@ -136,7 +136,7 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
       <Head title="Approvals" />
 
       <PageHeader
-        eyebrow="Control plane"
+        eyebrow="Control panel"
         title="Approvals"
         description="Review actions your agents want to take before they happen."
       />

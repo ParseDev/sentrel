@@ -50,7 +50,7 @@ export default function SettingsShow({ organization, members, anthropic_account 
   return (
     <AppLayout
       crumbs={[
-        { label: "Control plane", href: dashboardPath() },
+        { label: "Control panel", href: dashboardPath() },
         { label: "Settings" },
       ]}
     >
