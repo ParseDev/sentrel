@@ -318,11 +318,124 @@ class ComposioSupported
 
   # Synonyms collapsed before we display so "ecommerce" + "e_commerce" don't
   # show as two buckets, etc. Keys are the post-normalize form; values are
-  # the canonical bucket they should fold into.
+  # the canonical bucket they should fold into. After this map runs, the
+  # SUPERGROUPS map below folds the result into one of ~12 high-level
+  # buckets so the sidebar stays scannable instead of showing 76 entries.
   CATEGORY_SYNONYMS = {
     "E Commerce" => "Ecommerce",
     "Developer Tools & DevOps" => "Developer Tools",
     "Productivity & Project Management" => "Project Management",
+  }.freeze
+
+  # Supergroups — every Composio category lands in exactly one of these so
+  # the sidebar shows a manageable shortlist (~12 buckets vs 76 raw). Edit
+  # the map below if you want a category to live in a different parent;
+  # the page picks up the new grouping on the next refresh job tick.
+  CATEGORY_SUPERGROUPS = {
+    # AI & ML — every AI subcategory rolls up. Composio splits AI into
+    # 10 sub-buckets (Chatbots, Agents, Models, etc.); we don't.
+    "Artificial Intelligence"          => "AI",
+    "AI Web Scraping"                  => "AI",
+    "AI Chatbots"                      => "AI",
+    "AI Document Extraction"           => "AI",
+    "AI Agents"                        => "AI",
+    "AI Models"                        => "AI",
+    "AI Content Generation"            => "AI",
+    "AI Meeting Assistants"            => "AI",
+    "AI Sales Tools"                   => "AI",
+    "AI Assistants"                    => "AI",
+    "AI Safety Compliance Detection"   => "AI",
+
+    # Sales & CRM
+    "CRM"                              => "Sales & CRM",
+    "Sales & CRM"                      => "Sales & CRM",
+    "Contact Management"               => "Sales & CRM",
+
+    # Marketing — newsletters, drip, ads all roll into Marketing since the
+    # Email parent is for the inbox/transactional side.
+    "Marketing Automation"             => "Marketing",
+    "Marketing"                        => "Marketing",
+    "Social Media Marketing"           => "Marketing",
+    "Social Media Accounts"            => "Marketing",
+    "Ads & Conversion"                 => "Marketing",
+    "Reviews"                          => "Marketing",
+    "Email Newsletters"                => "Marketing",
+    "Drip Emails"                      => "Marketing",
+
+    # Communication — every inbox / messaging / call / video tool.
+    "Email"                            => "Communication",
+    "Transactional Email"              => "Communication",
+    "Phone & SMS"                      => "Communication",
+    "Team Chat"                        => "Communication",
+    "Communication"                    => "Communication",
+    "Notifications"                    => "Communication",
+    "Video Conferencing"               => "Communication",
+    "Webinars"                         => "Communication",
+    "Customer Support"                 => "Communication",
+
+    # Productivity & PM — task tracking, time, notes, calendar/scheduling.
+    "Productivity"                     => "Productivity",
+    "Project Management"               => "Productivity",
+    "Task Management"                  => "Productivity",
+    "Time Tracking Software"           => "Productivity",
+    "Notes"                            => "Productivity",
+    "Team Collaboration"               => "Productivity",
+    "Product Management"               => "Productivity",
+    "Scheduling & Booking"             => "Productivity",
+    "Event Management"                 => "Productivity",
+
+    # Documents & Files
+    "Documents"                        => "Documents & Files",
+    "File Management & Storage"        => "Documents & Files",
+    "Spreadsheets"                     => "Documents & Files",
+    "Signatures"                       => "Documents & Files",
+    "Forms & Surveys"                  => "Documents & Files",
+    "Transcription"                    => "Documents & Files",
+
+    # Developer Tools — code, monitoring, infra, low-level utilities.
+    "Developer Tools"                  => "Developer Tools",
+    "Databases"                        => "Developer Tools",
+    "IT Operations"                    => "Developer Tools",
+    "Server Monitoring"                => "Developer Tools",
+    "App Builder"                      => "Developer Tools",
+    "Model Context Protocol"           => "Developer Tools",
+    "Internet Of Things"               => "Developer Tools",
+    "URL Shortener"                    => "Developer Tools",
+    "Bookmark Managers"                => "Developer Tools",
+
+    # Commerce & Finance — ecommerce, payments, accounting, fundraising.
+    "Ecommerce"                        => "Commerce & Finance",
+    "Payment Processing"               => "Commerce & Finance",
+    "Accounting"                       => "Commerce & Finance",
+    "Fundraising"                      => "Commerce & Finance",
+    "Proposal & Invoice Management"    => "Commerce & Finance",
+    "Taxes"                            => "Commerce & Finance",
+    "Commerce"                         => "Commerce & Finance",
+
+    # Analytics — split out because it's a real cross-cutting decision
+    # ("show me the BI tools") rather than a sub-flavour of something else.
+    "Analytics"                        => "Analytics",
+    "Business Intelligence"            => "Analytics",
+
+    # Security
+    "Security & Identity Tools"        => "Security",
+
+    # HR — small but a clear distinct bucket.
+    "Human Resources"                  => "HR",
+    "HR Talent & Recruitment"          => "HR",
+
+    # Content & Media
+    "Images & Design"                  => "Content & Media",
+    "Video & Audio"                    => "Content & Media",
+    "Website Builders"                 => "Content & Media",
+    "News & Lifestyle"                 => "Content & Media",
+
+    # Other catch-all for genuinely off-pattern services.
+    "Education"                        => "Other",
+    "Online Courses"                   => "Other",
+    "Gaming"                           => "Other",
+    "Fitness"                          => "Other",
+    "Other"                            => "Other",
   }.freeze
 
   # Normalise category strings so "ai-tools" / "AI Tools" / "ai_tools" all
@@ -341,6 +454,10 @@ class ComposioSupported
       next w.upcase if acronyms.include?(lw)
       w.capitalize
     }.join(" ")
-    CATEGORY_SYNONYMS[titled] || titled
+    canonical = CATEGORY_SYNONYMS[titled] || titled
+    # Roll up to a supergroup if we've defined one. Falls through to the
+    # raw category name when we haven't mapped it yet, which will cluster
+    # at the bottom of the sidebar so we notice and decide where it goes.
+    CATEGORY_SUPERGROUPS[canonical] || canonical
   end
 end
