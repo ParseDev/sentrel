@@ -34,13 +34,17 @@ class RefreshComposioCacheJob < ApplicationJob
     rows = toolkits.map do |t|
       slug = t[:slug]
       seen[slug] = true
+      # Prefer Composio's own first category when the API supplies one;
+      # fall back to our hand-curated CATEGORY_MAP for the small set of
+      # legacy slugs we care about, and "Other" only as a last resort.
+      composio_cat = (t[:categories] || []).first
       {
         organization_id: org.id,
         slug: slug,
         label: ComposioSupported.prettify_label(t[:label] || slug),
         logo: t[:logo],
         description: t[:description],
-        category: ComposioSupported::CATEGORY_MAP[slug] || "Other",
+        category: composio_cat.presence || ComposioSupported::CATEGORY_MAP[slug] || "Other",
         available: available_set.include?(slug),
         refreshed_at: Time.current,
         created_at: Time.current,

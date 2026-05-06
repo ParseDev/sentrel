@@ -177,6 +177,7 @@ class ComposioSupported
             label: t["name"] || slug.titleize,
             description: t["description"] || t["meta"]&.dig("description"),
             logo: t["logo"] || t.dig("meta", "logo"),
+            categories: extract_categories(t),
           }
         end
         cursor = data["next_cursor"] || data.dig("pagination", "next_cursor")
@@ -284,5 +285,39 @@ class ComposioSupported
     return name if name.blank?
     slug = name.to_s.downcase.gsub(/\s+/, "")
     LABEL_OVERRIDES[slug] || name
+  end
+
+  # Extract category strings from Composio's toolkit response. Composio has
+  # changed the field shape across API versions; try every spot we've seen
+  # one before falling back to empty. Returns an Array<String> of titleized
+  # category names.
+  def self.extract_categories(toolkit_payload)
+    raw = toolkit_payload["categories"] ||
+          toolkit_payload.dig("meta", "categories") ||
+          toolkit_payload["category"] ||
+          toolkit_payload.dig("meta", "category")
+
+    list = case raw
+    when Array
+      raw.map { |c| c.is_a?(Hash) ? (c["name"] || c["label"] || c["slug"]) : c.to_s }
+    when String
+      raw.split(",")
+    when Hash
+      [raw["name"] || raw["label"] || raw["slug"]]
+    else
+      []
+    end
+
+    list.compact.map { |c| normalize_category(c) }.reject(&:blank?).uniq
+  end
+
+  # Normalise category strings so "ai-tools" / "AI Tools" / "ai_tools" all
+  # collapse to the same "AI Tools" bucket on the page.
+  def self.normalize_category(raw)
+    s = raw.to_s.gsub(/[_-]+/, " ").strip
+    return "" if s.empty?
+    # Title-case while preserving common acronyms.
+    acronyms = %w[ai api crm cms hr seo sms]
+    s.split(/\s+/).map { |w| acronyms.include?(w.downcase) ? w.upcase : w.capitalize }.join(" ")
   end
 end

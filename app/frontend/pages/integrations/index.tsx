@@ -107,13 +107,22 @@ export default function IntegrationsIndex({
     .filter(matchesQuery)
     .sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1))
 
-  const CATEGORY_ORDER = ["Sales", "Communication", "Productivity", "Engineering", "Finance", "Content", "Other"]
+  // Categories come from Composio's own per-toolkit categorization (read in
+  // the refresh job from /api/v3/toolkits). We don't pin a hardcoded order
+  // anymore — most-populated categories first so the user lands on busy
+  // buckets, "Other" pinned last as a catch-all.
   const categoryCounts = allFiltered.reduce<Record<string, number>>((acc, s) => {
     acc[s.category] = (acc[s.category] || 0) + 1
     return acc
   }, {})
-  const sidebarCategories = ["All", ...CATEGORY_ORDER.filter((c) => categoryCounts[c]),
-    ...Object.keys(categoryCounts).filter((c) => !CATEGORY_ORDER.includes(c))]
+  const sortedCats = Object.keys(categoryCounts)
+    .filter((c) => c !== "Other")
+    .sort((a, b) => (categoryCounts[b] - categoryCounts[a]) || a.localeCompare(b))
+  const sidebarCategories = [
+    "All",
+    ...sortedCats,
+    ...(categoryCounts["Other"] ? ["Other"] : []),
+  ]
 
   const visibleForCategory = selectedCategory === "All"
     ? allFiltered
