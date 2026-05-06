@@ -261,9 +261,14 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const skills = await syncSkillsFromDb(agent.id);
 
   // ── Sprint 2: process media attachments (transcribe audio, save files) ──
-  const attachmentIds = job.payload?.attachment_ids || [];
-  const processedMedia = attachmentIds.length > 0
-    ? await processAttachments(attachmentIds)
+  // Prefer the URL-resolved `attachments` array (presigned S3 URLs from the
+  // webhook — engine fetches directly, no Rails round-trip). Fall back to
+  // bare signed_ids for legacy jobs / channels that haven't been migrated.
+  const attachmentInputs = job.payload?.attachments?.length
+    ? job.payload.attachments
+    : (job.payload?.attachment_ids || []);
+  const processedMedia = attachmentInputs.length > 0
+    ? await processAttachments(attachmentInputs)
     : [];
 
   // ── Build prompt with refreshed history + summaries + processed media ──

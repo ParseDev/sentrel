@@ -150,8 +150,21 @@ export interface JobData {
     taskId?: number;
     isReminder?: boolean;
     skipAutoComplete?: boolean;
-    // Sprint 1 — inbound media
+    // Sprint 1 — inbound media (signed_ids only — engine fetched bytes by
+    // proxying through Rails). Kept for backward compat with old enqueued
+    // jobs; new jobs prefer `attachments` with presigned URLs.
     attachment_ids?: string[];
+    // Webhook-resolved attachments. Each entry carries a presigned S3 URL
+    // the engine fetches directly — no round-trip through Rails for the
+    // bytes, and Rails ↔ engine connectivity issues stop affecting blob
+    // delivery.
+    attachments?: Array<{
+      signed_id: string;
+      url: string;
+      filename: string;
+      content_type: string;
+      byte_size: number;
+    }>;
     // Channel-specific metadata (chat_id, bot_token, message_sid, etc.)
     metadata?: Record<string, unknown>;
   };
