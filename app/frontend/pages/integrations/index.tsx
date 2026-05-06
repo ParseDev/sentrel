@@ -175,10 +175,11 @@ export default function IntegrationsIndex({
           : "Personal connections. Only your chats and your agents see these — your teammates can't."}
       </p>
 
-      {/* Two-pane layout: search + categories sidebar (sticky card, fixed
-          height), only the right pane scrolls. AI account moved to /settings. */}
-      <div className="grid grid-cols-[240px_1fr] gap-6 h-[calc(100vh-14rem)]">
-        <aside className="rounded-xl border border-border bg-card p-3 flex flex-col overflow-hidden">
+      {/* Two-pane layout: sidebar is content-sized (auto-height card),
+          right pane is the only scroll surface with a fixed viewport
+          height so cards scroll independently. */}
+      <div className="grid grid-cols-[240px_1fr] gap-6 items-start">
+        <aside className="rounded-xl border border-border bg-card p-3 flex flex-col">
           <div className="relative mb-3">
             <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -190,7 +191,7 @@ export default function IntegrationsIndex({
             />
           </div>
           <Overline className="mb-2 px-1">Category</Overline>
-          <ul className="space-y-0.5 text-sm overflow-y-auto -mr-1 pr-1">
+          <ul className="space-y-0.5 text-sm">
             {sidebarCategories.map((cat) => {
               const count = cat === "All"
                 ? allFiltered.length
@@ -218,7 +219,7 @@ export default function IntegrationsIndex({
           </ul>
         </aside>
 
-        <main className="overflow-y-auto pr-2">
+        <main className="h-[calc(100vh-14rem)] overflow-y-auto pr-2">
           {totalInCategory === 0 ? (
             <div className="py-12 text-center">
               <p className="font-mono text-sm text-muted-foreground">
@@ -227,10 +228,17 @@ export default function IntegrationsIndex({
             </div>
           ) : (
             <>
-              <p className="text-xs text-muted-foreground mb-3 sticky top-0 bg-background py-1 z-10">
-                {pagedSlice.length.toLocaleString()} of {totalInCategory.toLocaleString()} services
-                {selectedCategory !== "All" && <> in <span className="font-medium text-foreground">{selectedCategory}</span></>}
-              </p>
+              {/* Active category title + count, stays pinned at top of the
+                  scrollable list area so it's always visible without
+                  shouting at the user. */}
+              <div className="flex items-baseline justify-between mb-3 sticky top-0 bg-background py-1 z-10">
+                <h2 className="text-sm font-medium text-foreground">
+                  {selectedCategory === "All" ? "All services" : selectedCategory}
+                </h2>
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  {pagedSlice.length.toLocaleString()} / {totalInCategory.toLocaleString()}
+                </span>
+              </div>
               <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                 {pagedSlice.map((service) => {
                   const connected = service.available && integrations.find((i) =>
