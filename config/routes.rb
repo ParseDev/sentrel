@@ -122,6 +122,10 @@ Rails.application.routes.draw do
         post ":service_name/connect", action: :connect, as: :connect
         get :callback
         post :refresh
+        # Catalog entries we don't have an auth_config for yet — users click
+        # "Request" and we record demand here, surfacing aggregate counts to
+        # ops so prioritisation is data-driven.
+        post ":service_name/request", action: :request_integration, as: :request_integration
       end
     end
 

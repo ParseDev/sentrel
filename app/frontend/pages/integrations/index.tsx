@@ -39,6 +39,7 @@ interface AiAccount {
 interface Props {
   integrations: Integration[]
   supported_services: SupportedService[]
+  requested_services?: string[]
   ai_accounts: AiAccount[]
   oauth_configured: { anthropic: boolean; openai: boolean }
 }
@@ -56,7 +57,34 @@ const AI_PROVIDER_META: Record<string, { label: string; description: string; rat
   },
 }
 
-export default function IntegrationsIndex({ integrations, supported_services = [], ai_accounts = [], oauth_configured = { anthropic: false, openai: false } }: Props) {
+export default function IntegrationsIndex({ integrations, supported_services = [], requested_services = [], ai_accounts = [], oauth_configured = { anthropic: false, openai: false } }: Props) {
+  const requestedSet = new Set(requested_services)
+  const [showCatalog, setShowCatalog] = useState(false)
+  const [requesting, setRequesting] = useState<string | null>(null)
+  const [optimisticRequested, setOptimisticRequested] = useState<Set<string>>(new Set())
+
+  async function requestIntegration(slug: string) {
+    if (requestedSet.has(slug) || optimisticRequested.has(slug) || requesting) return
+    setRequesting(slug)
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    try {
+      const res = await fetch(`/integrations/${slug}/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        setOptimisticRequested((prev) => {
+          const next = new Set(prev)
+          next.add(slug)
+          return next
+        })
+      }
+    } finally {
+      setRequesting(null)
+    }
+  }
+
   const [pasteOpen, setPasteOpen] = useState<null | "anthropic">(null)
   const [pasteValue, setPasteValue] = useState("")
   const [pasteBusy, setPasteBusy] = useState(false)
@@ -110,17 +138,20 @@ export default function IntegrationsIndex({ integrations, supported_services = [
   // personal Gmail / LinkedIn / etc.
   const [scopeView, setScopeView] = useState<"org" | "user">("org")
 
-  // Show only what's actually wired up at the workspace level. The full
-  // 500+ Composio catalog is reachable via "Add more services in Composio"
-  // below — we don't surface setup-pending rows here, they were noise.
-  const filtered = supported_services
-    .filter((s) => s.available)
-    .filter((s) => {
-      if (!query) return true
-      const q = query.toLowerCase()
-      return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
-    })
-  const grouped = filtered.reduce<Record<string, SupportedService[]>>((acc, s) => {
+  // We split the catalog in two: services we have an auth_config for ("Available"
+  // — always shown, grouped by category) and the ~1000 catalog entries we
+  // don't yet support ("Browse catalog" — collapsed behind a toggle so the
+  // page stays scannable). Search filters across BOTH so a user looking for
+  // "Salesforce" finds it regardless of which side it's on.
+  const matchesQuery = (s: SupportedService) => {
+    if (!query) return true
+    const q = query.toLowerCase()
+    return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
+  }
+  const availableMatches = supported_services.filter((s) => s.available && matchesQuery(s))
+  const browseMatches = supported_services.filter((s) => !s.available && matchesQuery(s))
+
+  const grouped = availableMatches.reduce<Record<string, SupportedService[]>>((acc, s) => {
     (acc[s.category] = acc[s.category] || []).push(s)
     return acc
   }, {})
@@ -129,6 +160,10 @@ export default function IntegrationsIndex({ integrations, supported_services = [
   const categories = CATEGORY_ORDER.filter((c) => grouped[c]).concat(
     Object.keys(grouped).filter((c) => !CATEGORY_ORDER.includes(c))
   )
+
+  // Searching collapses the difference — when the user is hunting, just
+  // show whatever matched, don't make them open the "Browse" toggle.
+  const browseAutoOpen = !!query.trim() && browseMatches.length > 0
 
   return (
     <AppLayout
@@ -428,10 +463,10 @@ export default function IntegrationsIndex({ integrations, supported_services = [
           )
         })}
 
-        {filtered.length === 0 && !query && (
+        {availableMatches.length === 0 && !query && (
           <div className="rounded-lg border border-dashed py-12 text-center">
             <p className="text-sm font-medium text-foreground mb-1">No integrations connected yet</p>
-            <p className="text-xs text-muted-foreground mb-4">Add an auth config in Composio to get started.</p>
+            <p className="text-xs text-muted-foreground mb-4">Browse the catalog below or add an auth config in Composio.</p>
             <a
               href="https://app.composio.dev/auth-configs"
               target="_blank"
@@ -442,9 +477,86 @@ export default function IntegrationsIndex({ integrations, supported_services = [
             </a>
           </div>
         )}
-        {filtered.length === 0 && query && (
+        {availableMatches.length === 0 && browseMatches.length === 0 && query && (
           <div className="py-8 text-center">
             <p className="font-mono text-sm text-muted-foreground">No matches for "{query}".</p>
+          </div>
+        )}
+
+        {/* Browse-the-catalog section: all 1000+ Composio toolkits we don't
+            yet have an auth_config for, collapsed behind a toggle so the page
+            stays scannable but discoverable via search + the "Show all" link. */}
+        {browseMatches.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <Overline>Browse catalog · {browseMatches.length.toLocaleString()} services</Overline>
+              {!browseAutoOpen && (
+                <button
+                  type="button"
+                  onClick={() => setShowCatalog((v) => !v)}
+                  className="text-xs font-mono uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                >
+                  {showCatalog ? "Hide" : "Show all"} →
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              These are in Composio's catalog but not wired up here yet. Click <span className="font-medium text-foreground">Request</span> and we'll prioritise the ones our team asks for.
+            </p>
+            {(showCatalog || browseAutoOpen) && (
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {browseMatches.slice(0, browseAutoOpen ? 200 : 600).map((service) => {
+                  const isRequested = requestedSet.has(service.slug) || optimisticRequested.has(service.slug)
+                  return (
+                    <div
+                      key={service.slug}
+                      className="group relative flex items-center gap-3 rounded-lg border border-dashed border-border/60 px-3.5 py-3 transition-all hover:border-border"
+                    >
+                      <div className="relative flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground overflow-hidden">
+                        {service.logo ? (
+                          <img
+                            src={service.logo}
+                            alt={service.label}
+                            className="size-6 object-contain opacity-70"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = "none"
+                            }}
+                          />
+                        ) : (
+                          <Plug className="size-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">{service.label}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {service.description || service.category}
+                        </p>
+                      </div>
+                      {isRequested ? (
+                        <Badge variant="outline" className="h-7 shrink-0 text-[10px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                          <Check className="size-3" /> Requested
+                        </Badge>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 shrink-0 text-xs"
+                          disabled={requesting === service.slug}
+                          onClick={() => requestIntegration(service.slug)}
+                        >
+                          {requesting === service.slug ? "…" : "Request"}
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+                {!browseAutoOpen && browseMatches.length > 600 && (
+                  <div className="md:col-span-2 lg:col-span-3 text-center text-[11px] text-muted-foreground py-2">
+                    Showing 600 of {browseMatches.length.toLocaleString()} — use search to find specific services.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

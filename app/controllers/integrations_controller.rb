@@ -50,6 +50,19 @@ class IntegrationsController < ApplicationController
       .where("scope = 'org' OR (scope = 'user' AND owner_user_id = ?)", current_user.id)
       .order(:service_name)
 
+    # Per-user "Requested" state for catalog entries we don't yet have an
+    # auth_config for. Used in the UI to show a "Requested" pill instead of
+    # the "Request" button after the user clicks once.
+    requested_slugs = begin
+      if defined?(IntegrationRequest) && ActiveRecord::Base.connection.table_exists?("integration_requests")
+        IntegrationRequest.open.where(user_id: current_user.id).pluck(:service_name)
+      else
+        []
+      end
+    rescue StandardError
+      []
+    end
+
     render inertia: "integrations/index", props: {
       integrations: visible_scope.as_json(
         only: [:id, :service_name, :status, :composio_connection_id, :created_at, :scope, :owner_user_id]
@@ -60,6 +73,7 @@ class IntegrationsController < ApplicationController
       # RefreshComposioCacheJob (hourly + on-demand). Read straight from
       # Postgres on the hot path; no Composio HTTP call here.
       supported_services: ComposioSupported.list(current_tenant.id),
+      requested_services: requested_slugs,
       ai_accounts: AI_PROVIDERS.map { |provider|
         cred = ai_accounts_by_provider[provider]
         {
@@ -187,6 +201,35 @@ class IntegrationsController < ApplicationController
         </script>
       </body></html>
     HTML
+  end
+
+  # POST /integrations/:service_name/request — record demand for a Composio
+  # catalog entry we don't yet have an auth_config for. Idempotent per (user,
+  # service_name); subsequent clicks no-op so users can hit "Request" twice
+  # without us double-counting.
+  def request_integration
+    slug = params[:service_name].to_s.downcase
+    if slug.blank?
+      redirect_to integrations_path, alert: "Missing service name"
+      return
+    end
+    note = params[:note].to_s.presence
+
+    rec = IntegrationRequest.find_or_initialize_by(
+      organization_id: current_tenant.id,
+      user_id: current_user.id,
+      service_name: slug,
+    )
+    rec.note = note if note.present?
+    rec.status ||= "pending"
+    rec.save!
+
+    Rails.logger.info "IntegrationRequest: org=#{current_tenant.id} user=#{current_user.id} service=#{slug} status=#{rec.status}"
+
+    respond_to do |format|
+      format.json { render json: { ok: true, status: rec.status } }
+      format.html { redirect_to integrations_path, notice: "Requested #{slug.titleize} — we'll wire it up." }
+    end
   end
 
   # POST /integrations/refresh — full bypass of the 5-min debounce + the
