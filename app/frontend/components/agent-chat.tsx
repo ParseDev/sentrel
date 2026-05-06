@@ -483,9 +483,16 @@ interface AgentChatProps {
   initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown> }[]
   approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
   pendingActionApprovals?: PendingActionApprovalSeed[]
+  // Hydrated from agents#show — non-null when the most recent message in
+  // the chat is a user message sent in the last 5 minutes (i.e. the agent
+  // is mid-run). Persists the "thinking" indicator across page reloads.
+  agentThinking?: { since: string; message_id: number } | null
 }
 
-export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [] }: AgentChatProps) {
+export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
+  // Track "agent is currently working on a message" across reloads + after
+  // a fresh send. Cleared when an assistant message arrives via cable.
+  const [thinkingSince, setThinkingSince] = useState<string | null>(agentThinking?.since ?? null)
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
 
   // Hydrate inline cards from server state on mount so a page refresh still
@@ -554,6 +561,11 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         handleActionApproval(data)
       } else if (data.type === "connection_proposal") {
         handleConnectionProposal(data)
+      } else if (data.type === "message" && data.role === "assistant") {
+        // Agent finished — clear the persistent "thinking" indicator.
+        setThinkingSince(null)
+      } else if (data.type === "done" || data.type === "error") {
+        setThinkingSince(null)
       }
     }
 
@@ -767,14 +779,50 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         <CmdApprovalProvider value={cmdApproval}>
           <ActionApprovalProvider value={actionApproval}>
             <ConnectionProposalProvider value={connectionProposal}>
-              <div className="h-full overflow-hidden bg-background">
+              <div className="relative h-full overflow-hidden bg-background">
                 <Thread />
+                {thinkingSince && (
+                  <ThinkingIndicator since={thinkingSince} agentName={agentName} />
+                )}
               </div>
             </ConnectionProposalProvider>
           </ActionApprovalProvider>
         </CmdApprovalProvider>
       </AgentStatusProvider>
     </AssistantRuntimeProvider>
+  )
+}
+
+// Persistent "agent is thinking" pill — rendered when the most recent
+// message in the thread is from the user and we haven't yet received the
+// assistant's reply. Hydrated from server-side state on page load so a
+// reload mid-run shows the indicator instead of dropping it silently.
+function ThinkingIndicator({ since, agentName }: { since: string; agentName: string }) {
+  const [elapsed, setElapsed] = useState<string>("")
+  useEffect(() => {
+    function tick() {
+      const ms = Date.now() - new Date(since).getTime()
+      const sec = Math.floor(ms / 1000)
+      if (sec < 60) setElapsed(`${sec}s`)
+      else if (sec < 3600) setElapsed(`${Math.floor(sec / 60)}m ${sec % 60}s`)
+      else setElapsed(`${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`)
+    }
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [since])
+  return (
+    <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 -translate-x-1/2">
+      <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground shadow-md">
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-indigo)] opacity-60" />
+          <span className="relative inline-flex size-2 rounded-full bg-[var(--color-indigo)]" />
+        </span>
+        <span className="font-medium text-foreground">{agentName}</span>
+        <span>is thinking</span>
+        <span className="font-mono tabular-nums opacity-70">· {elapsed}</span>
+      </div>
+    </div>
   )
 }
 

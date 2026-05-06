@@ -64,6 +64,19 @@ class AgentsController < ApplicationController
       []
     end
 
+    # Surface "agent is thinking" across page reloads. Heuristic: the most
+    # recent message in the chat thread is from the user AND was sent within
+    # the last 5 minutes — reasonable upper-bound for a normal agent run.
+    # Frontend hydrates the indicator from this on mount and clears it when
+    # the cable broadcasts the assistant's message arrival.
+    agent_thinking = nil
+    if chat_messages.any?
+      last_msg = chat_messages.last
+      if last_msg["role"] == "user" && last_msg["created_at"].to_time > 5.minutes.ago
+        agent_thinking = { since: last_msg["created_at"], message_id: last_msg["id"] }
+      end
+    end
+
     # Get approvals keyed by message_id for inline rendering
     approvals_by_message = @agent.pending_approvals
       .where.not(message_id: nil)
@@ -142,6 +155,7 @@ class AgentsController < ApplicationController
           )
         },
       chat_messages: chat_messages,
+      agent_thinking: agent_thinking,
       approvals_by_message: approvals_by_message,
       pending_action_approvals: pending_action_approvals,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
