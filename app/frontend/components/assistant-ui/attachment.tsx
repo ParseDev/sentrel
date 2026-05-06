@@ -173,26 +173,49 @@ const AttachmentUI: FC = () => {
       <AttachmentPreviewDialog>
         <div
           className={cn(
-            "aui-attachment-chip group relative flex cursor-pointer items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-xs hover:border-[var(--border-strong)] transition-colors max-w-[260px]",
+            "aui-attachment-chip group relative flex cursor-pointer items-center gap-2.5 rounded-md border bg-card pl-1.5 pr-3 py-1.5 text-xs hover:border-[var(--border-strong)] transition-colors max-w-[280px] overflow-hidden",
             isError && "border-destructive",
+            isUploading && "pointer-events-none opacity-90",
           )}
           role="button"
           aria-label={filename || "Attachment"}
           title={filename}
         >
-          <div className="relative shrink-0 flex size-7 items-center justify-center rounded bg-muted">
-            <FileText className="size-3.5 text-muted-foreground" />
-            {isUploading && (
-              <span className="absolute inset-0 flex items-center justify-center bg-background/80 rounded">
-                <span className="text-[8px] font-medium tabular-nums">
-                  {Math.round(uploadProgress * 100)}
-                </span>
-              </span>
+          <div className="relative shrink-0 flex size-8 items-center justify-center rounded bg-muted">
+            {isUploading ? (
+              <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
+                <circle cx="16" cy="16" r="13" fill="none" strokeWidth="3" className="stroke-muted-foreground/25" />
+                <circle
+                  cx="16"
+                  cy="16"
+                  r="13"
+                  fill="none"
+                  strokeWidth="3"
+                  strokeDasharray={`${2 * Math.PI * 13}`}
+                  strokeDashoffset={`${2 * Math.PI * 13 * (1 - uploadProgress)}`}
+                  strokeLinecap="round"
+                  className="stroke-foreground transition-all duration-150"
+                />
+              </svg>
+            ) : isError ? (
+              <XIcon className="size-4 text-destructive" />
+            ) : (
+              <FileText className="size-4 text-muted-foreground" />
             )}
           </div>
-          <span className="truncate font-medium text-foreground/90">
-            {filename || <AttachmentPrimitive.Name />}
-          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-foreground/90">
+              {filename || <AttachmentPrimitive.Name />}
+            </div>
+            {isUploading && (
+              <div className="text-[10px] text-muted-foreground tabular-nums">
+                Uploading {Math.round(uploadProgress * 100)}%
+              </div>
+            )}
+            {isError && (
+              <div className="text-[10px] text-destructive">Upload failed</div>
+            )}
+          </div>
         </div>
       </AttachmentPreviewDialog>
       {isComposer && !isUploading && <AttachmentRemove />}
