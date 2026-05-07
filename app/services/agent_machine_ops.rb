@@ -17,6 +17,8 @@ module AgentMachineOps
     mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
     fly_api(:post, "/apps/#{app}/machines/#{mid}/restart")
     { ok: true, message: "Restart requested" }
+  rescue ApiNotFound
+    recover_missing_machine(agent, operation: "restart", stale_machine_id: mid)
   rescue => e
     { ok: false, message: e.message }
   end
@@ -31,6 +33,8 @@ module AgentMachineOps
     mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
     fly_api(:post, "/apps/#{app}/machines/#{mid}/start")
     { ok: true, message: "Start requested" }
+  rescue ApiNotFound
+    recover_missing_machine(agent, operation: "start", stale_machine_id: mid)
   rescue => e
     { ok: false, message: e.message }
   end
@@ -53,6 +57,8 @@ module AgentMachineOps
     # once it's back up (skills, channel pollers, etc.).
     EngineSync.trigger(agent)
     { ok: true, message: "Fresh env pushed + config reload requested" }
+  rescue ApiNotFound
+    recover_missing_machine(agent, operation: "reload", stale_machine_id: mid)
   rescue => e
     { ok: false, message: e.message }
   end
@@ -71,6 +77,8 @@ module AgentMachineOps
 
     fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
     { ok: true, message: "Redeployed #{target}" }
+  rescue ApiNotFound
+    recover_missing_machine(agent, operation: "redeploy", stale_machine_id: mid)
   rescue => e
     { ok: false, message: e.message }
   end
@@ -80,7 +88,7 @@ module AgentMachineOps
   # Session transcripts and /data are LOST — warn the user client-side.
   def reprovision(agent)
     AgentProvisioner.terminate_for(agent)
-    agent.instances.destroy_all
+    agent.instance&.destroy
     ProvisionAgentJob.perform_later(agent.id)
     { ok: true, message: "Tearing down and reprovisioning; give it ~60s" }
   rescue => e
@@ -118,6 +126,36 @@ module AgentMachineOps
     agent.instance&.machine_id.presence
   end
 
+  def recover_missing_machine(agent, operation:, stale_machine_id:)
+    instance = agent.instance
+    unless instance
+      ProvisionAgentJob.perform_later(agent.id)
+      return { ok: true, message: "Fly machine was missing; provisioning a new machine" }
+    end
+
+    instance.update!(
+      status: "provisioning",
+      machine_id: nil,
+      public_ip: nil,
+      private_ip: nil,
+      provisioning_error: "Fly machine #{stale_machine_id} was not found during #{operation}; recreating",
+    )
+
+    recreated = AgentProvisioner.provision_for(agent)
+    if recreated&.machine_id.present?
+      {
+        ok: true,
+        message: "Fly machine record was stale; recreated machine #{recreated.machine_id}",
+      }
+    else
+      error = agent.reload.instance&.provisioning_error.presence || "unknown provisioning failure"
+      {
+        ok: false,
+        message: "Fly machine record was stale, but recreation failed: #{error}",
+      }
+    end
+  end
+
   def fly_api(method, path, body = nil)
     token = ENV.fetch("FLY_API_TOKEN") { raise "FLY_API_TOKEN required" }
     uri = URI.parse("#{FLY_API}#{path}")
@@ -131,7 +169,10 @@ module AgentMachineOps
     req["Content-Type"] = "application/json"
     req.body = body.to_json if body
     res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 30, open_timeout: 5) { |http| http.request(req) }
+    raise ApiNotFound, "Fly #{method} #{path} → HTTP 404: #{res.body.to_s[0..300]}" if res.code == "404"
     raise "Fly #{method} #{path} → HTTP #{res.code}: #{res.body.to_s[0..300]}" unless res.is_a?(Net::HTTPSuccess)
     res.body.present? ? JSON.parse(res.body) : {}
   end
+
+  class ApiNotFound < StandardError; end
 end

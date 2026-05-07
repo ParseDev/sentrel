@@ -32,7 +32,7 @@ import {
 } from "lucide-react"
 
 interface AgentOpsMenuProps {
-  agentId: number
+  agentId: string | number
 }
 
 type LogEntry = {
@@ -125,7 +125,7 @@ const OPS: OpSpec[] = [
   },
 ]
 
-async function opsPost(agentId: number, action: string) {
+async function opsPost(agentId: string | number, action: string) {
   const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
   const res = await fetch(`/agents/${agentId}/ops/${action}`, {
     method: "POST",
