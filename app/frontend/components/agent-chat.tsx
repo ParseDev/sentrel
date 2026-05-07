@@ -1,13 +1,14 @@
-import { useRef, useState, useEffect } from "react"
+import { useRef, useState, useEffect, useCallback } from "react"
 import { router } from "@inertiajs/react"
 import { Check, X, Loader2, Mail } from "lucide-react"
 import {
   AssistantRuntimeProvider,
-  useLocalRuntime,
+  useExternalStoreRuntime,
+  type AppendMessage,
   type AttachmentAdapter,
-  type ChatModelAdapter,
   type PendingAttachment,
   type CompleteAttachment,
+  type ThreadMessageLike,
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
@@ -177,13 +178,6 @@ class DirectUploadAdapter implements AttachmentAdapter {
   }
 }
 
-// Read the signed_id stashed by DirectUploadAdapter for a given attachment file.
-// Used by createAgentAdapter at submit time.
-function getSignedIdForFile(file: File | undefined): string | undefined {
-  if (!file) return undefined
-  return signedIdByFile.get(file)
-}
-
 interface PendingEmail {
   approvalId: number
   to: string
@@ -226,245 +220,6 @@ type ConnectionProposalState = {
   dismiss: () => void
 } | null
 
-function createAgentAdapter(agentId: number): ChatModelAdapter {
-  return {
-    async *run({ messages, abortSignal }) {
-      const lastMessage = messages[messages.length - 1]
-      const userText = lastMessage?.content
-        ?.filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n") || ""
-
-      // Sprint 1c — collect signed_ids from any attachments the user added.
-      // Files were already uploaded via DirectUploadAdapter, we just need
-      // to read the signed_ids stashed in the WeakMap.
-      const attachmentSignedIds: string[] = []
-      const lastAttachments = (lastMessage as { attachments?: Array<{ file?: File }> })?.attachments
-      if (Array.isArray(lastAttachments)) {
-        for (const att of lastAttachments) {
-          const signedId = getSignedIdForFile(att.file)
-          if (signedId) attachmentSignedIds.push(signedId)
-        }
-      }
-
-      const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
-
-      // In production the engine WebSocket isn't reachable from the browser
-      // (Fly 6pn private network). Engine relays every broadcast() event
-      // over HTTP to Rails; Rails re-emits on AgentChatChannel. We handle
-      // the same event shapes here as the local-dev WS path below:
-      //   text_delta      — streaming assistant text
-      //   tool_call       — live "thinking" tool-name indicator
-      //   pending_approval — send_email approvals
-      //   command_approval — dangerous-command approvals
-      //   media_attachment — image/file outputs
-      //   done            — final assistant content
-      //   error           — surface to the user
-      //   message         — fallback (Message.after_create_commit post-save)
-      if (!GATEWAY_URL) {
-        const { createConsumer } = await import("@rails/actioncable")
-        const consumer = createConsumer()
-        let responseText = ""
-        let approvalData: PendingEmail | null = null
-        const mediaAttachments: Array<{ url: string; filename: string; contentType: string }> = []
-        let sub: { unsubscribe(): void } | undefined
-        let resolveResponse: (value: string) => void = () => {}
-        let rejectResponse: (err: Error) => void = () => {}
-
-        const responsePromise = new Promise<string>((resolve, reject) => {
-          resolveResponse = resolve
-          rejectResponse = reject
-        })
-
-        const timeout = setTimeout(() => {
-          sub?.unsubscribe()
-          consumer.disconnect()
-          rejectResponse(new Error("Timed out waiting for reply"))
-        }, 300_000) // 5 min cap
-
-        const finalize = (text: string) => {
-          clearTimeout(timeout)
-          sub?.unsubscribe()
-          consumer.disconnect()
-          let out = text
-          for (const m of mediaAttachments) {
-            out += m.contentType.startsWith("image/")
-              ? `\n\n![${m.filename}](${m.url})`
-              : `\n\n[Download ${m.filename}](${m.url})`
-          }
-          if (approvalData) {
-            out += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
-          }
-          resolveResponse(out)
-        }
-
-        sub = consumer.subscriptions.create(
-          { channel: "AgentChatChannel", agent_id: agentId },
-          {
-            received(data: Record<string, any>) {
-                switch (data.type) {
-                  case "text_delta":
-                    responseText = data.text || responseText
-                    break
-                  case "media_attachment":
-                    mediaAttachments.push({
-                      url: data.url,
-                      filename: data.filename,
-                      contentType: data.contentType,
-                    })
-                    break
-                  case "pending_approval":
-                    if (data.toolName === "send_email") {
-                      approvalData = { approvalId: data.approvalId, ...data.toolInput }
-                    }
-                    break
-                  case "command_approval":
-                    // Handled by the persistent cmd-approval subscription below
-                    break
-                  case "done":
-                    finalize(data.content || responseText)
-                    break
-                  case "error":
-                    clearTimeout(timeout)
-                    sub?.unsubscribe()
-                    consumer.disconnect()
-                    rejectResponse(new Error(data.error || "Agent run failed"))
-                    break
-                  case "message":
-                    // Fallback: the `done` event may be missed if a relay drops;
-                    // Message.after_create_commit fires once DB has the assistant
-                    // row, so we can still resolve from that.
-                    if (data.role === "assistant" && data.content) {
-                      finalize(data.content)
-                    }
-                    break
-                }
-              },
-            },
-          )
-
-        // Post the user message. Happens in parallel with cable-subscribe;
-        // Rails saves the user Message regardless of whether cable is up yet.
-        await fetch("/webhooks/web", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-          body: JSON.stringify({
-            agent_id: agentId,
-            body: userText,
-            attachment_signed_ids: attachmentSignedIds,
-          }),
-          signal: abortSignal,
-        }).catch((err) => {
-          clearTimeout(timeout)
-          sub?.unsubscribe()
-          consumer.disconnect()
-          rejectResponse(err)
-        })
-
-        // Yield empty first so the assistant-ui shows the typing / thinking
-        // dots indicator while we wait for the engine's `done` event.
-        yield { content: [{ type: "text" as const, text: "" }] }
-
-        try {
-          const finalText = await responsePromise
-          yield { content: [{ type: "text" as const, text: finalText }] }
-        } catch (err) {
-          yield { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }] }
-        }
-        return
-      }
-
-      const ws = new WebSocket(GATEWAY_URL)
-      let responseText = ""
-      let approvalData: PendingEmail | null = null
-      let done = false
-      let resolveResponse: (value: string) => void
-      let rejectResponse: (reason: Error) => void
-
-      const responsePromise = new Promise<string>((resolve, reject) => {
-        resolveResponse = resolve
-        rejectResponse = reject
-      })
-
-      const mediaAttachments: Array<{ url: string; filename: string; contentType: string }> = []
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          if (data.type === "text_delta") {
-            responseText = data.text
-          } else if (data.type === "media_attachment") {
-            // Sprint 3 — agent sent an image/file via send_image/send_file
-            mediaAttachments.push({ url: data.url, filename: data.filename, contentType: data.contentType })
-          } else if (data.type === "command_approval") {
-            // Handled by persistent WebSocket in AgentChat — skip here
-          } else if (data.type === "pending_approval" && data.toolName === "send_email") {
-            approvalData = { approvalId: data.approvalId, ...data.toolInput }
-          } else if (data.type === "done") {
-            responseText = data.content || responseText
-            // Append media as markdown images/links to the response
-            for (const m of mediaAttachments) {
-              if (m.contentType.startsWith("image/")) {
-                responseText += `\n\n![${m.filename}](${m.url})`
-              } else {
-                responseText += `\n\n[Download ${m.filename}](${m.url})`
-              }
-            }
-            // Append approval marker to response if we got one
-            if (approvalData) {
-              responseText += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
-            }
-            done = true
-            setTimeout(() => ws.close(), 100)
-            resolveResponse(responseText)
-          } else if (data.type === "error") {
-            done = true
-            ws.close()
-            rejectResponse(new Error(data.error))
-          }
-        } catch {}
-      }
-
-      ws.onerror = () => { if (!done) rejectResponse(new Error("Connection failed")) }
-      ws.onclose = () => { if (!done && responseText) resolveResponse(responseText) }
-
-      const timeout = setTimeout(() => {
-        if (!done) { ws.close(); resolveResponse(responseText || "Still processing...") }
-      }, 120_000)
-
-      abortSignal?.addEventListener("abort", () => { ws.close(); clearTimeout(timeout) })
-
-      await new Promise<void>((resolve) => {
-        ws.onopen = () => resolve()
-        setTimeout(resolve, 3000)
-      })
-
-      // Sprint 1c — always JSON. Files were uploaded directly to storage by
-      // DirectUploadAdapter; we just send the signed_ids.
-      await fetch("/webhooks/web", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-        body: JSON.stringify({
-          agent_id: agentId,
-          body: userText,
-          attachment_signed_ids: attachmentSignedIds,
-        }),
-        signal: abortSignal,
-      })
-
-      yield { content: [{ type: "text" as const, text: "" }] }
-
-      try {
-        const finalText = await responsePromise
-        clearTimeout(timeout)
-        yield { content: [{ type: "text" as const, text: finalText }] }
-      } catch (err) {
-        clearTimeout(timeout)
-        yield { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }] }
-      }
-    },
-  }
-}
 
 interface PendingActionApprovalSeed {
   id: number
@@ -493,23 +248,117 @@ interface AgentChatProps {
   agentThinking?: { since: string; after: string } | null
 }
 
+// External-store message — the source of truth the runtime renders from.
+// Server-restored messages and optimistic / streaming messages both land here.
+// `content` is markdown — attachments + media + approval markers are baked in
+// (matching the markdown-link rendering in markdown-text.tsx).
+type StoreMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  createdAt: number
+  status: "complete" | "running" | "error"
+}
+
+// Inject media metadata + ActiveStorage attachments into a server-side
+// message's content so the markdown renderer produces the same chip / image
+// the live cable stream produces.
+function fromServerMessage(
+  m: { id?: number | string; role: string; content: string; created_at?: string; metadata?: Record<string, unknown>; attachments?: Array<{ url: string; filename: string; content_type: string }> },
+  approvals?: Array<{ id: number; tool_input: Record<string, unknown>; status: string }>,
+): StoreMessage {
+  let content = m.content || ""
+  const meta = m.metadata || {}
+  const media = Array.isArray(meta.media)
+    ? (meta.media as Array<{ url: string; filename: string; contentType: string }>)
+    : []
+  for (const med of media) {
+    content += med.contentType?.startsWith("image/")
+      ? `\n\n![${med.filename}](${med.url})`
+      : `\n\n[Download ${med.filename}](${med.url})`
+  }
+  for (const att of m.attachments || []) {
+    content += att.content_type?.startsWith("image/")
+      ? `\n\n![${att.filename}](${att.url})`
+      : `\n\n[📎 ${att.filename}](${att.url})`
+  }
+  if (m.role === "assistant" && approvals && approvals.length > 0) {
+    const markers = approvals
+      .map((a) => {
+        const emailData: PendingEmail = {
+          approvalId: a.id,
+          to: a.tool_input.to as string,
+          cc: a.tool_input.cc as string[],
+          bcc: a.tool_input.bcc as string[],
+          subject: a.tool_input.subject as string,
+          body_text: a.tool_input.body_text as string,
+          from_address: a.tool_input.from_address as string,
+          from_name: a.tool_input.from_name as string,
+          status: a.status,
+        }
+        return APPROVAL_MARKER + JSON.stringify(emailData) + APPROVAL_MARKER_END
+      })
+      .join("\n")
+    content += "\n\n" + markers
+  }
+  const created = m.created_at ? new Date(m.created_at).getTime() : Date.now()
+  return {
+    id: String(m.id ?? `srv-${created}`),
+    role: m.role === "user" ? "user" : "assistant",
+    content,
+    createdAt: created,
+    status: "complete",
+  }
+}
+
+const storeToThreadMessage = (m: StoreMessage): ThreadMessageLike => ({
+  role: m.role,
+  content: [{ type: "text", text: m.content }],
+  id: m.id,
+  createdAt: new Date(m.createdAt),
+  // Tells AUI to render the streaming-dot indicator while content's still
+  // landing — without this an in-progress assistant bubble looks empty/
+  // finished after a reload.
+  status: m.role === "assistant"
+    ? m.status === "running"
+      ? { type: "running" as const }
+      : m.status === "error"
+        ? { type: "incomplete" as const, reason: "error" as const }
+        : { type: "complete" as const, reason: "stop" as const }
+    : undefined,
+})
+
 export function AgentChat({ agentId, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
-  // Track "agent is currently working on a message" across reloads + after
-  // a fresh send. Cleared when an assistant message arrives via cable.
-  const [thinkingSince, setThinkingSince] = useState<string | null>(agentThinking?.since ?? null)
-  // Mutable ref the cable handler calls to dispatch the next queued message
-  // when the agent's response arrives. Set inside the queue-aware wrapper
-  // below so we capture the runtime + queue handles after they exist.
+  // Source of truth for what the chat renders. Hydrated from the server's
+  // chat_messages, then updated in-place by the cable subscription.
+  // If the server says a run is in flight (agentThinking set), append an
+  // empty pending assistant bubble so AUI renders its typing-dot indicator
+  // until the cable / poll lands the real content.
+  const [messages, setMessages] = useState<StoreMessage[]>(() => {
+    const seeded = initialMessages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => fromServerMessage(m as any, approvalsByMessage[String((m as any).id || "")]))
+    if (agentThinking) {
+      seeded.push({
+        id: `pending-${Date.now()}`,
+        role: "assistant",
+        content: "",
+        createdAt: Date.now(),
+        status: "running",
+      })
+    }
+    return seeded
+  })
+  // True while the agent is producing a reply (POST sent, run not yet done).
+  // Drives the AUI typing-dot indicator and the composer's Thinking… text.
+  // On mount, seeded from agent_thinking so a reload mid-run keeps the pill.
+  const [isRunning, setIsRunning] = useState<boolean>(agentThinking != null)
+  // Wall-clock the run started — exposed to RecoveryThinkingProvider for
+  // the elapsed-time readout. Same lifecycle as isRunning.
+  const [runStartedAt, setRunStartedAt] = useState<string | null>(agentThinking?.since ?? null)
+  // Drain hook for the queued-messages strip. When isRunning flips false the
+  // useEffect below dispatches the next queue item via the runtime.
   const drainQueuedRef = useRef<(() => void) | null>(null)
-  // "Recovery mode" — page mounted while a run was already in flight. The
-  // adapter run() is gone, so the cable / polling path is responsible for
-  // pushing the assistant reply into the runtime. recoverAssistantRef
-  // appends a single assistant turn to the existing thread (no remount, no
-  // glitchy full re-render) — wired up by the controller below which has
-  // access to useThreadRuntime. Set to null in non-recovery mode so the
-  // ref check noops during normal in-tab runs.
-  const wasRecoveryMount = useRef(agentThinking != null)
-  const recoverAssistantRef = useRef<((data: { id?: string | number; content: string; metadata?: Record<string, unknown> }) => void) | null>(null)
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
 
   // Hydrate inline cards from server state on mount so a page refresh still
@@ -558,18 +407,55 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
     }
   })()
   const [actionApproval, setActionApproval] = useState<ActionApprovalState>(seedActionApproval)
-  const adapter = useRef(createAgentAdapter(agentId)).current
 
-  // Persistent listener — stays open while on the chat page, receives
-  // command_approval events even when user hasn't sent a message. Uses
-  // ActionCable in prod (where the engine WS is unreachable) and the
-  // direct engine WS locally for zero-latency dev feedback.
+  // Append to (or update) the trailing assistant message in the store. Used
+  // by every cable event that carries assistant content — text_delta streams,
+  // media_attachment markdown, the final message, error fallbacks. Called
+  // with `final` to mark the run terminal.
+  const upsertAssistantContent = useCallback(
+    (mutator: (current: string) => string, opts?: { id?: string | number; final?: boolean; status?: StoreMessage["status"] }) => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        const status = opts?.status ?? (opts?.final ? "complete" : "running")
+        if (last?.role === "assistant" && last.status === "running") {
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              id: opts?.id != null ? String(opts.id) : last.id,
+              content: mutator(last.content),
+              status,
+            },
+          ]
+        }
+        // No pending placeholder yet — create one.
+        const created = Date.now()
+        return [
+          ...prev,
+          {
+            id: opts?.id != null ? String(opts.id) : `srv-${created}`,
+            role: "assistant",
+            content: mutator(""),
+            createdAt: created,
+            status,
+          },
+        ]
+      })
+    },
+    [],
+  )
+
+  // Persistent listener — stays open while on the chat page, drives the
+  // store via cable events + handles approval prompts. Uses ActionCable in
+  // prod and the direct engine WS locally.
   useEffect(() => {
     let ws: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout>
     let cableSub: { unsubscribe(): void } | null = null
     let consumer: { disconnect(): void } | null = null
     let mounted = true
+
+    const seenAssistantIds = new Set<string>()
 
     const handleEvent = (data: any) => {
       if (data.type === "command_approval") {
@@ -578,30 +464,52 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         handleActionApproval(data)
       } else if (data.type === "connection_proposal") {
         handleConnectionProposal(data)
-      } else if (data.type === "message" && data.role === "assistant") {
-        // Agent finished. In recovery mode (page reloaded mid-run) the
-        // adapter run() is gone — push the message into the runtime
-        // directly so the new turn appends in-place instead of needing a
-        // full remount. Dedupe is handled inside the controller. In normal
-        // in-tab flow the adapter is still mid-yield and the recoverAssistant
-        // call noops via the isRunning guard.
-        recoverAssistantRef.current?.({
-          id: data.id,
-          content: data.content || "",
-          metadata: data.metadata || {},
-        })
-        setThinkingSince(null)
-        drainQueuedRef.current?.()
-      } else if (data.type === "done" || data.type === "error") {
-        // `done` always comes paired with a `message` event (engine
-        // broadcasts both); we let the message branch do the append. Just
-        // ensure the indicator clears and the queue advances on terminal
-        // states. `error` may not have a paired message — engine still
-        // persists "⚠️ Run failed: …" via host.saveMessage on the
-        // inbound_message error path, which fires this cable handler with
-        // type=message after a beat, so the message lands then.
-        setThinkingSince(null)
-        drainQueuedRef.current?.()
+      } else if (data.type === "text_delta") {
+        // Streaming text — overwrite the trailing pending message's content.
+        if (typeof data.text === "string") {
+          upsertAssistantContent(() => data.text)
+        }
+      } else if (data.type === "media_attachment") {
+        // Engine sent an image/file via send_image/send_file — append as
+        // markdown to the trailing pending assistant message.
+        const md = data.contentType?.startsWith("image/")
+          ? `\n\n![${data.filename}](${data.url})`
+          : `\n\n[Download ${data.filename}](${data.url})`
+        upsertAssistantContent((cur) => cur + md)
+      } else if (data.type === "pending_approval" && data.toolName === "send_email") {
+        // Inline email-approval card — encoded as a marker that
+        // TextWithApprovals (in thread.tsx) parses and renders.
+        const marker =
+          APPROVAL_MARKER +
+          JSON.stringify({ approvalId: data.approvalId, ...data.toolInput }) +
+          APPROVAL_MARKER_END
+        upsertAssistantContent((cur) => cur + "\n\n" + marker)
+      } else if (data.type === "message" && data.role === "assistant" && data.content) {
+        const id = String(data.id ?? "")
+        if (id && seenAssistantIds.has(id)) return
+        if (id) seenAssistantIds.add(id)
+        let body = data.content as string
+        const media = Array.isArray(data.metadata?.media)
+          ? (data.metadata.media as Array<{ url: string; filename: string; contentType: string }>)
+          : []
+        for (const med of media) {
+          body += med.contentType?.startsWith("image/")
+            ? `\n\n![${med.filename}](${med.url})`
+            : `\n\n[Download ${med.filename}](${med.url})`
+        }
+        upsertAssistantContent(() => body, { id: data.id, final: true })
+        setIsRunning(false)
+        setRunStartedAt(null)
+      } else if (data.type === "error") {
+        upsertAssistantContent(() => `⚠️ ${data.error || "Run failed"}`, { final: true, status: "error" })
+        setIsRunning(false)
+        setRunStartedAt(null)
+      } else if (data.type === "done") {
+        // Engine done event — the paired "message" event finalizes the
+        // store. We just safety-clear isRunning here in case the message
+        // event is dropped somehow; setting it twice is harmless.
+        setIsRunning(false)
+        setRunStartedAt(null)
       }
     }
 
@@ -741,11 +649,10 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
     }
   }, [agentId])
 
-  // Polling fallback for the reload-mid-run case. The cable broadcast can
-  // land before a freshly-mounted page finishes subscribing, so we lean on
-  // /chat/poll as a safety net. As soon as we see a reply land in the DB,
-  // refetch initialMessages — the chat then re-seeds with the assistant
-  // message included.
+  // Polling fallback for the reload-mid-run case. Cable broadcast can land
+  // before a freshly-mounted page subscribes, so we lean on /chat/poll as a
+  // safety net. On reply detection, drop it into the store via the same
+  // path the cable uses.
   useEffect(() => {
     if (!agentThinking?.after) return
     let cancelled = false
@@ -754,7 +661,8 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
     const tick = async () => {
       if (cancelled) return
       if (Date.now() - startedAt > 5 * 60_000) {
-        setThinkingSince(null)
+        setIsRunning(false)
+        setRunStartedAt(null)
         return
       }
       try {
@@ -764,13 +672,18 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         if (res.ok) {
           const data = await res.json() as { id?: string | number; content?: string; metadata?: Record<string, unknown> }
           if (data.content) {
-            recoverAssistantRef.current?.({
-              id: data.id,
-              content: data.content,
-              metadata: data.metadata || {},
-            })
-            setThinkingSince(null)
-            drainQueuedRef.current?.()
+            let body = data.content
+            const media = Array.isArray(data.metadata?.media)
+              ? (data.metadata!.media as Array<{ url: string; filename: string; contentType: string }>)
+              : []
+            for (const med of media) {
+              body += med.contentType?.startsWith("image/")
+                ? `\n\n![${med.filename}](${med.url})`
+                : `\n\n[Download ${med.filename}](${med.url})`
+            }
+            upsertAssistantContent(() => body, { id: data.id, final: true })
+            setIsRunning(false)
+            setRunStartedAt(null)
             return
           }
         }
@@ -782,94 +695,110 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [agentId, agentThinking?.after])
-  const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
+  }, [agentId, agentThinking?.after, upsertAssistantContent])
 
-  // Inject media attachments + approval markers into message content for rendering
-  const messagesWithApprovals = sorted.map((m) => {
-    let content = m.content
-    const meta = (m as any).metadata || {}
-
-    // Sprint 3 — render persisted media from message metadata
-    const media = Array.isArray(meta.media) ? meta.media as Array<{ url: string; filename: string; contentType: string }> : []
-    for (const med of media) {
-      if (med.contentType?.startsWith("image/")) {
-        content += `\n\n![${med.filename}](${med.url})`
-      } else {
-        content += `\n\n[Download ${med.filename}](${med.url})`
-      }
-    }
-
-    // User-uploaded attachments (resolved server-side from ActiveStorage).
-    // Without this, files sent by the user vanished on reload because the
-    // signed_ids in metadata are useless on the client. Render the same
-    // markdown shape so an image previews inline and a doc gets a chip-
-    // shaped download link.
-    const userAttachments = Array.isArray((m as any).attachments)
-      ? (m as any).attachments as Array<{ url: string; filename: string; content_type: string; byte_size: number }>
-      : []
-    for (const att of userAttachments) {
-      if (att.content_type?.startsWith("image/")) {
-        content += `\n\n![${att.filename}](${att.url})`
-      } else {
-        content += `\n\n[📎 ${att.filename}](${att.url})`
-      }
-    }
-
-    const msgId = String((m as any).id || "")
-    const approvals = approvalsByMessage[msgId]
-    if (m.role === "assistant" && approvals && approvals.length > 0) {
-      const markers = approvals.map((a) => {
-        const emailData: PendingEmail = {
-          approvalId: a.id,
-          to: a.tool_input.to as string,
-          cc: a.tool_input.cc as string[],
-          bcc: a.tool_input.bcc as string[],
-          subject: a.tool_input.subject as string,
-          body_text: a.tool_input.body_text as string,
-          from_address: a.tool_input.from_address as string,
-          from_name: a.tool_input.from_name as string,
-          status: a.status,
-        }
-        return APPROVAL_MARKER + JSON.stringify(emailData) + APPROVAL_MARKER_END
-      }).join("\n")
-      return { ...m, content: content + "\n\n" + markers }
-    }
-    return { ...m, content }
-  })
+  // Drain a queued message when the run completes — the queue strip pushes
+  // pending text in here via the drainRef set by QueueDrainController.
+  useEffect(() => {
+    if (!isRunning) drainQueuedRef.current?.()
+  }, [isRunning])
 
   const attachmentAdapter = useRef(new DirectUploadAdapter()).current
 
-  const runtime = useLocalRuntime(adapter, {
+  // onNew — POST the user message to Rails, optimistically add it to the
+  // store, flip isRunning. Cable / poll will land the assistant reply.
+  const onNew = useCallback(async (msg: AppendMessage) => {
+    const userText = (msg.content as Array<{ type: string; text?: string }>)
+      ?.filter((c) => c.type === "text")
+      .map((c) => c.text || "")
+      .join("\n") || ""
+
+    const attachmentSignedIds: string[] = []
+    let userContent = userText
+    const rawAttachments = (msg.attachments ?? []) as readonly unknown[]
+    for (const raw of rawAttachments) {
+      const att = raw as { file?: File; name?: string; contentType?: string }
+      const sid = att.file ? signedIdByFile.get(att.file) : undefined
+      if (sid) attachmentSignedIds.push(sid)
+      if (att.file) {
+        const blobUrl = URL.createObjectURL(att.file)
+        const filename = att.name || att.file.name
+        userContent += att.contentType?.startsWith("image/")
+          ? `\n\n![${filename}](${blobUrl})`
+          : `\n\n[📎 ${filename}](${blobUrl})`
+      }
+    }
+
+    const now = Date.now()
+    const userMsg: StoreMessage = {
+      id: `tmp-u-${now}`,
+      role: "user",
+      content: userContent,
+      createdAt: now,
+      status: "complete",
+    }
+    const pendingAssistant: StoreMessage = {
+      id: `pending-${now}`,
+      role: "assistant",
+      content: "",
+      createdAt: now + 1,
+      status: "running",
+    }
+    setMessages((prev) => [...prev, userMsg, pendingAssistant])
+    setIsRunning(true)
+    setRunStartedAt(new Date().toISOString())
+
+    const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    try {
+      const res = await fetch("/webhooks/web", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({
+          agent_id: agentId,
+          body: userText,
+          attachment_signed_ids: attachmentSignedIds,
+        }),
+      })
+      if (!res.ok) throw new Error(`POST /webhooks/web returned ${res.status}`)
+    } catch (err) {
+      upsertAssistantContent(() => `⚠️ ${(err as Error).message}`, { final: true, status: "error" })
+      setIsRunning(false)
+      setRunStartedAt(null)
+    }
+  }, [agentId, upsertAssistantContent])
+
+  const onCancel = useCallback(async () => {
+    // Best-effort — we can't actually abort an in-flight server run from
+    // here. Just clear local state so the user can move on.
+    setIsRunning(false)
+    setRunStartedAt(null)
+  }, [])
+
+  const runtime = useExternalStoreRuntime<StoreMessage>({
+    isRunning,
+    messages,
+    convertMessage: storeToThreadMessage,
+    onNew,
+    onCancel,
     adapters: {
       attachments: attachmentAdapter,
     },
-    initialMessages: messagesWithApprovals.length > 0
-      ? messagesWithApprovals.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: [{ type: "text" as const, text: m.content }],
-        }))
-      : undefined,
   })
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <AgentStatusProvider value={agentStatus}>
         <RecoveryThinkingProvider value={{
-          active: thinkingSince != null,
-          since: thinkingSince,
-          dismiss: () => setThinkingSince(null),
+          active: isRunning,
+          since: runStartedAt,
+          dismiss: () => { setIsRunning(false); setRunStartedAt(null) },
         }}>
           <CmdApprovalProvider value={cmdApproval}>
             <ActionApprovalProvider value={actionApproval}>
               <ConnectionProposalProvider value={connectionProposal}>
                 <MessageQueueProvider agentId={agentId}>
                   <FilePreviewProvider>
-                    <QueueDrainController
-                      drainRef={drainQueuedRef}
-                      recoverAssistantRef={recoverAssistantRef}
-                      runtime={runtime}
-                    />
+                    <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
                     <div className="relative h-full overflow-hidden bg-background">
                       <Thread />
                     </div>
@@ -884,24 +813,17 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   )
 }
 
-// Wire the cable's onAssistantMessage drain hook to the queue. Lives inside
-// MessageQueueProvider so it can read the queue; sets refs the parent's
-// cable handler calls when the agent finishes a run.
+// Drain the next queued message into the runtime when the previous run
+// completes. Lives inside MessageQueueProvider so it can read the queue;
+// sets a ref the AgentChat clears via useEffect when isRunning flips false.
 function QueueDrainController({
   drainRef,
-  recoverAssistantRef,
   runtime,
 }: {
   drainRef: React.MutableRefObject<(() => void) | null>
-  recoverAssistantRef: React.MutableRefObject<((data: { id?: string | number; content: string; metadata?: Record<string, unknown> }) => void) | null>
-  runtime: ReturnType<typeof useLocalRuntime>
+  runtime: ReturnType<typeof useExternalStoreRuntime>
 }) {
   const queue = useMessageQueue()
-  // Track ids of assistant messages already appended via the recovery path.
-  // The same reply lands twice: once via the engine's manual broadcast, and
-  // again via /chat/poll if the cable raced. Dedupe so we don't double-render.
-  const seenIdsRef = useRef<Set<string>>(new Set())
-
   useEffect(() => {
     drainRef.current = () => {
       const next = queue.shift()
@@ -916,44 +838,8 @@ function QueueDrainController({
         queue.enqueue(next.text, next.attachments)
       }
     }
-
-    recoverAssistantRef.current = ({ id, content, metadata }) => {
-      try {
-        if (runtime.thread.getState().isRunning) return
-      } catch { return }
-      const key = String(id ?? `c:${content.slice(0, 64)}`)
-      if (seenIdsRef.current.has(key)) return
-      seenIdsRef.current.add(key)
-
-      // Inject any media attachments the same way initialMessages mapping
-      // does so a recovered message renders identically to a reload-restored
-      // one (PDF chip, image inline, etc.).
-      let body = content || ""
-      const media = Array.isArray(metadata?.media)
-        ? (metadata!.media as Array<{ url: string; filename: string; contentType: string }>)
-        : []
-      for (const med of media) {
-        if (med.contentType?.startsWith("image/")) {
-          body += `\n\n![${med.filename}](${med.url})`
-        } else {
-          body += `\n\n[Download ${med.filename}](${med.url})`
-        }
-      }
-      try {
-        runtime.thread.append({
-          role: "assistant",
-          content: [{ type: "text", text: body }],
-        })
-      } catch (err) {
-        console.warn("Assistant recovery append failed:", err)
-      }
-    }
-
-    return () => {
-      drainRef.current = null
-      recoverAssistantRef.current = null
-    }
-  }, [drainRef, recoverAssistantRef, queue, runtime])
+    return () => { drainRef.current = null }
+  }, [drainRef, queue, runtime])
   return null
 }
 
