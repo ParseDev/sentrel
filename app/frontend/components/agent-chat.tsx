@@ -587,15 +587,20 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
       } else if (data.type === "connection_proposal") {
         handleConnectionProposal(data)
       } else if (data.type === "message" && data.role === "assistant") {
-        // Agent finished — clear the persistent "thinking" indicator and
-        // refetch initialMessages so a reload-mid-run page picks up the new
-        // assistant content (the in-tab adapter handles streaming itself —
-        // refetchMessages is idempotent so a double-fire is harmless).
-        setThinkingSince(null)
+        // Agent finished — refetch chat_messages so a reload-mid-run page
+        // picks up the assistant content. Don't clear thinkingSince directly
+        // here: the new agent_thinking prop from the server is the source of
+        // truth, and the AgentChat remount on key change re-seeds the
+        // indicator state. Clearing here causes a flash where the indicator
+        // disappears before the new message renders.
         refetchMessages()
         drainQueuedRef.current?.()
       } else if (data.type === "done" || data.type === "error") {
-        setThinkingSince(null)
+        // `done` (engine relays) and `error` always come paired with the
+        // engine-side message persistence — refetching pulls both the new
+        // chat_messages and the recomputed agent_thinking so the indicator
+        // clears at the same moment the reply (or error message) renders.
+        refetchMessages()
         drainQueuedRef.current?.()
       }
     }
@@ -759,7 +764,10 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         if (res.ok) {
           const data = await res.json() as { content?: string }
           if (data.content) {
-            setThinkingSince(null)
+            // Don't clear thinkingSince directly — let refetchMessages pull
+            // the new agent_thinking from the server, and the AgentChat key
+            // change remount it cleanly with the new state. Otherwise the
+            // indicator vanishes a beat before the reply renders.
             refetchMessages()
             drainQueuedRef.current?.()
             return
