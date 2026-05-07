@@ -28,6 +28,7 @@ import { createCommandApproval, type ApprovalLevel } from "./security/command-ap
 import { recordApproval } from "./security/approval-interceptor.js";
 import { redactSecrets } from "./security/credential-filter.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
+import { checkSpendCap, markSpendNotified } from "./spend-caps.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
 import {
@@ -128,6 +129,51 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   //   the conversation + seeds the first user message on task create/comment)
   const isInbound = job.type === "inbound_message";
   const isTaskAssignment = job.type === "task_assignment";
+
+  // Spend-cap enforcement. Rails owns the cap config + spend rollup; the
+  // engine asks via /api/spend_caps/check before each run. Hard-stop on
+  // over-cap, soft "approaching cap" notify when crossing the threshold.
+  // Best-effort — network failure / missing cap doesn't block the run.
+  const cap = await checkSpendCap(agent.id).catch(() => null);
+  if (cap?.over_daily || cap?.over_monthly) {
+    const which = cap.over_daily ? "daily" : "monthly";
+    const spent = cap.over_daily ? cap.spend_today_usd : cap.spend_month_usd;
+    const limit = cap.over_daily ? cap.daily_cap_usd : cap.monthly_cap_usd;
+    logger.warn(`Spend cap hit (${which}) for agent ${agent.id}: $${spent} / $${limit}`);
+    emitError(`⚠️ Spend cap hit: $${spent?.toFixed(2)} / $${limit?.toFixed(2)} ${which}.`);
+    if (job.type === "inbound_message" && job.conversationId) {
+      await host
+        .saveMessage(
+          job.conversationId,
+          "assistant",
+          `⚠️ Spend cap hit: $${spent?.toFixed(2)} of $${limit?.toFixed(2)} ${which} budget. The agent will resume after the cap rolls over (or after you raise the cap on the agent's edit page).`,
+          "outbound",
+          job.channel || "web",
+          undefined,
+          { spend_cap_hit: true },
+        )
+        .catch((e) => logger.warn("Failed to persist spend-cap message", { error: (e as Error).message }));
+    }
+    return;
+  }
+  if (cap?.should_notify) {
+    const pct = Math.round((cap.spend_today_usd / cap.daily_cap_usd!) * 100);
+    if (job.type === "inbound_message" && job.conversationId) {
+      await host
+        .saveMessage(
+          job.conversationId,
+          "assistant",
+          `ℹ️ Approaching daily spend cap — $${cap.spend_today_usd.toFixed(2)} of $${cap.daily_cap_usd!.toFixed(2)} (${pct}%). I'll keep going, but heads-up.`,
+          "outbound",
+          job.channel || "web",
+          undefined,
+          { spend_cap_notify: true },
+        )
+        .catch(() => {});
+      await markSpendNotified(agent.id).catch(() => {});
+    }
+  }
+
   let conversation: Conversation | null = null;
   if (job.conversationId) {
     conversation = await host.getConversation(job.conversationId);
