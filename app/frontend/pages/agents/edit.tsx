@@ -215,6 +215,35 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
         </>)}
 
         {tab === "behavior" && (<>
+        {/* Reasoning */}
+        <section>
+          <Overline className="mb-3">Reasoning</Overline>
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="thinking_level">Extended thinking</Label>
+              <Select
+                value={data.ai_config.thinking_level}
+                onValueChange={(v) => setData("ai_config", { ...data.ai_config, thinking_level: v })}
+              >
+                <SelectTrigger id="thinking_level">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Off — fastest, no reasoning trace</SelectItem>
+                  <SelectItem value="low">Low — 2k token budget</SelectItem>
+                  <SelectItem value="medium">Medium — 4k token budget</SelectItem>
+                  <SelectItem value="high">High — 8k token budget</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Surfaces the model's reasoning trace as a "Thought for Xs" pill above the answer.
+                Only effective on Claude 4 / Sonnet 4.x / Opus 4.x — older models silently ignore.
+                Costs extra tokens per turn proportional to the budget. After saving, hit Ops → Reload to push to the engine.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Heartbeat */}
         <section>
           <Overline className="mb-3">Heartbeat</Overline>

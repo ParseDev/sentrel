@@ -175,6 +175,10 @@ module AgentProvisioner
         # with setMcpServers.
         "TOOL_ROUTING"        => "all",
         "RESUME_ENABLED"      => "true",
+        # Extended-thinking budget — engine maps low/medium/high to
+        # 2000/4000/8000 tokens, "none" disables. Toggled per-agent via
+        # ai_config.thinking_level in the edit UI.
+        "ENGINE_THINKING_LEVEL" => agent.ai_config&.thinking_level.to_s.presence || "none",
       }
 
       case provider
