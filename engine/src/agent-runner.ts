@@ -38,6 +38,7 @@ import {
   emitToolResult,
   emitDone,
   emitError,
+  emitThinkingDelta,
   consumePendingMedia,
   getToolLabel,
 } from "./gateway.js";
@@ -373,6 +374,14 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       // cable stream — frontend can rehydrate without a separate endpoint.
       if (result.toolHistory && result.toolHistory.length > 0) {
         messageMetadata.tool_history = result.toolHistory;
+      }
+      // Extended-thinking trace, if any. Surfaced as a "Thought for Xs"
+      // pill above the assistant content — collapsed by default.
+      if (result.thinkingText && result.thinkingText.length > 0) {
+        messageMetadata.thinking = {
+          text: result.thinkingText.slice(0, 4000),
+          duration_ms: result.thinkingDurationMs,
+        };
       }
       const saved = await host.saveMessage(
         conversationId,
@@ -712,6 +721,8 @@ interface QueryResult {
   inputTokens: number;
   outputTokens: number;
   toolHistory: ToolHistoryEntry[];
+  thinkingText: string;
+  thinkingDurationMs: number;
 }
 
 async function runAgentLoop(
@@ -758,6 +769,12 @@ async function runAgentLoop(
   // shows live (Perplexity-style). Keyed by tool_use id for matching results.
   const toolHistory: ToolHistoryEntry[] = [];
   const toolHistoryById = new Map<string, ToolHistoryEntry>();
+  // Extended-thinking accumulator. Each thinking block from the SDK is
+  // appended; durations are bracketed by first/last block timestamps.
+  // Surface as a "Thought for Xs" pill above the assistant content.
+  let thinkingText = "";
+  let thinkingStart: number | null = null;
+  let thinkingEnd: number | null = null;
 
   for await (const message of q) {
     const msg = message as any;
@@ -783,6 +800,16 @@ async function runAgentLoop(
 
     if (msg.message?.content) {
       for (const block of msg.message.content) {
+        if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.length > 0) {
+          // Extended-thinking trace from the model. Each block is a complete
+          // chunk (the SDK accumulates streaming deltas before delivering).
+          // We surface them live to the chat UI and persist the totals.
+          thinkingText += (thinkingText ? "\n\n" : "") + block.thinking;
+          if (thinkingStart === null) thinkingStart = Date.now();
+          thinkingEnd = Date.now();
+          emitThinkingDelta(jobId, thinkingText);
+          spans?.event("thinking_block", { length: block.thinking.length });
+        }
         if (block.type === "text" && block.text) {
           responseContent = block.text;
           emitTextDelta(jobId, block.text);
@@ -885,7 +912,10 @@ async function runAgentLoop(
   if (closeInputStream) (closeInputStream as () => void)();
   queryState.current = null;
 
-  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens, toolHistory };
+  const thinkingDurationMs = (thinkingStart != null && thinkingEnd != null)
+    ? Math.max(0, thinkingEnd - thinkingStart)
+    : 0;
+  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens, toolHistory, thinkingText, thinkingDurationMs };
 }
 
 interface BuiltQueryOptions {
@@ -1224,6 +1254,15 @@ async function buildQueryOptions(
   }
   if (Object.keys(subAgents).length > 0) {
     options.agents = subAgents;
+  }
+
+  // Extended thinking: surfaces the model's reasoning trace as a "Thought
+  // for Xs" pill in chat. Only useful on Claude 4 / Sonnet 4.x / Opus 4.x —
+  // older models silently ignore the budget. Env-gate so we can A/B without
+  // a redeploy. Default off.
+  const enableThinking = process.env.ENGINE_ENABLE_THINKING === "true";
+  if (enableThinking) {
+    options.maxThinkingTokens = 4000;
   }
 
   return { options, relevantToolkits };

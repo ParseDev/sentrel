@@ -452,6 +452,13 @@ export function emitThinking(): void {
   broadcast({ type: "thinking", timestamp: Date.now() });
 }
 
+// Stream the model's extended-thinking content to the chat UI as a
+// "Thought for Xs" pill. Each call carries one full thinking block
+// (the SDK delivers them as discrete content blocks, not deltas).
+export function emitThinkingDelta(jobId: string | undefined, text: string): void {
+  broadcast({ type: "thinking_delta", text, jobId, timestamp: Date.now() });
+}
+
 export function emitTextDelta(jobId: string | undefined, text: string): void {
   broadcast({ type: "text_delta", text, jobId, timestamp: Date.now() });
   // Route to the one listener keyed to this job. Broadcasting to every
