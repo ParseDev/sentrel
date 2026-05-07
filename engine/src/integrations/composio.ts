@@ -42,6 +42,53 @@ function getClient(): any {
   return composioClient;
 }
 
+// Detect Composio "needs auth" / "not connected" / 401 / 403 in the
+// collected error detail walked off the ComposioToolExecutionError chain.
+// Different upstream APIs phrase this differently — we cast a wide net:
+// status codes 401/403 always count, and any text containing
+// connect/auth-related keywords across message + body fields.
+function looksLikeAuthError(detail: Record<string, unknown>): boolean {
+  const status = Number(detail.status ?? detail.cause_status ?? 0);
+  if (status === 401 || status === 403) return true;
+  const blob = Object.values(detail).map((v) => String(v ?? "")).join(" | ").toLowerCase();
+  if (/connectedaccountnotfound|not connected|connection not found|no.*connection|needs.?auth|please.*connect|reconnect|invalid.?token|unauthori[sz]ed|authentication.?required|auth.?required/.test(blob)) {
+    return true;
+  }
+  return false;
+}
+
+// Convert a raw toolkit slug into something readable for the connect card.
+// "googlesheets" → "Google Sheets", "hubspot" → "HubSpot", "linkedin" →
+// "LinkedIn". Falls back to capitalized slug for tools we don't have a
+// custom mapping for.
+function humanizeToolkit(slug: string): string {
+  const KNOWN: Record<string, string> = {
+    googlesheets: "Google Sheets",
+    googledocs: "Google Docs",
+    googledrive: "Google Drive",
+    googlecalendar: "Google Calendar",
+    gmail: "Gmail",
+    hubspot: "HubSpot",
+    salesforce: "Salesforce",
+    pipedrive: "Pipedrive",
+    linkedin: "LinkedIn",
+    twitter: "Twitter / X",
+    slack: "Slack",
+    notion: "Notion",
+    stripe: "Stripe",
+    airtable: "Airtable",
+    asana: "Asana",
+    trello: "Trello",
+    github: "GitHub",
+    gitlab: "GitLab",
+    apollo: "Apollo",
+    intercom: "Intercom",
+    zendesk: "Zendesk",
+    discord: "Discord",
+  };
+  return KNOWN[slug.toLowerCase()] || (slug.charAt(0).toUpperCase() + slug.slice(1));
+}
+
 // Cache key: "org_<id>" or "org_<id>+user_<id>" — the union of buckets being
 // queried. TTL 60s. Avoids hitting Composio on every agent run just to list
 // connections.
@@ -280,6 +327,32 @@ export async function getComposioMcpServer(
             ...detail,
             stack: err?.stack?.split("\n").slice(0, 3).join(" | "),
           });
+          // Detect Composio "needs auth" failures and proactively surface a
+          // Connect <toolkit> card to the user instead of leaving the agent
+          // staring at a 401. The agent's system prompt tells it to wait
+          // when a tool returns needs_auth — no retry loop. Best-effort:
+          // emitting the card is fire-and-forget; the tool result still
+          // reads as a normal isError so the agent can also call out the
+          // problem in prose.
+          const isAuthError = looksLikeAuthError(detail);
+          if (isAuthError) {
+            const slug = toolkitSlugFor(t.name || "");
+            try {
+              const { emitConnectionProposal } = await import("../gateway.js");
+              emitConnectionProposal({
+                service: slug,
+                label: humanizeToolkit(slug),
+                why: `${t.name} needs ${slug} to be connected before it can run`,
+              });
+              logger.info(`Composio: emitted connection_proposal for ${slug} after auth failure on ${t.name}`);
+            } catch (cpErr) {
+              logger.warn("Failed to emit connection_proposal", { error: (cpErr as Error).message });
+            }
+            return {
+              content: [{ type: "text", text: `Tool ${t.name} needs auth: ${slug} is not connected for this agent. The user is being asked to connect — wait for them to act, do not retry.` }],
+              isError: true,
+            };
+          }
           return {
             content: [{ type: "text", text: `Tool ${t.name} failed: ${richErr}` }],
             isError: true,

@@ -277,7 +277,9 @@ export function buildSystemPrompt(
       `Rule of thumb: if you would otherwise say "you'll need to connect X first" or "set up integration Y", call propose_connection instead.\n\n` +
       `## SUPPORTED services (only these are valid for propose_connection):\n` +
       `${getSupportedSlugs().join(", ")}.\n\n` +
-      `If the user asks for an unsupported service (Salesforce, Pipedrive, Zoho, Outlook, Asana, Trello, Zendesk, Freshdesk, Front, Help Scout, Jira, Bitbucket, GitLab, AWS, GCP, Azure, etc.) — DO NOT call propose_connection. Tell the user honestly: "We don't support <service> yet — but I can use <closest supported alternative> if that fits." Suggest a real alternative from the supported list.`
+      `If the user asks for an unsupported service (Salesforce, Pipedrive, Zoho, Outlook, Asana, Trello, Zendesk, Freshdesk, Front, Help Scout, Jira, Bitbucket, GitLab, AWS, GCP, Azure, etc.) — DO NOT call propose_connection. Tell the user honestly: "We don't support <service> yet — but I can use <closest supported alternative> if that fits." Suggest a real alternative from the supported list.\n\n` +
+      `## When a tool returns "needs auth"\n` +
+      `If a Composio tool fails with text containing "needs auth" / "not connected" / "the user is being asked to connect" — STOP. The platform has already surfaced a Connect <service> card to the user inline; you do not need to call propose_connection again. Do NOT retry the tool call. Acknowledge briefly that you're waiting on the connection, and offer a useful next step (suggest a different approach, or ask the user to confirm once they've connected).`
     );
   } else if (caps.integrations.enabled) {
     parts.push(
