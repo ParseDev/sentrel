@@ -112,29 +112,62 @@ export function AnthropicAccountCard({ account }: Props) {
               <Terminal className="size-4 text-[var(--color-indigo)]" />
               <h2 className="text-sm font-semibold">Connect your Claude account</h2>
             </div>
-            <ol className="text-xs text-muted-foreground space-y-2 mb-4 list-decimal list-inside">
-              <li>
-                On your laptop, run <code className="font-mono bg-muted px-1.5 py-0.5 rounded">claude /login</code> in any terminal.
-                Complete the browser sign-in.
-              </li>
-              <li>
-                Copy the credentials to your clipboard:
-                <div className="mt-1.5 space-y-1">
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">macOS (Keychain)</div>
-                  <pre className="rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">security find-generic-password -s &quot;Claude Code-credentials&quot; -w | pbcopy</pre>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mt-1.5">Linux / WSL</div>
-                  <pre className="rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">cat ~/.claude/.credentials.json | xclip -selection clipboard</pre>
-                </div>
-              </li>
-              <li>Paste the JSON below and submit. Tokens are stored encrypted at rest.</li>
-            </ol>
+
+            <div className="rounded-lg border border-[var(--color-indigo)]/30 bg-[var(--color-indigo)]/5 p-3 mb-3">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="rounded bg-[var(--color-indigo)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">Recommended</span>
+                <span className="text-xs font-medium text-foreground">Long-lived token (1 year)</span>
+              </div>
+              <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside">
+                <li>
+                  In any terminal:{" "}
+                  <code className="font-mono bg-muted px-1.5 py-0.5 rounded">claude setup-token</code>
+                </li>
+                <li>Complete the browser sign-in.</li>
+                <li>
+                  Copy the token starting with{" "}
+                  <code className="font-mono bg-muted px-1.5 py-0.5 rounded">sk-ant-oat01-…</code>{" "}
+                  and paste it below.
+                </li>
+              </ol>
+              <p className="text-[10px] text-muted-foreground/80 mt-2">
+                No refresh cycle, no 30-min cron race — survives a year before re-auth. Best fit for an always-on agent.
+              </p>
+            </div>
+
+            <details className="mb-3">
+              <summary className="text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                Or use a short-lived <code className="font-mono">claude /login</code> session
+              </summary>
+              <ol className="text-xs text-muted-foreground space-y-2 list-decimal list-inside mt-2 pl-3">
+                <li>
+                  Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded">claude /login</code> and complete the browser sign-in.
+                </li>
+                <li>
+                  Copy the credentials JSON to your clipboard:
+                  <div className="mt-1.5 space-y-1">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">macOS (Keychain)</div>
+                    <pre className="rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">security find-generic-password -s &quot;Claude Code-credentials&quot; -w | pbcopy</pre>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mt-1.5">Linux / WSL</div>
+                    <pre className="rounded bg-muted p-2 text-[10px] font-mono leading-relaxed overflow-x-auto">cat ~/.claude/.credentials.json | xclip -selection clipboard</pre>
+                  </div>
+                </li>
+                <li>Paste the JSON below.</li>
+              </ol>
+              <p className="text-[10px] text-muted-foreground/80 mt-2 pl-3">
+                Token expires in ~8h; auto-refresh runs every 30 min. If a refresh ever silently fails you'll hit 401s — re-paste or switch to the long-lived token above.
+              </p>
+            </details>
+
             <textarea
               value={pasteValue}
               onChange={(e) => setPasteValue(e.target.value)}
-              placeholder='{"claudeAiOauth":{"accessToken":"sk-ant-...","refreshToken":"...","expiresAt":...}}'
-              className="w-full h-32 rounded-md border bg-background p-2 text-[11px] font-mono"
+              placeholder="sk-ant-oat01-… (or paste the full credentials.json)"
+              className="w-full h-24 rounded-md border bg-background p-2 text-[11px] font-mono"
               disabled={pasteBusy}
             />
+            <p className="text-[10px] text-muted-foreground mt-1.5">Stored encrypted at rest. Don't paste it into chat or commit it to a repo.</p>
+
             <div className="flex justify-end gap-2 mt-3">
               <Button
                 variant="outline"

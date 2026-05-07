@@ -81,6 +81,12 @@ class OauthController < ApplicationController
       cred.expires_at = Time.zone.at(parsed["expiresAt"].to_i / 1000)
     elsif parsed["expires_at"].present?
       cred.expires_at = Time.zone.at(parsed["expires_at"].to_i)
+    elsif access.start_with?("sk-ant-oat01-")
+      # `claude setup-token` mints a 1-year, non-refreshable bearer. The
+      # exact expiry is opaque (Anthropic doesn't return one); 1y from now
+      # is the correct user-facing approximation. Refresh job skips these
+      # automatically since refresh_token is blank.
+      cred.expires_at = 1.year.from_now
     end
     cred.scope = (parsed["scopes"] || parsed["scope"]).is_a?(Array) ? parsed["scopes"].join(" ") : parsed["scope"]
     cred.account_email = parsed["email"] || "Claude Code OAuth"
