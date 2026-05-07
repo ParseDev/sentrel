@@ -65,16 +65,28 @@ class AgentsController < ApplicationController
     end
 
     # Surface "agent is thinking" across page reloads / new tabs. Heuristic:
-    # the most recent message in the chat thread is from the user AND was
-    # sent within the last 15 minutes — long enough to cover slower runs that
-    # touch search/file processing without forever-pinning the indicator if
-    # the engine truly died. Frontend hydrates from this on mount and clears
-    # it when the cable broadcasts the assistant's reply.
+    # find the most recent user message and see if any assistant message
+    # exists *after* it. If not, and the user message is recent (<15 min),
+    # the run is still in flight. More robust than checking last_msg.role
+    # because the engine sometimes pre-creates empty assistant placeholder
+    # rows that would otherwise hide the pill. Frontend hydrates the
+    # indicator from this on mount and clears it via cable / poll.
     agent_thinking = nil
     if chat_messages.any?
-      last_msg = chat_messages.last
-      if last_msg["role"] == "user" && last_msg["created_at"].to_time > 15.minutes.ago
-        agent_thinking = { since: last_msg["created_at"], message_id: last_msg["id"] }
+      last_user_msg = chat_messages.reverse.find { |m| m["role"] == "user" }
+      if last_user_msg && last_user_msg["created_at"].to_time > 15.minutes.ago
+        # any assistant message strictly after this user message?
+        has_reply = chat_messages.any? { |m|
+          m["role"] == "assistant" &&
+            m["content"].to_s.strip.length > 0 &&
+            m["id"].to_i > last_user_msg["id"].to_i
+        }
+        unless has_reply
+          agent_thinking = {
+            since: last_user_msg["created_at"],
+            message_id: last_user_msg["id"],
+          }
+        end
       end
     end
 

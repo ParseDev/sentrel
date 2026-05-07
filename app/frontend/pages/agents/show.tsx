@@ -129,6 +129,7 @@ interface Props {
   conversations: ConversationItem[]
   emails: EmailItem[]
   chat_messages: unknown[]
+  agent_thinking?: { since: string; message_id: number } | null
   tasks: Task[]
   channel_configs: ChannelConfig[]
   scheduled_tasks: ScheduledTask[]
@@ -396,7 +397,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected }: Props) {
   const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
@@ -508,7 +509,16 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         {/* Chat */}
         {section === "chat" && (
           <div className="flex-1 overflow-hidden">
-            <AgentChat agentId={agent.id} agentName={agent.name} agentStatus={agent.status} initialMessages={chat_messages as any} approvalsByMessage={approvals_by_message} pendingActionApprovals={pending_action_approvals} />
+            <AgentChat
+              key={`chat-${(chat_messages as Array<{ id?: number }>).at(-1)?.id ?? 0}`}
+              agentId={agent.id}
+              agentName={agent.name}
+              agentStatus={agent.status}
+              initialMessages={chat_messages as any}
+              agentThinking={agent_thinking}
+              approvalsByMessage={approvals_by_message}
+              pendingActionApprovals={pending_action_approvals}
+            />
           </div>
         )}
 

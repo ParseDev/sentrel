@@ -499,13 +499,25 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
   // when the agent's response arrives. Set inside the queue-aware wrapper
   // below so we capture the runtime + queue handles after they exist.
   const drainQueuedRef = useRef<(() => void) | null>(null)
-  // Recovery path for assistant messages that arrive while no adapter run is
-  // in flight (typical case: page was reloaded mid-run). Without this the
-  // cable broadcast lands but never reaches the runtime, so the user sees
-  // their question stuck on "Thinking…" until they reload again. Set inside
-  // the runtime-aware controller below; guarded with isRunning to avoid
-  // double-appending when the adapter is still driving the run.
-  const recoverAssistantRef = useRef<((data: { id?: number; content: string; metadata?: Record<string, unknown> }) => void) | null>(null)
+  // "Recovery mode" — the page was mounted while a run was already in flight
+  // (typical case: user reloaded mid-stream). The in-memory runtime can't
+  // recover state because the original adapter run() is gone. Source of
+  // truth becomes the DB: when the reply lands we refetch chat_messages
+  // (Inertia partial reload), which bumps the AgentChat key in show.tsx and
+  // remounts the runtime with the full message list. Disabled during normal
+  // in-tab runs because the adapter handles streaming itself.
+  const wasRecoveryMount = useRef(agentThinking != null)
+  const refetchInflight = useRef(false)
+  const refetchMessages = () => {
+    if (!wasRecoveryMount.current) return
+    if (refetchInflight.current) return
+    refetchInflight.current = true
+    router.reload({
+      only: ["chat_messages", "agent_thinking", "approvals_by_message", "pending_action_approvals"],
+      preserveScroll: true,
+      onFinish: () => { refetchInflight.current = false },
+    })
+  }
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
 
   // Hydrate inline cards from server state on mount so a page refresh still
@@ -575,20 +587,12 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       } else if (data.type === "connection_proposal") {
         handleConnectionProposal(data)
       } else if (data.type === "message" && data.role === "assistant") {
-        // Agent finished — clear the persistent "thinking" indicator.
+        // Agent finished — clear the persistent "thinking" indicator and
+        // refetch initialMessages so a reload-mid-run page picks up the new
+        // assistant content (the in-tab adapter handles streaming itself —
+        // refetchMessages is idempotent so a double-fire is harmless).
         setThinkingSince(null)
-        // Recover the message into the runtime when no adapter run is in
-        // flight (page reload / new tab while the run was still in progress).
-        // Guarded inside the controller — it noops when the adapter is mid-
-        // run and will yield this message itself.
-        recoverAssistantRef.current?.({
-          id: data.id,
-          content: data.content || "",
-          metadata: data.metadata || {},
-        })
-        // Drain the next queued message if there is one. The runtime is
-        // ready to accept a new run now (assistant-ui's adapter loop is
-        // back to idle), so kick off the next send.
+        refetchMessages()
         drainQueuedRef.current?.()
       } else if (data.type === "done" || data.type === "error") {
         setThinkingSince(null)
@@ -732,12 +736,11 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
     }
   }, [agentId])
 
-  // Polling fallback. The cable broadcast can fire *before* a freshly-mounted
-  // page subscribes (typical case: user reloads while the engine is finishing
-  // the run — broadcast lands in the void, new tab subscribes too late). When
-  // the server tells us a run is mid-flight via `agentThinking`, poll
-  // /chat/poll until we see an assistant reply newer than the user's message,
-  // then route it through the same recovery path the cable would have used.
+  // Polling fallback for the reload-mid-run case. The cable broadcast can
+  // land before a freshly-mounted page finishes subscribing, so we lean on
+  // /chat/poll as a safety net. As soon as we see a reply land in the DB,
+  // refetch initialMessages — the chat then re-seeds with the assistant
+  // message included.
   useEffect(() => {
     if (!agentThinking?.message_id) return
     let cancelled = false
@@ -745,7 +748,6 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
     const startedAt = Date.now()
     const tick = async () => {
       if (cancelled) return
-      // Stop polling after 5 minutes — past that, treat the run as lost.
       if (Date.now() - startedAt > 5 * 60_000) {
         setThinkingSince(null)
         return
@@ -755,14 +757,10 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
           headers: { Accept: "application/json" },
         })
         if (res.ok) {
-          const data = await res.json() as { id?: number; content?: string; metadata?: Record<string, unknown> }
+          const data = await res.json() as { content?: string }
           if (data.content) {
-            recoverAssistantRef.current?.({
-              id: data.id,
-              content: data.content,
-              metadata: data.metadata || {},
-            })
             setThinkingSince(null)
+            refetchMessages()
             drainQueuedRef.current?.()
             return
           }
@@ -853,11 +851,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
             <ConnectionProposalProvider value={connectionProposal}>
               <MessageQueueProvider agentId={agentId}>
                 <FilePreviewProvider>
-                  <QueueDrainController
-                    drainRef={drainQueuedRef}
-                    recoverAssistantRef={recoverAssistantRef}
-                    runtime={runtime}
-                  />
+                  <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
                   <div className="relative h-full overflow-hidden bg-background">
                     <Thread />
                     {thinkingSince && (
@@ -875,22 +869,16 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
 }
 
 // Wire the cable's onAssistantMessage drain hook to the queue. Lives inside
-// MessageQueueProvider so it can read the queue; sets refs the parent's
+// MessageQueueProvider so it can read the queue; sets a ref the parent's
 // cable handler calls when the agent finishes a run.
 function QueueDrainController({
   drainRef,
-  recoverAssistantRef,
   runtime,
 }: {
   drainRef: React.MutableRefObject<(() => void) | null>
-  recoverAssistantRef: React.MutableRefObject<((data: { id?: number; content: string; metadata?: Record<string, unknown> }) => void) | null>
   runtime: ReturnType<typeof useLocalRuntime>
 }) {
   const queue = useMessageQueue()
-  // Track ids of assistant messages we've already appended via the recovery
-  // path, so a re-broadcast (engine -> Rails -> cable, plus
-  // Message.after_create_commit) doesn't double-render the same reply.
-  const seenIdsRef = useRef<Set<number>>(new Set())
   useEffect(() => {
     drainRef.current = () => {
       const next = queue.shift()
@@ -904,50 +892,12 @@ function QueueDrainController({
           content: [{ type: "text", text: next.text }],
         })
       } catch (err) {
-        // If append fails (e.g. runtime not ready), put the item back at the
-        // head so we don't lose it.
         console.warn("Queue drain failed, re-queueing:", err)
         queue.enqueue(next.text, next.attachments)
       }
     }
-
-    recoverAssistantRef.current = ({ id, content, metadata }) => {
-      // Adapter is mid-run? It will yield this message itself — skip.
-      try {
-        if (runtime.thread.getState().isRunning) return
-      } catch { /* runtime not ready yet */ return }
-      if (id != null) {
-        if (seenIdsRef.current.has(id)) return
-        seenIdsRef.current.add(id)
-      }
-      // Inject any media attachments the same way initialMessages does so a
-      // recovered message renders identically to a reload-restored one.
-      let body = content || ""
-      const media = Array.isArray(metadata?.media)
-        ? (metadata!.media as Array<{ url: string; filename: string; contentType: string }>)
-        : []
-      for (const med of media) {
-        if (med.contentType?.startsWith("image/")) {
-          body += `\n\n![${med.filename}](${med.url})`
-        } else {
-          body += `\n\n[Download ${med.filename}](${med.url})`
-        }
-      }
-      try {
-        runtime.thread.append({
-          role: "assistant",
-          content: [{ type: "text", text: body }],
-        })
-      } catch (err) {
-        console.warn("Assistant recovery append failed:", err)
-      }
-    }
-
-    return () => {
-      drainRef.current = null
-      recoverAssistantRef.current = null
-    }
-  }, [drainRef, recoverAssistantRef, queue, runtime])
+    return () => { drainRef.current = null }
+  }, [drainRef, queue, runtime])
   return null
 }
 
