@@ -12,7 +12,7 @@ import {
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
-import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider, RecoveryThinkingProvider } from "@/components/assistant-ui/thread"
+import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider, AgentNameProvider, RecoveryThinkingProvider } from "@/components/assistant-ui/thread"
 import { MessageQueueProvider, useMessageQueue } from "@/contexts/message-queue"
 import { FilePreviewProvider } from "@/contexts/file-preview"
 
@@ -469,7 +469,7 @@ const storeToThreadMessage = (m: StoreMessage): ThreadMessageLike => ({
     : undefined,
 })
 
-export function AgentChat({ agentId, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
+export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
   // Source of truth for what the chat renders. Hydrated from the server's
   // chat_messages, then updated in-place by the cable subscription.
   // If the server says a run is in flight (agentThinking set), append an
@@ -1059,6 +1059,7 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <AgentStatusProvider value={agentStatus}>
+       <AgentNameProvider value={agentName || "agent"}>
         <RecoveryThinkingProvider value={{
           active: isRunning,
           since: runStartedAt,
@@ -1079,6 +1080,7 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
             </ActionApprovalProvider>
           </CmdApprovalProvider>
         </RecoveryThinkingProvider>
+       </AgentNameProvider>
       </AgentStatusProvider>
     </AssistantRuntimeProvider>
   )

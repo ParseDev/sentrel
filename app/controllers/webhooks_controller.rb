@@ -154,10 +154,14 @@ class WebhooksController < ApplicationController
     agent = Agent.find(params[:agent_id])
     return head :not_found unless agent
 
-    # The agent's runtime must be live before we accept user messages — the
-    # engine can't process them while the machine is still provisioning.
-    unless agent.status == "running"
-      return render json: { error: "Agent is not running", status: agent.status }, status: :conflict
+    # If the engine is asleep (Fly auto-stop scaled to zero), persist the
+    # message anyway and poke Fly to wake the machine. Engine boots ~30s,
+    # subscribes to Redis, drains its inbox queue, processes this message.
+    # Frontend reads `cold_start: true` to render the "Waking …" banner.
+    cold_start = false
+    if agent.status != "running"
+      cold_start = true
+      AgentMachineOps.start(agent) rescue nil
     end
 
     # Item 10 — splice into the most-recent active conversation FOR THIS USER
@@ -219,7 +223,11 @@ class WebhooksController < ApplicationController
       conversationId: conversation.id,
       user_id: current_user.id,
     })
-    head :ok
+    if cold_start
+      render json: { status: "starting", agent_status: agent.status }, status: :accepted
+    else
+      head :ok
+    end
   end
 
   private

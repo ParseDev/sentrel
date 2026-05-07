@@ -100,6 +100,10 @@ export const ConnectionProposalProvider = ConnectionProposalContext.Provider;
 const AgentStatusContext = createContext<string>("running");
 export const AgentStatusProvider = AgentStatusContext.Provider;
 
+// Agent's display name (for cold-start "Waking Casper" copy and similar).
+const AgentNameContext = createContext<string>("agent");
+export const AgentNameProvider = AgentNameContext.Provider;
+
 // Recovery-mode "agent is thinking" signal. True when the page mounted
 // while a run was in flight (server-driven via agentThinking prop). The
 // composer ORs this with runtime.isRunning so the same Thinking…/stop UI
@@ -951,11 +955,7 @@ const AssistantMessage: FC = () => {
         {thinking && <ThinkingPill text={thinking.text} durationMs={thinking.durationMs} />}
         {hasToolSteps && <ToolSteps steps={toolSteps!} />}
         {isEmptyAndRunning && !hasToolSteps ? (
-          <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
-            <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
-            <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
-            <span className="size-2 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
-          </div>
+          <ColdStartAwareDot />
         ) : (
           <MessagePrimitive.Parts>
             {({ part }) => {
@@ -974,6 +974,31 @@ const AssistantMessage: FC = () => {
         <AssistantActionBar />
       </div>
     </MessagePrimitive.Root>
+  );
+};
+
+// Empty-pending assistant placeholder. Renders the typing dot pulse by
+// default; when the agent's machine is scaled to zero / pending / starting,
+// upgrades to a "Waking <name> · ~30s" indicator so the user knows the
+// 30-ish second wait isn't a stall.
+const ColdStartAwareDot: FC = () => {
+  const status = useContext(AgentStatusContext);
+  const name = useContext(AgentNameContext);
+  const cold = !isAgentReady(status);
+  if (cold) {
+    return (
+      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground" aria-label={`Waking ${name}`}>
+        <Loader2Icon className="size-3.5 animate-spin" />
+        <span><span className="font-medium text-foreground/80">Waking {name}</span> · first reply takes ~30s</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
+      <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
+      <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
+      <span className="size-2 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
+    </div>
   );
 };
 

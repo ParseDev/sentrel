@@ -21,6 +21,20 @@ module AgentMachineOps
     { ok: false, message: e.message }
   end
 
+  # Wake a stopped Fly Machine. Fly's auto_start_machines wakes on HTTP
+  # traffic to the Machine's port — but our engine consumes Redis, not
+  # HTTP, so the auto-start trigger never fires. We poke the Fly API
+  # explicitly when an inbound message arrives for a cold agent.
+  # Idempotent: hitting start on an already-running machine is a no-op.
+  def start(agent)
+    app = app_name(agent)
+    mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
+    fly_api(:post, "/apps/#{app}/machines/#{mid}/start")
+    { ok: true, message: "Start requested" }
+  rescue => e
+    { ok: false, message: e.message }
+  end
+
   # Tell the engine to reload its in-memory config AND push fresh env
   # vars into the Fly Machine (so rotated API keys, switched provider,
   # new Composio key, etc. actually apply). The Fly API replaces env
