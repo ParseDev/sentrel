@@ -7,6 +7,7 @@ import { provisionSkills, syncSkillsFromDb } from "./skills.js";
 import { startWorkScheduler } from "./work-scheduler.js";
 import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
 import { startSupportedIntegrationsCache, stopSupportedIntegrationsCache } from "./integrations/supported-cache.js";
+import { invalidateToolkitsCache } from "./integrations/composio.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
 import { startGateway, setSyncHandler } from "./gateway.js";
@@ -97,6 +98,7 @@ async function main() {
   // 10. Start gateway (WebSocket + HTTP: POST /sync, GET /health)
   setSyncHandler(async () => {
     const freshAgent = await host.getAgent(config.employeeId);
+    invalidateToolkitsCache(freshAgent.organization_id);
     syncWorkspace(freshAgent);
     provisionSkills(freshAgent);
     // DB-installed skills (the ones a user enables on /agents/:id/edit) need

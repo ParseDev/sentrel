@@ -158,8 +158,21 @@ export async function getToolkitOwners(orgId: number, userId?: number | null): P
 }
 
 export function invalidateToolkitsCache(orgId: number, userId?: number | null): void {
-  if (userId) toolkitsCache.delete(`org_${orgId}+user_${userId}`);
-  toolkitsCache.delete(`org_${orgId}`);
+  const exactKeys = userId
+    ? [`org_${orgId}`, `org_${orgId}+user_${userId}`]
+    : [`org_${orgId}`];
+  for (const key of exactKeys) {
+    toolkitsCache.delete(key);
+    ownersCache.delete(key);
+  }
+  if (!userId) {
+    for (const key of [...toolkitsCache.keys(), ...ownersCache.keys()]) {
+      if (key.startsWith(`org_${orgId}+user_`)) {
+        toolkitsCache.delete(key);
+        ownersCache.delete(key);
+      }
+    }
+  }
 }
 
 /**
