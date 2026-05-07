@@ -53,6 +53,21 @@ import {
   ExternalLinkIcon,
   Plug2Icon,
   ActivityIcon,
+  MailIcon as GmailIcon,
+  CalendarIcon,
+  HardDriveIcon,
+  TableIcon,
+  CreditCardIcon,
+  BuildingIcon,
+  BookOpenIcon,
+  MessagesSquareIcon,
+  HeadphonesIcon,
+  GitBranchIcon,
+  CloudIcon,
+  AtSignIcon as TwitterIcon,
+  LinkIcon as LinkedinIcon,
+  HashIcon as SlackIcon,
+  GitMergeIcon as GithubIcon,
 } from "lucide-react";
 import { ShieldAlertIcon, CheckIcon as CheckCircleIcon, XIcon as XCircleIcon } from "lucide-react";
 import { type FC, useState, useEffect, createContext, useContext } from "react";
@@ -879,7 +894,8 @@ type ToolStep = {
 };
 
 // Per-tool icon — keeps each step instantly recognizable in a long stack.
-// Composio / MCP tools fall through to a generic Plug2.
+// Brand icons for the well-known Composio / MCP toolkits; generic Plug2
+// for anything we don't have a custom mapping for.
 function iconForTool(tool: string) {
   if (tool === "WebSearch" || tool === "Grep" || tool === "Glob") return SearchIcon;
   if (tool === "WebFetch") return GlobeIcon;
@@ -890,6 +906,30 @@ function iconForTool(tool: string) {
   if (tool === "Skill") return CodeIcon;
   if (tool === "Agent") return BotIcon;
   if (tool === "Folder" || tool === "LS") return FolderIcon;
+
+  // Composio MCP tools: mcp__composio__GMAIL_… / LINKEDIN_… / etc.
+  // Match the toolkit segment (between mcp__composio__ and the first _).
+  const composioMatch = tool.match(/^mcp__composio__(\w+?)_/);
+  if (composioMatch) {
+    const toolkit = composioMatch[1].toLowerCase();
+    if (toolkit === "gmail") return GmailIcon;
+    if (toolkit === "googledrive" || toolkit === "drive") return HardDriveIcon;
+    if (toolkit === "googledocs" || toolkit === "googlesheets" || toolkit === "sheets" || toolkit === "docs") return TableIcon;
+    if (toolkit === "googlecalendar" || toolkit === "calendar") return CalendarIcon;
+    if (toolkit === "stripe") return CreditCardIcon;
+    if (toolkit === "hubspot" || toolkit === "salesforce" || toolkit === "pipedrive" || toolkit === "apollo") return BuildingIcon;
+    if (toolkit === "notion" || toolkit === "airtable") return BookOpenIcon;
+    if (toolkit === "slack") return SlackIcon;
+    if (toolkit === "discord" || toolkit === "intercom" || toolkit === "zendesk") return MessagesSquareIcon;
+    if (toolkit === "twitter" || toolkit === "x") return TwitterIcon;
+    if (toolkit === "linkedin") return LinkedinIcon;
+    if (toolkit === "github") return GithubIcon;
+    if (toolkit === "gitlab") return GitBranchIcon;
+    if (toolkit === "vercel" || toolkit === "aws" || toolkit === "gcp" || toolkit === "azure" || toolkit === "fly") return CloudIcon;
+    if (toolkit === "phone" || toolkit === "twilio") return HeadphonesIcon;
+    return Plug2Icon;
+  }
+
   if (tool.startsWith("mcp__")) return Plug2Icon;
   return WrenchIcon;
 }
