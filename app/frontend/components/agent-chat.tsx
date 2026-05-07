@@ -275,7 +275,9 @@ type StoreMessage = {
 
 // Inject media metadata + ActiveStorage attachments into a server-side
 // message's content so the markdown renderer produces the same chip / image
-// the live cable stream produces.
+// the live cable stream produces. Persisted tool_history (engine-side) is
+// rehydrated into toolSteps so the chat shows what tools were used in past
+// turns, not just the live one.
 function fromServerMessage(
   m: { id?: number | string; role: string; content: string; created_at?: string; metadata?: Record<string, unknown>; attachments?: Array<{ url: string; filename: string; content_type: string }> },
   approvals?: Array<{ id: number; tool_input: Record<string, unknown>; status: string }>,
@@ -315,12 +317,28 @@ function fromServerMessage(
     content += "\n\n" + markers
   }
   const created = m.created_at ? new Date(m.created_at).getTime() : Date.now()
+  // Engine writes metadata.tool_history; convert to the same shape the live
+  // stream uses so the same render path handles both.
+  const persistedHistory = Array.isArray((meta as Record<string, unknown>).tool_history)
+    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; result?: string; started_at?: string; ended_at?: string }>)
+    : []
+  const toolSteps: ToolStep[] | undefined = persistedHistory.length > 0
+    ? persistedHistory.map((h, i) => ({
+        id: h.id ?? `${h.tool}-${i}`,
+        tool: h.tool,
+        label: h.label || h.tool,
+        result: h.result,
+        startedAt: h.started_at ? new Date(h.started_at).getTime() : created,
+        doneAt: h.ended_at ? new Date(h.ended_at).getTime() : created,
+      }))
+    : undefined
   return {
     id: String(m.id ?? `srv-${created}`),
     role: m.role === "user" ? "user" : "assistant",
     content,
     createdAt: created,
     status: "complete",
+    toolSteps,
   }
 }
 
