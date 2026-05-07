@@ -383,6 +383,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
           duration_ms: result.thinkingDurationMs,
         };
       }
+      // job_id ties the message to its audit_log row; the chat UI uses
+      // this to deep-link the "View trace" action to /ops/traces/by_job.
+      messageMetadata.job_id = jobId;
       const saved = await host.saveMessage(
         conversationId,
         "assistant",
@@ -414,7 +417,10 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
           role: "assistant",
           content: result.responseContent,
           created_at: new Date().toISOString(),
-          metadata: { conversation_id: conversationId },
+          // Forward the persisted metadata so the chat UI can read
+          // job_id (for the View Trace link) and tool_history off the
+          // live event without waiting for a refetch.
+          metadata: { conversation_id: conversationId, ...messageMetadata },
           timestamp: Date.now(),
         });
       } catch (err) {
