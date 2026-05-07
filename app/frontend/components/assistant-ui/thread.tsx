@@ -936,12 +936,18 @@ const AssistantMessage: FC = () => {
   }) as ToolStep[] | undefined;
   const hasToolSteps = !!toolSteps && toolSteps.length > 0;
 
+  const thinking = useAuiState((s) => {
+    const custom = (s.message.metadata as { custom?: { thinking?: { text: string; durationMs: number } } } | undefined)?.custom;
+    return custom?.thinking;
+  }) as { text: string; durationMs: number } | undefined;
+
   return (
     <MessagePrimitive.Root
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
+        {thinking && <ThinkingPill text={thinking.text} durationMs={thinking.durationMs} />}
         {hasToolSteps && <ToolSteps steps={toolSteps!} />}
         {isEmptyAndRunning && !hasToolSteps ? (
           <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
@@ -967,6 +973,34 @@ const AssistantMessage: FC = () => {
         <AssistantActionBar />
       </div>
     </MessagePrimitive.Root>
+  );
+};
+
+// "Thought for Xs" pill — collapsed by default. Click to expand the
+// model's extended-thinking trace. Italic + dimmed so it reads as a
+// secondary signal, not the answer itself.
+const ThinkingPill: FC<{ text: string; durationMs: number }> = ({ text, durationMs }) => {
+  const [open, setOpen] = useState(false);
+  const elapsed = durationMs > 0 ? fmtElapsed(durationMs) : null;
+  return (
+    <div className="aui-thinking mb-2 flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="group inline-flex items-center gap-1.5 self-start rounded-md border bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted/60 transition-colors"
+      >
+        <span className="italic">Thought</span>
+        {elapsed && (
+          <span className="font-mono tabular-nums text-muted-foreground/70">for {elapsed}</span>
+        )}
+        {open ? <ChevronUpIcon className="size-3" /> : <ChevronDownIcon className="size-3" />}
+      </button>
+      {open && (
+        <div className="ml-2 max-h-60 overflow-auto rounded-md border border-border/60 bg-muted/10 p-2 text-[11px] leading-relaxed italic text-muted-foreground whitespace-pre-wrap">
+          {text}
+        </div>
+      )}
+    </div>
   );
 };
 

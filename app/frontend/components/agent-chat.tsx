@@ -281,6 +281,7 @@ type StoreMessage = {
   createdAt: number
   status: "complete" | "running" | "error"
   toolSteps?: ToolStep[]
+  thinking?: { text: string; durationMs: number; startedAt?: number }
 }
 
 // Best-effort URL extractor for WebSearch / WebFetch results. The Claude
@@ -410,6 +411,11 @@ function fromServerMessage(
         diff: deriveDiff(h.tool, h.input),
       }))
     : undefined
+  // Engine writes metadata.thinking when extended thinking ran.
+  const persistedThinking = (meta as Record<string, unknown>).thinking as { text?: string; duration_ms?: number } | undefined
+  const thinking = persistedThinking?.text
+    ? { text: persistedThinking.text, durationMs: persistedThinking.duration_ms ?? 0 }
+    : undefined
   return {
     id: String(m.id ?? `srv-${created}`),
     role: m.role === "user" ? "user" : "assistant",
@@ -417,6 +423,7 @@ function fromServerMessage(
     createdAt: created,
     status: "complete",
     toolSteps,
+    thinking,
   }
 }
 
@@ -435,11 +442,16 @@ const storeToThreadMessage = (m: StoreMessage): ThreadMessageLike => ({
         ? { type: "incomplete" as const, reason: "error" as const }
         : { type: "complete" as const, reason: "stop" as const }
     : undefined,
-  // Tool-step pills are read out of metadata.custom in AssistantMessage —
-  // assistant-ui passes the metadata through verbatim so we can stash any
-  // shape we like.
-  metadata: m.toolSteps && m.toolSteps.length > 0
-    ? { custom: { toolSteps: m.toolSteps } }
+  // Tool-step pills + thinking trace are read out of metadata.custom in
+  // AssistantMessage — assistant-ui passes the metadata through verbatim
+  // so we can stash any shape we like.
+  metadata: (m.toolSteps && m.toolSteps.length > 0) || m.thinking
+    ? {
+        custom: {
+          ...(m.toolSteps && m.toolSteps.length > 0 ? { toolSteps: m.toolSteps } : {}),
+          ...(m.thinking ? { thinking: m.thinking } : {}),
+        },
+      }
     : undefined,
 })
 
@@ -527,6 +539,43 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   })()
   const [actionApproval, setActionApproval] = useState<ActionApprovalState>(seedActionApproval)
 
+  // Mutate the trailing pending assistant's thinking trace. Creates a
+  // placeholder bubble if needed (same pattern as mutateToolSteps).
+  const setAssistantThinking = useCallback(
+    (text: string) => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant" && last.status === "running") {
+          const startedAt = last.thinking?.startedAt ?? Date.now()
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              thinking: {
+                text,
+                durationMs: Date.now() - startedAt,
+                startedAt,
+              },
+            },
+          ]
+        }
+        const created = Date.now()
+        return [
+          ...prev,
+          {
+            id: `srv-${created}-${Math.random().toString(36).slice(2, 8)}`,
+            role: "assistant",
+            content: "",
+            createdAt: created,
+            status: "running",
+            thinking: { text, durationMs: 0, startedAt: created },
+          },
+        ]
+      })
+    },
+    [],
+  )
+
   // Mutate the trailing pending assistant's toolSteps. Creates a placeholder
   // bubble if there isn't one (rare — tool_call usually arrives after onNew
   // has seeded the placeholder). Same id-stability rule as upsertAssistant
@@ -612,6 +661,11 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         // Streaming text — overwrite the trailing pending message's content.
         if (typeof data.text === "string") {
           upsertAssistantContent(() => data.text)
+        }
+      } else if (data.type === "thinking_delta") {
+        // Extended-thinking trace — replace the running thinking text.
+        if (typeof data.text === "string") {
+          setAssistantThinking(data.text)
         }
       } else if (data.type === "tool_call") {
         // Engine started a tool invocation. Step id = the SDK tool_use id
