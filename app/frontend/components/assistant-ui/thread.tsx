@@ -87,6 +87,25 @@ export const ConnectionProposalProvider = ConnectionProposalContext.Provider;
 const AgentStatusContext = createContext<string>("running");
 export const AgentStatusProvider = AgentStatusContext.Provider;
 
+// Recovery-mode "agent is thinking" signal. True when the page mounted
+// while a run was in flight (server-driven via agentThinking prop). The
+// composer ORs this with runtime.isRunning so the same Thinking…/stop UI
+// appears whether the run is in-tab or carried over from another session.
+type RecoveryThinking = {
+  active: boolean
+  since: string | null
+  // Called when user clicks the stop button while in recovery mode — we can't
+  // actually cancel a server-side run from a fresh tab, but we can dismiss
+  // the local indicator so the user can move on.
+  dismiss: () => void
+}
+const RecoveryThinkingContext = createContext<RecoveryThinking>({
+  active: false,
+  since: null,
+  dismiss: () => {},
+});
+export const RecoveryThinkingProvider = RecoveryThinkingContext.Provider;
+
 function isAgentReady(status: string) {
   return status === "running";
 }
@@ -582,8 +601,10 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC = () => {
   const isRunning = useAuiState((s) => s.thread.isRunning);
+  const recovery = useContext(RecoveryThinkingContext);
   const agentStatus = useContext(AgentStatusContext);
   const agentReady = isAgentReady(agentStatus);
+  const busy = isRunning || recovery.active;
   // Allow typing + queueing while the agent is running — only block input
   // when the agent itself isn't ready (booting / paused / stopped). Send
   // button is queue-aware below.
@@ -591,7 +612,7 @@ const Composer: FC = () => {
 
   const placeholder = !agentReady
     ? agentLoadingLabel(agentStatus)
-    : isRunning
+    : busy
       ? "Add to queue — sends after the current reply…"
       : "Send a message — or drop files";
 
@@ -687,27 +708,76 @@ const ComposerAction: FC<{ agentReady: boolean; agentStatus: string }> = ({ agen
       <ComposerAddAttachment />
 
       <div className="flex items-center gap-2">
-        <AuiIf condition={(s) => s.thread.isRunning}>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2Icon className="size-3.5 animate-spin" />
-            <span>Thinking…</span>
-          </div>
-          <ComposerPrimitive.Cancel asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="aui-composer-cancel size-8 rounded-full text-muted-foreground hover:text-foreground"
-              aria-label="Stop generating"
-            >
-              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-            </Button>
-          </ComposerPrimitive.Cancel>
-        </AuiIf>
-
+        <ThinkingStatus />
         <QueueAwareSend />
       </div>
     </div>
+  );
+};
+
+// Single source of truth for the "agent is thinking" indicator inside the
+// composer. Shows the spinner + Stop button when EITHER the runtime is
+// running (in-tab adapter run) OR the page mounted in recovery mode (server
+// said a run was in flight). Recovery-mode click on Stop dismisses the
+// local indicator — the engine run continues server-side, but the user
+// stops staring at a stuck pill.
+const ThinkingStatus: FC = () => {
+  const isRunning = useAuiState((s) => s.thread.isRunning);
+  const recovery = useContext(RecoveryThinkingContext);
+  const showThinking = isRunning || recovery.active;
+  const [elapsed, setElapsed] = useState<string>("");
+
+  useEffect(() => {
+    if (!recovery.active || !recovery.since) {
+      setElapsed("");
+      return;
+    }
+    function tick() {
+      if (!recovery.since) return;
+      const ms = Date.now() - new Date(recovery.since).getTime();
+      const sec = Math.floor(ms / 1000);
+      if (sec < 60) setElapsed(`${sec}s`);
+      else if (sec < 3600) setElapsed(`${Math.floor(sec / 60)}m ${sec % 60}s`);
+      else setElapsed(`${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`);
+    }
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [recovery.active, recovery.since]);
+
+  if (!showThinking) return null;
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2Icon className="size-3.5 animate-spin" />
+        <span>Thinking{elapsed ? ` · ${elapsed}` : "…"}</span>
+      </div>
+      {isRunning ? (
+        <ComposerPrimitive.Cancel asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="aui-composer-cancel size-8 rounded-full text-muted-foreground hover:text-foreground"
+            aria-label="Stop generating"
+          >
+            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+          </Button>
+        </ComposerPrimitive.Cancel>
+      ) : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={recovery.dismiss}
+          className="aui-composer-cancel size-8 rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="Dismiss thinking indicator"
+        >
+          <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+        </Button>
+      )}
+    </>
   );
 };
 
@@ -721,8 +791,10 @@ const QueueAwareSend: FC = () => {
   const composerText = useAuiState((s) => s.thread.composer.text);
   const runtime = useThreadRuntime();
   const queue = useMessageQueueOptional();
+  const recovery = useContext(RecoveryThinkingContext);
+  const busy = isRunning || recovery.active;
 
-  if (!isRunning || !queue) {
+  if (!busy || !queue) {
     return (
       <ComposerPrimitive.Send asChild>
         <TooltipIconButton

@@ -11,7 +11,7 @@ import {
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
-import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
+import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider, RecoveryThinkingProvider } from "@/components/assistant-ui/thread"
 import { MessageQueueProvider, useMessageQueue } from "@/contexts/message-queue"
 import { FilePreviewProvider } from "@/contexts/file-preview"
 
@@ -491,7 +491,7 @@ interface AgentChatProps {
   agentThinking?: { since: string; message_id: number } | null
 }
 
-export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
+export function AgentChat({ agentId, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
   // Track "agent is currently working on a message" across reloads + after
   // a fresh send. Cleared when an assistant message arrives via cable.
   const [thinkingSince, setThinkingSince] = useState<string | null>(agentThinking?.since ?? null)
@@ -846,23 +846,26 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <AgentStatusProvider value={agentStatus}>
-        <CmdApprovalProvider value={cmdApproval}>
-          <ActionApprovalProvider value={actionApproval}>
-            <ConnectionProposalProvider value={connectionProposal}>
-              <MessageQueueProvider agentId={agentId}>
-                <FilePreviewProvider>
-                  <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
-                  <div className="relative h-full overflow-hidden bg-background">
-                    <Thread />
-                    {thinkingSince && (
-                      <ThinkingIndicator since={thinkingSince} agentName={agentName} />
-                    )}
-                  </div>
-                </FilePreviewProvider>
-              </MessageQueueProvider>
-            </ConnectionProposalProvider>
-          </ActionApprovalProvider>
-        </CmdApprovalProvider>
+        <RecoveryThinkingProvider value={{
+          active: thinkingSince != null,
+          since: thinkingSince,
+          dismiss: () => setThinkingSince(null),
+        }}>
+          <CmdApprovalProvider value={cmdApproval}>
+            <ActionApprovalProvider value={actionApproval}>
+              <ConnectionProposalProvider value={connectionProposal}>
+                <MessageQueueProvider agentId={agentId}>
+                  <FilePreviewProvider>
+                    <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
+                    <div className="relative h-full overflow-hidden bg-background">
+                      <Thread />
+                    </div>
+                  </FilePreviewProvider>
+                </MessageQueueProvider>
+              </ConnectionProposalProvider>
+            </ActionApprovalProvider>
+          </CmdApprovalProvider>
+        </RecoveryThinkingProvider>
       </AgentStatusProvider>
     </AssistantRuntimeProvider>
   )
@@ -899,39 +902,6 @@ function QueueDrainController({
     return () => { drainRef.current = null }
   }, [drainRef, queue, runtime])
   return null
-}
-
-// Persistent "agent is thinking" pill — rendered when the most recent
-// message in the thread is from the user and we haven't yet received the
-// assistant's reply. Hydrated from server-side state on page load so a
-// reload mid-run shows the indicator instead of dropping it silently.
-function ThinkingIndicator({ since, agentName }: { since: string; agentName: string }) {
-  const [elapsed, setElapsed] = useState<string>("")
-  useEffect(() => {
-    function tick() {
-      const ms = Date.now() - new Date(since).getTime()
-      const sec = Math.floor(ms / 1000)
-      if (sec < 60) setElapsed(`${sec}s`)
-      else if (sec < 3600) setElapsed(`${Math.floor(sec / 60)}m ${sec % 60}s`)
-      else setElapsed(`${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`)
-    }
-    tick()
-    const t = setInterval(tick, 1000)
-    return () => clearInterval(t)
-  }, [since])
-  return (
-    <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 -translate-x-1/2">
-      <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground shadow-md">
-        <span className="relative flex size-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--color-indigo)] opacity-60" />
-          <span className="relative inline-flex size-2 rounded-full bg-[var(--color-indigo)]" />
-        </span>
-        <span className="font-medium text-foreground">{agentName}</span>
-        <span>is thinking</span>
-        <span className="font-mono tabular-nums opacity-70">· {elapsed}</span>
-      </div>
-    </div>
-  )
 }
 
 // Extract and render approval cards from message text
