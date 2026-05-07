@@ -34,7 +34,7 @@ export function useMessageQueueOptional(): MessageQueueContextValue | null {
   return useContext(MessageQueueContext)
 }
 
-export function MessageQueueProvider({ agentId, children }: { agentId: number; children: ReactNode }) {
+export function MessageQueueProvider({ agentId, children }: { agentId: string | number; children: ReactNode }) {
   const storageKey = `alchemy.queue.agent.${agentId}`
   const [items, setItems] = useState<QueuedMessage[]>(() => {
     if (typeof window === "undefined") return []
@@ -66,17 +66,27 @@ export function MessageQueueProvider({ agentId, children }: { agentId: number; c
       attachments,
       createdAt: Date.now(),
     }
-    setItems((prev) => [...prev, item])
+    setItems((prev) => {
+      const next = [...prev, item]
+      itemsRef.current = next
+      return next
+    })
   }, [])
 
   const remove = useCallback((id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id))
+    setItems((prev) => {
+      const next = prev.filter((it) => it.id !== id)
+      itemsRef.current = next
+      return next
+    })
   }, [])
 
   const shift = useCallback((): QueuedMessage | undefined => {
     const head = itemsRef.current[0]
     if (!head) return undefined
-    setItems((prev) => prev.slice(1))
+    const next = itemsRef.current.slice(1)
+    itemsRef.current = next
+    setItems(next)
     return head
   }, [])
 

@@ -13,7 +13,7 @@ import {
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
 import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider, AgentNameProvider, RecoveryThinkingProvider } from "@/components/assistant-ui/thread"
-import { MessageQueueProvider, useMessageQueue } from "@/contexts/message-queue"
+import { MessageQueueProvider, useMessageQueue, type QueuedMessage } from "@/contexts/message-queue"
 import { FilePreviewProvider } from "@/contexts/file-preview"
 
 // The engine gateway lives on Fly's private 6pn network in production, so
@@ -234,7 +234,7 @@ interface PendingActionApprovalSeed {
 }
 
 interface AgentChatProps {
-  agentId: number
+  agentId: string | number
   agentName: string
   agentStatus?: string
   initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown> }[]
@@ -506,9 +506,6 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
   // Wall-clock the run started — exposed to RecoveryThinkingProvider for
   // the elapsed-time readout. Same lifecycle as isRunning.
   const [runStartedAt, setRunStartedAt] = useState<string | null>(agentThinking?.since ?? null)
-  // Drain hook for the queued-messages strip. When isRunning flips false the
-  // useEffect below dispatches the next queue item via the runtime.
-  const drainQueuedRef = useRef<(() => void) | null>(null)
   // Dedupe ids of finalized assistant messages so cable + poll racing don't
   // each call upsertAssistantContent with final=true (the second call would
   // see a non-pending trailing message and create a duplicate).
@@ -987,25 +984,13 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
     }
   }, [agentId, agentThinking?.after, upsertAssistantContent])
 
-  // Drain a queued message when the run completes — the queue strip pushes
-  // pending text in here via the drainRef set by QueueDrainController.
-  useEffect(() => {
-    if (!isRunning) drainQueuedRef.current?.()
-  }, [isRunning])
-
   const attachmentAdapter = useRef(new DirectUploadAdapter()).current
 
-  // onNew — POST the user message to Rails, optimistically add it to the
-  // store, flip isRunning. Cable / poll will land the assistant reply.
-  const onNew = useCallback(async (msg: AppendMessage) => {
-    const userText = (msg.content as Array<{ type: string; text?: string }>)
-      ?.filter((c) => c.type === "text")
-      .map((c) => c.text || "")
-      .join("\n") || ""
-
+  // POST the user message to Rails, optimistically add it to the store, and
+  // flip isRunning. Cable / poll will land the assistant reply.
+  const submitUserMessage = useCallback(async (userText: string, rawAttachments: readonly unknown[] = []) => {
     const attachmentSignedIds: string[] = []
     let userContent = userText
-    const rawAttachments = (msg.attachments ?? []) as readonly unknown[]
     for (const raw of rawAttachments) {
       const att = raw as { file?: File; name?: string; contentType?: string }
       const sid = att.file ? signedIdByFile.get(att.file) : undefined
@@ -1050,12 +1035,27 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         }),
       })
       if (!res.ok) throw new Error(`POST /webhooks/web returned ${res.status}`)
+      return true
     } catch (err) {
       upsertAssistantContent(() => `⚠️ ${(err as Error).message}`, { final: true, status: "error" })
       setIsRunning(false)
       setRunStartedAt(null)
+      return false
     }
   }, [agentId, upsertAssistantContent])
+
+  const onNew = useCallback(async (msg: AppendMessage) => {
+    const userText = (msg.content as Array<{ type: string; text?: string }>)
+      ?.filter((c) => c.type === "text")
+      .map((c) => c.text || "")
+      .join("\n") || ""
+
+    await submitUserMessage(userText, (msg.attachments ?? []) as readonly unknown[])
+  }, [submitUserMessage])
+
+  const sendQueuedMessage = useCallback(async (message: QueuedMessage) => {
+    await submitUserMessage(message.text)
+  }, [submitUserMessage])
 
   const onCancel = useCallback(async () => {
     // Best-effort — we can't actually abort an in-flight server run from
@@ -1089,7 +1089,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
               <ConnectionProposalProvider value={connectionProposal}>
                 <MessageQueueProvider agentId={agentId}>
                   <FilePreviewProvider>
-                    <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
+                    <QueueDrainController isRunning={isRunning} sendQueuedMessage={sendQueuedMessage} />
                     <div className="relative h-full overflow-hidden bg-background">
                       <Thread />
                     </div>
@@ -1105,33 +1105,32 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
   )
 }
 
-// Drain the next queued message into the runtime when the previous run
+// Drain the next queued message when the previous run
 // completes. Lives inside MessageQueueProvider so it can read the queue;
-// sets a ref the AgentChat clears via useEffect when isRunning flips false.
+// sends through AgentChat's normal POST path instead of a possibly-stale
+// assistant-ui runtime.
 function QueueDrainController({
-  drainRef,
-  runtime,
+  isRunning,
+  sendQueuedMessage,
 }: {
-  drainRef: React.MutableRefObject<(() => void) | null>
-  runtime: ReturnType<typeof useExternalStoreRuntime>
+  isRunning: boolean
+  sendQueuedMessage: (message: QueuedMessage) => Promise<void>
 }) {
   const queue = useMessageQueue()
+  const drainingRef = useRef(false)
+
   useEffect(() => {
-    drainRef.current = () => {
-      const next = queue.shift()
-      if (!next) return
-      try {
-        runtime.thread.append({
-          role: "user",
-          content: [{ type: "text", text: next.text }],
-        })
-      } catch (err) {
-        console.warn("Queue drain failed, re-queueing:", err)
-        queue.enqueue(next.text, next.attachments)
-      }
-    }
-    return () => { drainRef.current = null }
-  }, [drainRef, queue, runtime])
+    if (isRunning || drainingRef.current) return
+
+    const next = queue.shift()
+    if (!next) return
+
+    drainingRef.current = true
+    void sendQueuedMessage(next).finally(() => {
+      drainingRef.current = false
+    })
+  }, [isRunning, queue, sendQueuedMessage])
+
   return null
 }
 
