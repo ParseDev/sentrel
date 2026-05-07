@@ -581,8 +581,8 @@ export function emitToolCall(jobId: string | undefined, tool: string, input: unk
   }
 }
 
-export function emitToolResult(tool: string, result: string, toolUseId?: string): void {
-  broadcast({ type: "tool_result", tool, toolUseId, result: result.slice(0, 500), timestamp: Date.now() });
+export function emitToolResult(tool: string, result: string, toolUseId?: string, isError?: boolean): void {
+  broadcast({ type: "tool_result", tool, toolUseId, result: result.slice(0, 500), isError: !!isError, timestamp: Date.now() });
 }
 
 // Listeners for agent events (channels like Telegram subscribe to these).

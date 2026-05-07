@@ -708,6 +708,7 @@ interface ToolHistoryEntry {
   label: string;
   input?: unknown;
   result?: string;
+  is_error?: boolean;
   started_at: string;
   ended_at?: string;
 }
@@ -849,12 +850,17 @@ async function runAgentLoop(
           // and the chat UI never matched them to their pending pill.
           const matchedEntry = block.tool_use_id ? toolHistoryById.get(block.tool_use_id) : undefined;
           const resultTool = matchedEntry?.tool || block.name || "tool";
-          emitToolResult(resultTool, content, block.tool_use_id);
+          // SDK puts `is_error: true` on failed tool_result blocks. Pass
+          // through so the chat UI can paint the step red instead of the
+          // usual checkmark + tucked-away-result-drawer.
+          const isError = block.is_error === true;
+          emitToolResult(resultTool, content, block.tool_use_id, isError);
           // Close the matching history entry — store a 500-char snippet so
           // the UI can show "click to expand result" without bloating rows.
           if (block.tool_use_id && matchedEntry) {
             matchedEntry.result = typeof block.content === "string" ? block.content.slice(0, 500) : undefined;
             matchedEntry.ended_at = new Date().toISOString();
+            matchedEntry.is_error = isError;
             toolHistoryById.delete(block.tool_use_id);
           }
           // Close the matching tool_use span
