@@ -193,7 +193,8 @@ module AgentProvisioner
         end
       when "anthropic_account"
         cred = ai_provider_credential(agent.organization_id, "anthropic")
-        if cred&.access_token.present?
+        token = credential_token(cred)
+        if token.present?
           # Engine starts an in-process billing proxy on this port (see
           # alchemy_engine/src/proxy/anthropic-billing-proxy.ts). Proxy reads
           # ANTHROPIC_OAUTH_TOKEN from env, injects the Claude Code identifier
@@ -206,18 +207,19 @@ module AgentProvisioner
           # the client layer, the proxy uses ANTHROPIC_OAUTH_TOKEN to re-stamp
           # the authorization header on outbound requests to api.anthropic.com.
           env["ANTHROPIC_BASE_URL"]    = "http://127.0.0.1:18801"
-          env["ANTHROPIC_AUTH_TOKEN"]  = cred.access_token
-          env["ANTHROPIC_OAUTH_TOKEN"] = cred.access_token
+          env["ANTHROPIC_AUTH_TOKEN"]  = token
+          env["ANTHROPIC_OAUTH_TOKEN"] = token
           env["ANTHROPIC_API_KEY"]     = ""
         end
       when "openai_account"
         cred = ai_provider_credential(agent.organization_id, "openai")
-        if cred&.access_token.present?
+        token = credential_token(cred)
+        if token.present?
           # Engine starts a translator proxy that accepts Anthropic Messages
           # shape and forwards to api.openai.com/v1/responses with the OAuth
           # token. See alchemy_engine/src/proxy/openai-translator-proxy.ts.
           env["ANTHROPIC_BASE_URL"]              = "http://127.0.0.1:18802"
-          env["OPENAI_OAUTH_TOKEN"]              = cred.access_token
+          env["OPENAI_OAUTH_TOKEN"]              = token
           env["OPENAI_ACCOUNT_ID"]               = cred.account_id.to_s
           env["ANTHROPIC_API_KEY"]               = ""
           env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]   = model_id
@@ -235,6 +237,10 @@ module AgentProvisioner
       ActsAsTenant.without_tenant do
         OauthCredential.find_by(organization_id: org_id, provider: provider, kind: "ai_provider")
       end
+    end
+
+    def credential_token(cred)
+      cred&.access_token.to_s.strip.sub(/\ABearer[[:space:]]+/i, "").gsub(/[[:space:]]+/, "")
     end
 
     def ensure_app!(app_name)

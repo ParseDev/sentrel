@@ -31,7 +31,7 @@ class OauthCredential < ApplicationRecord
   end
 
   def access_token=(val)
-    self.access_token_ciphertext = val
+    self.access_token_ciphertext = sanitize_token_value(val)
   end
 
   def refresh_token
@@ -39,7 +39,7 @@ class OauthCredential < ApplicationRecord
   end
 
   def refresh_token=(val)
-    self.refresh_token_ciphertext = val
+    self.refresh_token_ciphertext = sanitize_token_value(val)
   end
 
   def expired?(skew_seconds: 60)
@@ -49,5 +49,13 @@ class OauthCredential < ApplicationRecord
 
   def expiring_soon?(within: 1.hour)
     expires_at.present? && expires_at < (Time.current + within)
+  end
+
+  private
+
+  def sanitize_token_value(val)
+    return nil if val.nil?
+
+    val.to_s.strip.sub(/\ABearer[[:space:]]+/i, "").gsub(/[[:space:]]+/, "")
   end
 end

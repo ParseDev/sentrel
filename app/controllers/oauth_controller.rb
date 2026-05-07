@@ -67,7 +67,7 @@ class OauthController < ApplicationController
       { "accessToken" => raw }
     end
 
-    access = parsed["accessToken"] || parsed["access_token"]
+    access = sanitize_token_value(parsed["accessToken"] || parsed["access_token"])
     raise "No accessToken in supplied JSON" if access.blank?
 
     cred = OauthCredential.find_or_initialize_by(
@@ -76,7 +76,7 @@ class OauthController < ApplicationController
     )
     cred.kind             = "ai_provider"
     cred.access_token     = access
-    cred.refresh_token    = parsed["refreshToken"] || parsed["refresh_token"]
+    cred.refresh_token    = sanitize_token_value(parsed["refreshToken"] || parsed["refresh_token"])
     if parsed["expiresAt"].present?
       cred.expires_at = Time.zone.at(parsed["expiresAt"].to_i / 1000)
     elsif parsed["expires_at"].present?
@@ -178,6 +178,12 @@ class OauthController < ApplicationController
   def sanitize_provider(p)
     raise ArgumentError, "unsupported provider" unless OauthCredential::PROVIDERS.include?(p.to_s)
     p.to_s
+  end
+
+  def sanitize_token_value(value)
+    return nil if value.nil?
+
+    value.to_s.strip.sub(/\ABearer[[:space:]]+/i, "").gsub(/[[:space:]]+/, "")
   end
 
   def authorize_url(provider, state:, code_challenge:)
