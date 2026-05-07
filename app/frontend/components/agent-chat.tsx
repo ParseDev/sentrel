@@ -302,8 +302,9 @@ function extractSources(result?: string, input?: unknown): ToolSource[] | undefi
   }
   return matches.slice(0, 8).map((url) => {
     // Try to grab a title nearby in the result text — search results often
-    // format as "Title\nURL" or "[Title](URL)". Best-effort, falls back to
-    // domain when nothing useful is found.
+    // format as "Title\nURL" or "[Title](URL)". Best-effort, drops obvious
+    // garbage (raw JSON fragments, key:value pairs the agent printed) and
+    // lets the chip's domain fallback take over when nothing useful is found.
     let title: string | undefined
     const idx = result.indexOf(url)
     if (idx > 0) {
@@ -315,6 +316,17 @@ function extractSources(result?: string, input?: unknown): ToolSource[] | undefi
         const last = lines[lines.length - 1]?.trim()
         if (last && last.length < 120 && !/^https?:\/\//.test(last)) title = last
       }
+    }
+    if (title) {
+      // Reject titles that look like raw JSON / key:value debris (the
+      // common case is a search result that begins "Links: [{"title":...").
+      // Letting these through made the chip read "Links: [{"title":"…".
+      const looksLikeJunk =
+        /[\{\[]/.test(title) ||
+        /^[A-Za-z_]+\s*:\s*['"\[\{]/.test(title) ||
+        title.split('"').length > 3
+      if (looksLikeJunk) title = undefined
+      else if (title.length > 80) title = title.slice(0, 79) + "…"
     }
     return { url, title }
   })
