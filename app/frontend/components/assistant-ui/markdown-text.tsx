@@ -38,6 +38,9 @@ function guessContentType(href: string, filename: string): string {
 const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
+      // Smoothing on by default in AUI; making it explicit so a library
+      // upgrade can't silently flip it off and bring the chunk-flicker back.
+      smooth
       remarkPlugins={[remarkGfm]}
       className="aui-md"
       components={defaultComponents}
