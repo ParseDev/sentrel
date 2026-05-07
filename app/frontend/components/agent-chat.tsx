@@ -251,13 +251,23 @@ interface AgentChatProps {
 // One tool invocation inside a single assistant turn — accumulated as the
 // engine streams `tool_call` / `tool_result` cable events. Rendered as a
 // step pill above the assistant content (Perplexity / Claude.ai style).
+type ToolSource = {
+  url: string
+  title?: string
+  snippet?: string
+}
+
 type ToolStep = {
   id: string         // tool_call signature: tool + first 16 chars of input
   tool: string       // raw tool name (WebSearch, mcp__composio__…)
-  label: string      // engine-generated humanized label ("🔍 Searching the web…")
+  label: string      // humanized label ("Searching the web: 'X'") — emoji stripped client-side
   result?: string    // short snippet (engine truncates to 500)
   startedAt: number
   doneAt?: number
+  // Derived display data (populated when result lands or on rehydrate):
+  sources?: ToolSource[]    // parsed URLs for WebSearch / WebFetch
+  diff?: { added: number; removed: number }   // line counts for Edit / Write
+  groupId?: string          // shared id for parallel calls started together
 }
 
 // External-store message — the source of truth the runtime renders from.
@@ -271,6 +281,70 @@ type StoreMessage = {
   createdAt: number
   status: "complete" | "running" | "error"
   toolSteps?: ToolStep[]
+}
+
+// Best-effort URL extractor for WebSearch / WebFetch results. The Claude
+// SDK returns these as text blobs that include the URLs; we pull them out
+// with a regex and present as numbered source chips. Caps at 8 sources to
+// keep the UI tidy.
+function extractSources(result?: string, input?: unknown): ToolSource[] | undefined {
+  if (!result) return undefined
+  const urlRe = /https?:\/\/[^\s<>"'\)]+/g
+  const matches = Array.from(new Set(result.match(urlRe) ?? []))
+  if (matches.length === 0) {
+    // WebFetch input has the url on input.url even before the result lands
+    if (input && typeof input === "object" && "url" in input) {
+      const u = (input as Record<string, unknown>).url
+      if (typeof u === "string" && /^https?:\/\//.test(u)) return [{ url: u }]
+    }
+    return undefined
+  }
+  return matches.slice(0, 8).map((url) => {
+    // Try to grab a title nearby in the result text — search results often
+    // format as "Title\nURL" or "[Title](URL)". Best-effort, falls back to
+    // domain when nothing useful is found.
+    let title: string | undefined
+    const idx = result.indexOf(url)
+    if (idx > 0) {
+      const before = result.slice(Math.max(0, idx - 200), idx)
+      const mdMatch = before.match(/\[([^\]]+)\]\([^)]*$/)
+      if (mdMatch) title = mdMatch[1].trim()
+      else {
+        const lines = before.trimEnd().split("\n")
+        const last = lines[lines.length - 1]?.trim()
+        if (last && last.length < 120 && !/^https?:\/\//.test(last)) title = last
+      }
+    }
+    return { url, title }
+  })
+}
+
+// Diff stats for Edit / Write tools — counts +/- lines from the input.
+function deriveDiff(tool: string, input?: unknown): { added: number; removed: number } | undefined {
+  if (!input || typeof input !== "object") return undefined
+  const inp = input as Record<string, unknown>
+  if (tool === "Write" || tool === "NotebookEdit") {
+    const content = typeof inp.content === "string" ? inp.content : ""
+    if (!content) return undefined
+    return { added: content.split("\n").length, removed: 0 }
+  }
+  if (tool === "Edit") {
+    const oldStr = typeof inp.old_string === "string" ? inp.old_string : ""
+    const newStr = typeof inp.new_string === "string" ? inp.new_string : ""
+    if (!oldStr && !newStr) return undefined
+    return {
+      added: newStr ? newStr.split("\n").length : 0,
+      removed: oldStr ? oldStr.split("\n").length : 0,
+    }
+  }
+  return undefined
+}
+
+// Strip leading emoji from engine-generated labels so we can render an
+// icon component instead — keeps the visual consistent and lucide icons
+// scale cleanly with text.
+function stripLabelEmoji(label: string): string {
+  return label.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]\s*/u, "")
 }
 
 // Inject media metadata + ActiveStorage attachments into a server-side
@@ -320,16 +394,20 @@ function fromServerMessage(
   // Engine writes metadata.tool_history; convert to the same shape the live
   // stream uses so the same render path handles both.
   const persistedHistory = Array.isArray((meta as Record<string, unknown>).tool_history)
-    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; result?: string; started_at?: string; ended_at?: string }>)
+    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; input?: unknown; result?: string; started_at?: string; ended_at?: string }>)
     : []
   const toolSteps: ToolStep[] | undefined = persistedHistory.length > 0
     ? persistedHistory.map((h, i) => ({
         id: h.id ?? `${h.tool}-${i}`,
         tool: h.tool,
-        label: h.label || h.tool,
+        label: stripLabelEmoji(h.label || h.tool),
         result: h.result,
         startedAt: h.started_at ? new Date(h.started_at).getTime() : created,
         doneAt: h.ended_at ? new Date(h.ended_at).getTime() : created,
+        sources: (h.tool === "WebSearch" || h.tool === "WebFetch")
+          ? extractSources(h.result, h.input)
+          : undefined,
+        diff: deriveDiff(h.tool, h.input),
       }))
     : undefined
   return {
@@ -539,36 +617,53 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         // Engine started a tool invocation. Step id = the SDK tool_use id
         // (carried via toolUseId in the cable event) so tool_result can
         // match correctly even when the same tool runs in parallel.
+        // groupId clusters parallel calls — anything started within 800ms
+        // of the previous in-flight step renders together under a "Running
+        // N in parallel" header.
         const id = String(data.toolUseId ?? `${data.tool}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
-        mutateToolSteps((steps) => [
-          ...steps,
-          {
-            id,
-            tool: String(data.tool || ""),
-            label: String(data.label || data.tool || "tool"),
-            startedAt: Date.now(),
-          },
-        ])
+        mutateToolSteps((steps) => {
+          const lastActive = [...steps].reverse().find((s) => !s.doneAt)
+          const groupId = lastActive && (Date.now() - lastActive.startedAt) < 800
+            ? (lastActive.groupId ?? `g-${lastActive.startedAt}`)
+            : undefined
+          // If we just promoted lastActive into a group, retro-stamp it.
+          let nextSteps = steps
+          if (groupId && lastActive && !lastActive.groupId) {
+            nextSteps = steps.map((s) => s.id === lastActive.id ? { ...s, groupId } : s)
+          }
+          return [
+            ...nextSteps,
+            {
+              id,
+              tool: String(data.tool || ""),
+              label: stripLabelEmoji(String(data.label || data.tool || "tool")),
+              startedAt: Date.now(),
+              diff: deriveDiff(String(data.tool || ""), data.input),
+              groupId,
+            },
+          ]
+        })
       } else if (data.type === "tool_result") {
         // Match by tool_use_id when present (engine sends it), otherwise
         // fall back to "latest unfinished step with same tool name". The
         // id-based path handles parallel same-tool calls correctly.
         const targetId = data.toolUseId ? String(data.toolUseId) : null
         mutateToolSteps((steps) => {
+          const finalize = (idx: number) => {
+            const cur = steps[idx]
+            const sources = (cur.tool === "WebSearch" || cur.tool === "WebFetch")
+              ? extractSources(data.result)
+              : undefined
+            const next = steps.slice()
+            next[idx] = { ...cur, doneAt: Date.now(), result: data.result, sources }
+            return next
+          }
           if (targetId) {
             const idx = steps.findIndex((s) => s.id === targetId)
-            if (idx >= 0 && !steps[idx].doneAt) {
-              const next = steps.slice()
-              next[idx] = { ...steps[idx], doneAt: Date.now(), result: data.result }
-              return next
-            }
+            if (idx >= 0 && !steps[idx].doneAt) return finalize(idx)
           }
           for (let i = steps.length - 1; i >= 0; i--) {
-            if (steps[i].tool === data.tool && !steps[i].doneAt) {
-              const next = steps.slice()
-              next[i] = { ...steps[i], doneAt: Date.now(), result: data.result }
-              return next
-            }
+            if (steps[i].tool === data.tool && !steps[i].doneAt) return finalize(i)
           }
           return steps
         })

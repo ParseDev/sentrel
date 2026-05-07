@@ -29,6 +29,8 @@ import {
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CopyIcon,
   DownloadIcon,
   MailIcon,
@@ -39,6 +41,17 @@ import {
   SquareIcon,
   XIcon,
   Loader2Icon,
+  SearchIcon,
+  GlobeIcon,
+  FileTextIcon,
+  FileEditIcon,
+  TerminalIcon,
+  FolderIcon,
+  BotIcon,
+  WrenchIcon,
+  CodeIcon,
+  ExternalLinkIcon,
+  Plug2Icon,
 } from "lucide-react";
 import { ShieldAlertIcon, CheckIcon as CheckCircleIcon, XIcon as XCircleIcon } from "lucide-react";
 import { type FC, useState, useEffect, createContext, useContext } from "react";
@@ -846,6 +859,7 @@ const MessageError: FC = () => {
   );
 };
 
+type ToolSource = { url: string; title?: string; snippet?: string };
 type ToolStep = {
   id: string;
   tool: string;
@@ -853,7 +867,52 @@ type ToolStep = {
   result?: string;
   startedAt: number;
   doneAt?: number;
+  sources?: ToolSource[];
+  diff?: { added: number; removed: number };
+  groupId?: string;
 };
+
+// Per-tool icon — keeps each step instantly recognizable in a long stack.
+// Composio / MCP tools fall through to a generic Plug2.
+function iconForTool(tool: string) {
+  if (tool === "WebSearch" || tool === "Grep" || tool === "Glob") return SearchIcon;
+  if (tool === "WebFetch") return GlobeIcon;
+  if (tool === "Read") return FileTextIcon;
+  if (tool === "Write" || tool === "Edit" || tool === "NotebookEdit") return FileEditIcon;
+  if (tool === "Bash") return TerminalIcon;
+  if (tool === "Browser") return GlobeIcon;
+  if (tool === "Skill") return CodeIcon;
+  if (tool === "Agent") return BotIcon;
+  if (tool === "Folder" || tool === "LS") return FolderIcon;
+  if (tool.startsWith("mcp__")) return Plug2Icon;
+  return WrenchIcon;
+}
+
+function fmtElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+function shortDomain(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function faviconFor(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return `https://www.google.com/s2/favicons?sz=64&domain=${u.hostname}`;
+  } catch {
+    return null;
+  }
+}
 
 const AssistantMessage: FC = () => {
   // Render a typing-dot pulse when the message is empty + still streaming —
@@ -911,65 +970,196 @@ const AssistantMessage: FC = () => {
   );
 };
 
-// Inline tool-use timeline. Each entry is a chip with a spinner while
-// active; checkmark + click-to-expand-result when done. The list collapses
-// to the most-recent entry once the assistant message reaches >2 steps.
-const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [openResults, setOpenResults] = useState<Record<string, boolean>>({});
+// Live tick for elapsed-time on running steps. One source of truth per
+// ToolSteps mount — any rendering child using formatElapsed reads this.
+function useNowTick(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [active]);
+  return now;
+}
 
-  let active: ToolStep | undefined;
-  for (let i = steps.length - 1; i >= 0; i--) {
-    if (!steps[i].doneAt) { active = steps[i]; break; }
-  }
-  const visible = expanded ? steps : active ? [active] : steps.slice(-1);
-  const hidden = steps.length - visible.length;
+// One row in the timeline — handles spinner / checkmark, icon, label,
+// elapsed timer, diff badge, optional expand-to-show-result drawer, and
+// the source-chip strip beneath WebSearch / WebFetch results.
+const ToolStepRow: FC<{ step: ToolStep; now: number; nested?: boolean }> = ({ step, now, nested }) => {
+  const [resultOpen, setResultOpen] = useState(false);
+  const Icon = iconForTool(step.tool);
+  const isAgentDelegation = step.tool === "Agent";
+  const elapsedMs = (step.doneAt ?? now) - step.startedAt;
+  const showElapsed = elapsedMs >= 700;
+  const expandable = !!step.result;
+  const summary = step.doneAt && step.sources && step.sources.length > 0
+    ? `${step.sources.length} ${step.sources.length === 1 ? "source" : "sources"}`
+    : null;
 
   return (
-    <div className="aui-tool-steps mb-2 flex flex-col gap-1">
-      {hidden > 0 && (
+    <div className={cn("flex flex-col gap-1", nested && "pl-4 border-l border-border/50")}>
+      <button
+        type="button"
+        disabled={!expandable}
+        onClick={() => setResultOpen((v) => !v)}
+        className={cn(
+          "group flex items-center gap-2 self-start rounded-lg border px-2.5 py-1 text-[11px] text-foreground/85 transition-colors",
+          expandable ? "cursor-pointer hover:bg-muted/60" : "cursor-default",
+          step.doneAt
+            ? "border-border/60 bg-muted/30"
+            : "border-foreground/15 bg-muted/50",
+          isAgentDelegation && "border-indigo-400/40 bg-indigo-500/5",
+        )}
+      >
+        <span className={cn(
+          "flex size-5 shrink-0 items-center justify-center rounded-md",
+          step.doneAt ? "bg-muted text-muted-foreground" : "bg-foreground/10 text-foreground",
+          isAgentDelegation && "bg-indigo-500/15 text-indigo-500",
+        )}>
+          {step.doneAt ? (
+            <Icon className="size-3" />
+          ) : (
+            <Loader2Icon className="size-3 animate-spin" />
+          )}
+        </span>
+        <span className="truncate max-w-[420px] font-medium">{step.label}</span>
+        {step.diff && (step.diff.added > 0 || step.diff.removed > 0) && (
+          <span className="flex items-center gap-1 font-mono text-[10px]">
+            {step.diff.added > 0 && <span className="text-emerald-500">+{step.diff.added}</span>}
+            {step.diff.removed > 0 && <span className="text-red-500">-{step.diff.removed}</span>}
+          </span>
+        )}
+        {showElapsed && (
+          <span className="font-mono tabular-nums text-muted-foreground/70">
+            {fmtElapsed(elapsedMs)}
+          </span>
+        )}
+        {summary && (
+          <span className="text-muted-foreground/70">· {summary}</span>
+        )}
+        {step.doneAt && (
+          <CheckIcon className="ml-auto size-3 text-emerald-500/80" />
+        )}
+        {expandable && (
+          <span className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
+            {resultOpen ? <ChevronUpIcon className="size-3" /> : <ChevronDownIcon className="size-3" />}
+          </span>
+        )}
+      </button>
+
+      {step.sources && step.sources.length > 0 && (
+        <div className="ml-7 flex flex-wrap gap-1.5">
+          {step.sources.map((src, i) => {
+            const fav = faviconFor(src.url);
+            const domain = shortDomain(src.url);
+            return (
+              <a
+                key={`${src.url}-${i}`}
+                href={src.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={src.title || src.url}
+                className="inline-flex max-w-[200px] items-center gap-1.5 rounded-md border bg-card px-2 py-0.5 text-[10px] text-foreground/80 hover:border-foreground/30 hover:bg-muted/40 transition-colors"
+              >
+                {fav ? (
+                  <img src={fav} alt="" className="size-3 rounded-sm" />
+                ) : (
+                  <ExternalLinkIcon className="size-2.5" />
+                )}
+                <span className="font-mono text-muted-foreground/70">{i + 1}.</span>
+                <span className="truncate">{src.title || domain}</span>
+              </a>
+            );
+          })}
+        </div>
+      )}
+
+      {resultOpen && step.result && (
+        <pre className="ml-7 max-h-40 overflow-auto rounded-md border border-border/60 bg-muted/20 p-2 text-[10px] font-mono whitespace-pre-wrap text-muted-foreground">
+          {step.result}
+        </pre>
+      )}
+    </div>
+  );
+};
+
+// Inline tool-use timeline. Steps stream in, group parallel calls, and
+// collapse after completion to a single "Used N tools (Xs)" pill that
+// expands the full timeline on click. Sub-agent delegations render as
+// nested blocks with their own header + accent border.
+const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
+  const hasActive = steps.some((s) => !s.doneAt);
+  const [forceOpen, setForceOpen] = useState(false);
+  const now = useNowTick(hasActive);
+
+  // Group consecutive steps that share a groupId into a single "running in
+  // parallel" block. Singletons get rendered directly.
+  type Group = { id: string; steps: ToolStep[] };
+  const groups: Group[] = [];
+  for (const step of steps) {
+    const last = groups[groups.length - 1];
+    if (step.groupId && last && last.id === step.groupId) {
+      last.steps.push(step);
+    } else if (step.groupId) {
+      groups.push({ id: step.groupId, steps: [step] });
+    } else {
+      groups.push({ id: step.id, steps: [step] });
+    }
+  }
+
+  const allDone = !hasActive;
+  const totalElapsed = steps.length > 0
+    ? Math.max(...steps.map((s) => (s.doneAt ?? now) - s.startedAt))
+    : 0;
+  const collapsedSummary = allDone && !forceOpen && steps.length > 1;
+
+  if (collapsedSummary) {
+    return (
+      <button
+        type="button"
+        onClick={() => setForceOpen(true)}
+        className="aui-tool-steps mb-2 inline-flex items-center gap-2 self-start rounded-lg border bg-muted/30 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted/60 transition-colors"
+      >
+        <CheckIcon className="size-3 text-emerald-500/80" />
+        <span>Used {steps.length} tools</span>
+        <span className="font-mono tabular-nums text-muted-foreground/70">{fmtElapsed(totalElapsed)}</span>
+        <ChevronDownIcon className="size-3" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="aui-tool-steps mb-2 flex flex-col gap-1.5">
+      {forceOpen && allDone && (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
-          className="self-start text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setForceOpen(false)}
+          className="self-start text-[10px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
         >
-          ↑ {hidden} earlier {hidden === 1 ? "step" : "steps"}
+          collapse
         </button>
       )}
-      {visible.map((step) => {
-        const isOpen = openResults[step.id];
-        const elapsedMs = (step.doneAt ?? Date.now()) - step.startedAt;
-        const elapsed = elapsedMs > 1500 ? ` · ${(elapsedMs / 1000).toFixed(1)}s` : "";
+      {groups.map((group) => {
+        if (group.steps.length === 1) {
+          return <ToolStepRow key={group.steps[0].id} step={group.steps[0]} now={now} />;
+        }
+        // Parallel group — render under a small header.
+        const groupActive = group.steps.some((s) => !s.doneAt);
         return (
-          <div key={step.id} className="flex flex-col gap-1">
-            <button
-              type="button"
-              disabled={!step.result}
-              onClick={() => setOpenResults((p) => ({ ...p, [step.id]: !p[step.id] }))}
-              className={cn(
-                "group flex items-center gap-2 self-start rounded-md border bg-muted/40 px-2.5 py-1 text-[11px] text-foreground/80",
-                step.result ? "cursor-pointer hover:bg-muted/70" : "cursor-default",
-                !step.doneAt && "border-border/80 bg-muted/60",
-              )}
-            >
-              {step.doneAt ? (
-                <CheckIcon className="size-3 text-emerald-500/80" />
+          <div key={group.id} className="rounded-lg border border-dashed border-border/60 p-1.5">
+            <div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+              {groupActive ? (
+                <Loader2Icon className="size-2.5 animate-spin" />
               ) : (
-                <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
+                <CheckIcon className="size-2.5 text-emerald-500/80" />
               )}
-              <span className="truncate max-w-[420px]">{step.label}</span>
-              {elapsed && <span className="font-mono tabular-nums text-muted-foreground/70">{elapsed}</span>}
-              {step.result && (
-                <span className="text-[10px] text-muted-foreground/60 ml-auto">
-                  {isOpen ? "hide" : "show"}
-                </span>
-              )}
-            </button>
-            {isOpen && step.result && (
-              <pre className="ml-4 max-h-32 overflow-auto rounded-md border border-border/60 bg-muted/20 p-2 text-[10px] font-mono whitespace-pre-wrap text-muted-foreground">
-                {step.result}
-              </pre>
-            )}
+              {group.steps.length} in parallel
+            </div>
+            <div className="flex flex-col gap-1">
+              {group.steps.map((step) => (
+                <ToolStepRow key={step.id} step={step} now={now} />
+              ))}
+            </div>
           </div>
         );
       })}
