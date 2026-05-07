@@ -161,7 +161,10 @@ Rails.application.routes.draw do
       resources :runs, only: [:index, :show]
       get "cost", to: "cost#index"
       # Item 7 — delegation tree view: one row per top-level user request,
-      # expandable to show every spawned task across agents.
+      # expandable to show every spawned task across agents. The `by_job`
+      # route lets the chat UI deep-link to a trace when it only knows the
+      # engine's job_id (carried on the assistant Message's metadata).
+      get "traces/by_job/:job_id", to: "traces#by_job", as: :traces_by_job
       resources :traces, only: [:index, :show]
     end
 

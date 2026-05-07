@@ -283,6 +283,7 @@ type StoreMessage = {
   status: "complete" | "running" | "error"
   toolSteps?: ToolStep[]
   thinking?: { text: string; durationMs: number; startedAt?: number }
+  jobId?: string
 }
 
 // Best-effort URL extractor for WebSearch / WebFetch results. The Claude
@@ -430,6 +431,9 @@ function fromServerMessage(
   const thinking = persistedThinking?.text
     ? { text: persistedThinking.text, durationMs: persistedThinking.duration_ms ?? 0 }
     : undefined
+  const jobId = typeof (meta as Record<string, unknown>).job_id === "string"
+    ? ((meta as Record<string, unknown>).job_id as string)
+    : undefined
   return {
     id: String(m.id ?? `srv-${created}`),
     role: m.role === "user" ? "user" : "assistant",
@@ -438,6 +442,7 @@ function fromServerMessage(
     status: "complete",
     toolSteps,
     thinking,
+    jobId,
   }
 }
 
@@ -456,14 +461,16 @@ const storeToThreadMessage = (m: StoreMessage): ThreadMessageLike => ({
         ? { type: "incomplete" as const, reason: "error" as const }
         : { type: "complete" as const, reason: "stop" as const }
     : undefined,
-  // Tool-step pills + thinking trace are read out of metadata.custom in
-  // AssistantMessage — assistant-ui passes the metadata through verbatim
-  // so we can stash any shape we like.
-  metadata: (m.toolSteps && m.toolSteps.length > 0) || m.thinking
+  // Tool-step pills + thinking trace + jobId for the View Trace button are
+  // read out of metadata.custom in AssistantMessage / AssistantActionBar —
+  // assistant-ui passes the metadata through verbatim so we can stash any
+  // shape we like.
+  metadata: (m.toolSteps && m.toolSteps.length > 0) || m.thinking || m.jobId
     ? {
         custom: {
           ...(m.toolSteps && m.toolSteps.length > 0 ? { toolSteps: m.toolSteps } : {}),
           ...(m.thinking ? { thinking: m.thinking } : {}),
+          ...(m.jobId ? { jobId: m.jobId } : {}),
         },
       }
     : undefined,
@@ -627,14 +634,17 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
   // change the existing message's id once it's been issued — AUI's
   // MessageRepository treats id changes as duplicates and crashes the tree.
   const upsertAssistantContent = useCallback(
-    (mutator: (current: string) => string, opts?: { final?: boolean; status?: StoreMessage["status"] }) => {
+    (
+      mutator: (current: string) => string,
+      opts?: { final?: boolean; status?: StoreMessage["status"]; extra?: Partial<StoreMessage> },
+    ) => {
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         const status = opts?.status ?? (opts?.final ? "complete" : "running")
         if (last?.role === "assistant" && last.status === "running") {
           return [
             ...prev.slice(0, -1),
-            { ...last, content: mutator(last.content), status },
+            { ...last, content: mutator(last.content), status, ...opts?.extra },
           ]
         }
         // No pending placeholder yet — create one with a fresh id.
@@ -647,6 +657,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
             content: mutator(""),
             createdAt: created,
             status,
+            ...opts?.extra,
           },
         ]
       })
@@ -764,7 +775,11 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
             ? `\n\n![${med.filename}](${med.url})`
             : `\n\n[Download ${med.filename}](${med.url})`
         }
-        upsertAssistantContent(() => body, { final: true })
+        const persistedJobId = typeof data.metadata?.job_id === "string" ? data.metadata.job_id : undefined
+        upsertAssistantContent(() => body, {
+          final: true,
+          extra: persistedJobId ? { jobId: persistedJobId } : undefined,
+        })
         setIsRunning(false)
         setRunStartedAt(null)
       } else if (data.type === "error") {

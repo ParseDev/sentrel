@@ -55,6 +55,43 @@ class Ops::TracesController < ApplicationController
     }
   end
 
+  # GET /ops/traces/by_job/:job_id — same as #show but keyed on the engine's
+  # job_id, which is what the chat UI carries on the assistant Message
+  # metadata. Walks back to the inbound_message root that originated this
+  # job, then redirects so the user lands on a clean #show URL.
+  def by_job
+    job_id = params[:job_id].to_s
+    root = current_tenant.audit_logs
+      .where(job_id: job_id)
+      .where(action: %w[inbound_message scheduled_task])
+      .order(created_at: :desc)
+      .first
+    if root.nil?
+      # The job_id may be from a child run; walk to the root via the
+      # task's parent chain.
+      child = current_tenant.audit_logs.find_by(job_id: job_id)
+      if child&.task_id
+        ancestor_task = Task.find_by(id: child.task_id)
+        while ancestor_task&.parent_task_id
+          ancestor_task = Task.find_by(id: ancestor_task.parent_task_id)
+        end
+        if ancestor_task
+          root = current_tenant.audit_logs
+            .where(action: %w[inbound_message scheduled_task])
+            .where(agent_id: ancestor_task.assigned_by_agent_id)
+            .where("created_at <= ?", ancestor_task.created_at)
+            .order(created_at: :desc)
+            .first
+        end
+      end
+    end
+    if root
+      redirect_to ops_trace_path(root.to_param)
+    else
+      redirect_to ops_traces_path, alert: "No trace found for that job"
+    end
+  end
+
   private
 
   # Walk forward from each root through:

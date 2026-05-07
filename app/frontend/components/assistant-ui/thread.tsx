@@ -52,6 +52,7 @@ import {
   CodeIcon,
   ExternalLinkIcon,
   Plug2Icon,
+  ActivityIcon,
 } from "lucide-react";
 import { ShieldAlertIcon, CheckIcon as CheckCircleIcon, XIcon as XCircleIcon } from "lucide-react";
 import { type FC, useState, useEffect, createContext, useContext } from "react";
@@ -1370,6 +1371,13 @@ function InlineEmailCard({ email }: { email: { approvalId: number; to: string; c
 }
 
 const AssistantActionBar: FC = () => {
+  // Pull job_id off the message metadata so the View Trace button can deep-
+  // link to /ops/traces/by_job/:job_id. Engine writes this when persisting
+  // the assistant message; rehydrate carries it through fromServerMessage.
+  const jobId = useAuiState((s) => {
+    const custom = (s.message.metadata as { custom?: { jobId?: string } } | undefined)?.custom;
+    return custom?.jobId;
+  }) as string | undefined;
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -1391,6 +1399,17 @@ const AssistantActionBar: FC = () => {
           <RefreshCwIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
+      {jobId && (
+        <a
+          href={`/ops/traces/by_job/${encodeURIComponent(jobId)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="View trace"
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          <ActivityIcon className="size-4" />
+        </a>
+      )}
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
           <TooltipIconButton
