@@ -269,6 +269,7 @@ type ToolStep = {
   sources?: ToolSource[]    // parsed URLs for WebSearch / WebFetch
   diff?: { added: number; removed: number }   // line counts for Edit / Write
   groupId?: string          // shared id for parallel calls started together
+  parentId?: string         // parent Agent tool_use id when nested under a sub-agent
 }
 
 // External-store message — the source of truth the runtime renders from.
@@ -409,7 +410,7 @@ function fromServerMessage(
   // Engine writes metadata.tool_history; convert to the same shape the live
   // stream uses so the same render path handles both.
   const persistedHistory = Array.isArray((meta as Record<string, unknown>).tool_history)
-    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; input?: unknown; result?: string; is_error?: boolean; started_at?: string; ended_at?: string }>)
+    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; input?: unknown; result?: string; is_error?: boolean; started_at?: string; ended_at?: string; parent_tool_use_id?: string }>)
     : []
   const toolSteps: ToolStep[] | undefined = persistedHistory.length > 0
     ? persistedHistory.map((h, i) => ({
@@ -424,6 +425,7 @@ function fromServerMessage(
           ? extractSources(h.result, h.input)
           : undefined,
         diff: deriveDiff(h.tool, h.input),
+        parentId: h.parent_tool_use_id,
       }))
     : undefined
   // Engine writes metadata.thinking when extended thinking ran.
@@ -700,6 +702,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         // of the previous in-flight step renders together under a "Running
         // N in parallel" header.
         const id = String(data.toolUseId ?? `${data.tool}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
+        const parentId = typeof data.parentToolUseId === "string" ? data.parentToolUseId : undefined
         mutateToolSteps((steps) => {
           const lastActive = [...steps].reverse().find((s) => !s.doneAt)
           const groupId = lastActive && (Date.now() - lastActive.startedAt) < 800
@@ -719,6 +722,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
               startedAt: Date.now(),
               diff: deriveDiff(String(data.tool || ""), data.input),
               groupId,
+              parentId,
             },
           ]
         })

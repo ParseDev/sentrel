@@ -891,6 +891,7 @@ type ToolStep = {
   sources?: ToolSource[];
   diff?: { added: number; removed: number };
   groupId?: string;
+  parentId?: string;
 };
 
 // Per-tool icon — keeps each step instantly recognizable in a long stack.
@@ -1219,18 +1220,34 @@ const ToolStepRow: FC<{ step: ToolStep; now: number; nested?: boolean }> = ({ st
 
 // Inline tool-use timeline. Steps stream in, group parallel calls, and
 // collapse after completion to a single "Used N tools (Xs)" pill that
-// expands the full timeline on click. Sub-agent delegations render as
-// nested blocks with their own header + accent border.
+// expands the full timeline on click. Sub-agent delegations (the `Agent`
+// tool) render as nested blocks: their child tool calls indent under the
+// parent's row, accent-bordered to read as one delegated unit.
 const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
   const hasActive = steps.some((s) => !s.doneAt);
   const [forceOpen, setForceOpen] = useState(false);
   const now = useNowTick(hasActive);
 
-  // Group consecutive steps that share a groupId into a single "running in
-  // parallel" block. Singletons get rendered directly.
+  // Build a parent → children map. Top-level steps have no parentId or a
+  // parentId that doesn't match any in this list (e.g. recovered slice).
+  const childrenByParent = new Map<string, ToolStep[]>();
+  const idSet = new Set(steps.map((s) => s.id));
+  const topLevel: ToolStep[] = [];
+  for (const step of steps) {
+    if (step.parentId && idSet.has(step.parentId)) {
+      const arr = childrenByParent.get(step.parentId) ?? [];
+      arr.push(step);
+      childrenByParent.set(step.parentId, arr);
+    } else {
+      topLevel.push(step);
+    }
+  }
+
+  // Group consecutive top-level steps sharing a groupId. Children always
+  // render inside their parent (no parallel grouping at sub-agent depth).
   type Group = { id: string; steps: ToolStep[] };
   const groups: Group[] = [];
-  for (const step of steps) {
+  for (const step of topLevel) {
     const last = groups[groups.length - 1];
     if (step.groupId && last && last.id === step.groupId) {
       last.steps.push(step);
@@ -1275,7 +1292,14 @@ const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
       )}
       {groups.map((group) => {
         if (group.steps.length === 1) {
-          return <ToolStepRow key={group.steps[0].id} step={group.steps[0]} now={now} />;
+          return (
+            <ToolStepRowWithChildren
+              key={group.steps[0].id}
+              step={group.steps[0]}
+              now={now}
+              childrenByParent={childrenByParent}
+            />
+          );
         }
         // Parallel group — render under a small header.
         const groupActive = group.steps.some((s) => !s.doneAt);
@@ -1291,12 +1315,46 @@ const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
             </div>
             <div className="flex flex-col gap-1">
               {group.steps.map((step) => (
-                <ToolStepRow key={step.id} step={step} now={now} />
+                <ToolStepRowWithChildren
+                  key={step.id}
+                  step={step}
+                  now={now}
+                  childrenByParent={childrenByParent}
+                />
               ))}
             </div>
           </div>
         );
       })}
+    </div>
+  );
+};
+
+// Renders a step + its sub-agent children indented underneath. The
+// children's children render recursively too (multi-hop delegation, if
+// the SDK ever does that). Stays flat for non-Agent steps so we don't add
+// chrome where none is needed.
+const ToolStepRowWithChildren: FC<{
+  step: ToolStep;
+  now: number;
+  childrenByParent: Map<string, ToolStep[]>;
+}> = ({ step, now, childrenByParent }) => {
+  const children = childrenByParent.get(step.id) ?? [];
+  return (
+    <div className="flex flex-col gap-1">
+      <ToolStepRow step={step} now={now} />
+      {children.length > 0 && (
+        <div className="ml-4 flex flex-col gap-1 border-l border-indigo-400/30 pl-3">
+          {children.map((child) => (
+            <ToolStepRowWithChildren
+              key={child.id}
+              step={child}
+              now={now}
+              childrenByParent={childrenByParent}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
