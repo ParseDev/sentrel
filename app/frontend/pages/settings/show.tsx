@@ -1,5 +1,5 @@
 import { Head, useForm } from "@inertiajs/react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Copy, Check, Loader2, RefreshCw } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -20,6 +20,12 @@ interface Member {
   created_at: string
 }
 
+interface ManagedDnsInfo {
+  zones: Array<{ zone: string; provider: string }>
+  suggested_subdomain: string | null
+  auto_connect?: boolean
+}
+
 interface Props {
   organization: {
     id: number
@@ -31,9 +37,10 @@ interface Props {
   }
   members: Member[]
   anthropic_account?: AiAccount
+  managed_dns?: ManagedDnsInfo
 }
 
-export default function SettingsShow({ organization, members, anthropic_account }: Props) {
+export default function SettingsShow({ organization, members, anthropic_account, managed_dns }: Props) {
   const { data, setData, patch, processing } = useForm({
     organization: {
       name: organization.name,
@@ -107,6 +114,7 @@ export default function SettingsShow({ organization, members, anthropic_account 
           onDomainChange={(val) => setData("organization", { ...data.organization, email_domain: val })}
           onSave={handleSubmit}
           processing={processing}
+          managedDns={managed_dns}
         />
 
         {/* Organization Context */}
@@ -186,12 +194,13 @@ interface AutoDnsResult {
   error?: string
 }
 
-function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave, processing }: {
+function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave, processing, managedDns }: {
   organization: Props["organization"]
   emailDomain: string
   onDomainChange: (val: string) => void
   onSave: (e: React.FormEvent) => void
   processing: boolean
+  managedDns?: ManagedDnsInfo
 }) {
   const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([])
   const [autoDns, setAutoDns] = useState<AutoDnsResult | null>(null)
@@ -283,10 +292,62 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
     setTimeout(() => setCopiedIdx(null), 2000)
   }
 
+  // Auto-trigger Connect when we land on the page with ?connect=1 (set by
+  // the claim-subdomain redirect) so the user lands on a fully-configured
+  // domain without an extra click.
+  useEffect(() => {
+    if (managedDns?.auto_connect && organization.email_domain && !organization.email_domain_verified && dnsRecords.length === 0) {
+      connectDomain()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function claimManagedSubdomain(domain: string) {
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      const form = document.createElement("form")
+      form.method = "POST"
+      form.action = "/settings/claim_managed_subdomain"
+      const csrfInput = document.createElement("input")
+      csrfInput.type = "hidden"
+      csrfInput.name = "authenticity_token"
+      csrfInput.value = csrf()
+      form.appendChild(csrfInput)
+      const domainInput = document.createElement("input")
+      domainInput.type = "hidden"
+      domainInput.name = "domain"
+      domainInput.value = domain
+      form.appendChild(domainInput)
+      document.body.appendChild(form)
+      form.submit()
+    } catch (e) {
+      setErrorMsg((e as Error).message || "Network error")
+      setLoading(false)
+    }
+  }
+
   return (
     <section>
       <Overline className="mb-3">Email Domain</Overline>
       <div className="rounded-lg border border-border p-4 space-y-4">
+        {!organization.email_domain && managedDns?.suggested_subdomain && (
+          <div className="rounded-md border border-indigo-300 bg-indigo-50 p-3 text-[12px] text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">Use a managed subdomain</div>
+                <div className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80 mt-0.5">
+                  We'll create <span className="font-mono">{managedDns.suggested_subdomain}</span> on{" "}
+                  <span className="font-mono">{managedDns.zones[0]?.zone}</span> and provision DNS automatically — zero copy/paste.
+                </div>
+              </div>
+              <Button type="button" size="sm" className="h-7 text-xs shrink-0" onClick={() => claimManagedSubdomain(managedDns.suggested_subdomain!)} disabled={loading}>
+                {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+                Get it
+              </Button>
+            </div>
+          </div>
+        )}
         <form onSubmit={onSave} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email_domain">Domain</Label>

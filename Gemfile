@@ -32,6 +32,7 @@ gem "twilio-ruby"
 gem "aws-sdk-ec2"
 gem "aws-sdk-ses"
 gem "aws-sdk-sns"
+gem "aws-sdk-route53"
 # ActiveStorage S3 service. Bucket alchemy-prod / us-east-1, configured in
 # config/storage.yml. Reuses AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env.
 gem "aws-sdk-s3", require: false

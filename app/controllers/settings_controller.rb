@@ -1,6 +1,27 @@
 class SettingsController < ApplicationController
   before_action :authenticate_user!
 
+  # POST /settings/claim_managed_subdomain
+  # One-click "give me <slug>.<our-zone>" — sets organization.email_domain to
+  # the suggested subdomain, then runs the same auto-DNS flow as
+  # verify_domain so the user is fully set up in one action.
+  def claim_managed_subdomain
+    suggested = Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug)
+    return render json: { error: "No managed zone configured" }, status: :unprocessable_entity unless suggested
+
+    requested = params[:domain].to_s.strip.presence || suggested
+    unless Email::DnsAutoConfigurator.managed?(requested)
+      return render json: { error: "#{requested} is not under any managed zone" }, status: :unprocessable_entity
+    end
+
+    if ChannelConfig.where(channel_type: "email").where("config->>'address' LIKE ?", "%@#{requested}").exists?
+      return render json: { error: "#{requested} is already in use" }, status: :conflict
+    end
+
+    current_tenant.update!(email_domain: requested, email_domain_verified: false)
+    redirect_to settings_path(connect: 1), notice: "Claimed #{requested}; we'll auto-configure DNS now."
+  end
+
   def show
     # Subscription auth (Anthropic Pro/Max paste-token) lives here, not on
     # /integrations — different mental model. /integrations is "what services
@@ -22,6 +43,11 @@ class SettingsController < ApplicationController
         account_email: anthropic_cred&.account_email,
         expires_at: anthropic_cred&.expires_at,
         last_refreshed_at: anthropic_cred&.last_refreshed_at,
+      },
+      managed_dns: {
+        zones: Email::DnsAutoConfigurator.available_zones,
+        suggested_subdomain: Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug),
+        auto_connect: params[:connect] == "1",
       },
     }
   end

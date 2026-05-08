@@ -185,6 +185,7 @@ Rails.application.routes.draw do
     resource :settings, only: [:show, :update] do
       post :verify_domain
       post :check_domain_verification
+      post :claim_managed_subdomain
     end
   end
 
