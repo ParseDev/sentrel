@@ -29,6 +29,17 @@ import type {
   SearchMessagesFilters,
 } from "./host.js";
 
+// Resolve the Rails URL the engine should hit. Prod (Fly machines) sets
+// RAILS_INTERNAL_URL via the provisioner; dev sets RAILS_API_URL. Falls
+// back to localhost so local-runs work out of the box.
+function railsUrl(): string {
+  return (
+    process.env.RAILS_INTERNAL_URL ||
+    process.env.RAILS_API_URL ||
+    "http://localhost:3200"
+  );
+}
+
 // First meaningful line of an identity_md — skips blank lines + markdown
 // headings. Trimmed to 180 chars so the team roster injected into the
 // system prompt stays compact.
@@ -845,7 +856,7 @@ export class PostgresHost implements Host {
     filename: string,
     contentType: string,
   ): Promise<BlobUploadResult> {
-    const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
+    const url = railsUrl();
     const secret = process.env.ENGINE_API_SECRET;
     if (!secret) {
       throw new Error("uploadBlob: ENGINE_API_SECRET not set");
@@ -854,7 +865,7 @@ export class PostgresHost implements Host {
     const formData = new FormData();
     formData.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), filename);
 
-    const res = await fetch(`${railsUrl}/api/blobs`, {
+    const res = await fetch(`${url}/api/blobs`, {
       method: "POST",
       headers: { "X-Engine-Secret": secret },
       body: formData,
@@ -875,11 +886,11 @@ export class PostgresHost implements Host {
   }
 
   async loadBlob(signedId: string): Promise<{ bytes: Buffer; filename: string; contentType: string }> {
-    const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
+    const url = railsUrl();
     const secret = process.env.ENGINE_API_SECRET;
     if (!secret) throw new Error("loadBlob: ENGINE_API_SECRET not set");
 
-    const res = await fetch(`${railsUrl}/api/blobs/${encodeURIComponent(signedId)}`, {
+    const res = await fetch(`${url}/api/blobs/${encodeURIComponent(signedId)}`, {
       headers: { "X-Engine-Secret": secret },
     });
 
@@ -900,11 +911,11 @@ export class PostgresHost implements Host {
   // ── Email sending ──
 
   async sendEmail(payload: Record<string, unknown>): Promise<void> {
-    const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
+    const url = railsUrl();
     const secret = process.env.ENGINE_API_SECRET;
     if (!secret) throw new Error("sendEmail: ENGINE_API_SECRET not set");
 
-    const res = await fetch(`${railsUrl}/api/send_email`, {
+    const res = await fetch(`${url}/api/send_email`, {
       method: "POST",
       headers: {
         "X-Engine-Secret": secret,
