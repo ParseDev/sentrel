@@ -288,7 +288,7 @@ class ChannelConfigsController < ApplicationController
       # Rule already exists — fine
     end
 
-    Rails.logger.info "SES inbound configured: #{address} → #{topic_arn} → #{webhook_url}"
+    Rails.logger.info "SES inbound configured: #{address} → #{topic_arn} → #{webhook_base_url}/webhooks/email"
   end
 
   def configure_twilio_webhooks(number, channel_type)
