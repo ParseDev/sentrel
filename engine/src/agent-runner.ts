@@ -1,11 +1,10 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { randomUUID } from "crypto";
 import { config } from "./config.js";
 import { host } from "./host/index.js";
 import { syncMemoryToDb } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
 import { buildPrompt } from "./prompt-builder.js";
-import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
 import { consolidateAtRotation } from "./memory-consolidation.js";
 import { decideRotation, contextWindowFor, DEFAULT_ROTATION } from "./session-rotation.js";
@@ -21,7 +20,7 @@ import { resolveActionApproval } from "./security/action-approval.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
-import { hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
+import { detectIntegrationIntents, hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
 import { scanCommand } from "./security/command-scanner.js";
@@ -48,6 +47,9 @@ import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
 import { deliverToOrigin } from "./channels/origin-delivery.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
+import { getCachedSystemPrompt } from "./runtime/system-prompt-cache.js";
+import { createSdkQuery } from "./runtime/warm-query-pool.js";
+import { runLockKey, withConversationRunLock } from "./runtime/conversation-locks.js";
 
 // Item 8 (rotation rebuild) — session rotation now uses Hermes/OpenClaw-style
 // token-utilization triggers. The old turn-count cap is kept as a hard fail-
@@ -59,6 +61,10 @@ const SESSION_TURN_HARD_CAP = 200;
 // Claude Agent SDK loop. Heavy lifting (prompt, outbox, approvals, summarization)
 // lives in dedicated modules.
 export async function runAgent(agent: Agent, job: JobData): Promise<void> {
+  return withConversationRunLock(runLockKey(job), job.jobId, () => runAgentUnlocked(agent, job));
+}
+
+async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
   const startTime = Date.now();
   const spans = new SpanCollector();
   const rootSpan = spans.start("runAgent", { jobType: job.type, agentId: agent.id });
@@ -308,7 +314,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   }
 
   // ── Sprint 6: sync skills from DB to workspace ──
+  const skillsSpan = spans.start("sync_skills");
   const skills = await syncSkillsFromDb(agent.id);
+  spans.end(skillsSpan, { count: skills.length });
 
   // ── Sprint 2: process media attachments (transcribe audio, save files) ──
   // Prefer the URL-resolved `attachments` array (presigned S3 URLs from the
@@ -317,13 +325,17 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const attachmentInputs = job.payload?.attachments?.length
     ? job.payload.attachments
     : (job.payload?.attachment_ids || []);
+  const mediaSpan = spans.start("process_attachments", { count: attachmentInputs.length });
   const processedMedia = attachmentInputs.length > 0
     ? await processAttachments(attachmentInputs)
     : [];
+  spans.end(mediaSpan, { count: processedMedia.length });
 
   // ── Build prompt with refreshed history + summaries + processed media ──
   const conversationId = conversation?.id;
+  const historySpan = spans.start("load_history", { conversationId });
   const history = conversationId ? await host.getConversationHistory(conversationId, 20) : [];
+  spans.end(historySpan, { count: history.length });
 
   // Step 5.5 — if this is a task_assignment with prior checkpoint state, read
   // it so prompt-builder can inject a "Resuming task" block. Lets agents pick
@@ -338,15 +350,35 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // through hybrid search, threshold-filter, inject passages into the
   // prompt. No decision, no regex gate — the agent never has to "decide"
   // to call search_knowledge for the common case.
-  const knowledgePrefetch = await prefetchKnowledge(agent, job);
+  const prefetchProfile = buildToolProfile(agent, job, history, null);
+  const knowledgeSpan = spans.start("knowledge_prefetch", { skipped: prefetchProfile.fastChat });
+  const knowledgePrefetch = prefetchProfile.fastChat ? null : await prefetchKnowledge(agent, job);
+  spans.end(knowledgeSpan, { passages: knowledgePrefetch?.passages?.length ?? 0 });
 
+  const promptSpan = spans.start("build_prompt");
   const built = buildPrompt(agent, job, history, conversation, processedMedia, taskCheckpoint, knowledgePrefetch);
+  spans.end(promptSpan, { chars: built.promptText.length });
 
   // Shared state so the search_integrations tool can call setMcpServers()
   // to dynamically add Composio toolkits mid-session (same user interaction).
   const queryState = createQueryState();
 
-  const { options, relevantToolkits } = await buildQueryOptions(agent, job, queryState, history);
+  const optionsSpan = spans.start("build_query_options");
+  const builtOptions = await buildQueryOptions(agent, job, queryState, history, knowledgePrefetch);
+  const {
+    options,
+    relevantToolkits,
+    connectedToolkits,
+    profile,
+    promptAgent,
+  } = builtOptions;
+  let warmKey = builtOptions.warmKey;
+  spans.end(optionsSpan, {
+    relevantToolkits,
+    connectedToolkits: connectedToolkits.length,
+    fastChat: profile.fastChat,
+    mcpServers: Object.keys((options.mcpServers as Record<string, unknown>) || {}),
+  });
 
   // Layer 1: pre-load toolkits the agent used in its last 3 runs — warm start
   // so "try again" doesn't need to re-search. Other toolkits load on-demand.
@@ -357,15 +389,28 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // the inbound channel poller / Rails webhook) lets us also load that user's
   // private toolkits — e.g. their personal Gmail — alongside the workspace
   // shared ones. Falls back to org-only when the job has no associated user.
-  const originatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
-    ?? (job as { user_id?: number }).user_id;
-  const allConnectedToolkits = await getActiveToolkits(agent.organization_id, originatingUserId);
-  const teammates = (await host.getTeammates(agent.organization_id, agent.id)).map((t) => ({
-    name: t.name, slug: t.slug, role: t.role, managerId: t.manager_id,
+  const teammatesSpan = spans.start("load_teammates");
+  const teammates = (profile.tasks ? await host.getTeammates(agent.organization_id, agent.id) : []).map((t) => ({
+    name: t.name,
+    slug: t.slug,
+    role: t.role,
+    managerId: t.manager_id,
+    summary: t.summary,
+    skills: t.skills,
   }));
-  options.systemPrompt = buildSystemPrompt(agent, skills, allConnectedToolkits, teammates);
+  spans.end(teammatesSpan, { count: teammates.length });
+
+  const systemPromptSpan = spans.start("system_prompt");
+  const systemPrompt = getCachedSystemPrompt(promptAgent, skills, connectedToolkits, teammates);
+  options.systemPrompt = systemPrompt.prompt;
+  spans.end(systemPromptSpan, {
+    cacheHit: systemPrompt.cacheHit,
+    key: systemPrompt.key,
+    chars: systemPrompt.prompt.length,
+  });
   if (resumeSessionId) {
     options.resume = resumeSessionId;
+    warmKey = null;
   }
   if (isReportbackJob) {
     // Report-backs should transform a downstream result into a concise update.
@@ -380,7 +425,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // (30-turn cap), so load times stay reasonable. BullMQ's job lock (10 min)
     // catches pathological hangs.
     const modelTurnSpan = spans.start("agent_loop", { resumed: !!resumeSessionId });
-    let result = await runAgentLoop(built.promptText, options, queryState, spans, jobId);
+    let result = await runAgentLoop(built.promptText, options, queryState, spans, jobId, warmKey);
     spans.end(modelTurnSpan, { response_length: result.responseContent.length });
 
     // If a resumed run yielded nothing, the session jsonl on disk is gone
@@ -394,7 +439,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       delete (options as any).resume;
       resumeSessionId = null;
       const retrySpan = spans.start("agent_loop_retry", { reason: "empty_resume" });
-      result = await runAgentLoop(built.promptText, options, queryState, spans, jobId);
+      result = await runAgentLoop(built.promptText, options, queryState, spans, jobId, null);
       spans.end(retrySpan, { response_length: result.responseContent.length });
     }
 
@@ -890,6 +935,7 @@ async function runAgentLoop(
   queryState: QueryState,
   spans: SpanCollector | undefined,
   jobId: string,
+  warmKey: string | null,
 ): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
   let responseContent = "";
@@ -918,7 +964,10 @@ async function runAgentLoop(
     await new Promise<void>((resolve) => { closeInputStream = resolve; });
   }
 
-  const q = query({ prompt: userMessageStream(), options: options as any });
+  const queryCreateSpan = spans?.start("sdk_query_create", { warmKey });
+  const queryHandle = await createSdkQuery(userMessageStream(), options as Options, warmKey);
+  spans?.end(queryCreateSpan ?? -1, { warmed: queryHandle.warmed });
+  const q = queryHandle.query;
   queryState.current = q;
 
   // Track open tool_use spans so we can close them when matching tool_result arrives
@@ -958,7 +1007,23 @@ async function runAgentLoop(
       const mcpTools = toolNames.filter((t: string) => t.startsWith("mcp__") && !t.startsWith("mcp__composio__"));
       const hasKnowledge = toolNames.includes("mcp__knowledge__search_knowledge");
       logger.info(`SDK init: ${composioTools.length} Composio, ${mcpTools.length} other MCP, knowledge=${hasKnowledge ? "yes" : "NO"}`);
-      if (!hasKnowledge) {
+      spans?.event("sdk_init", {
+        warmed: queryHandle.warmed,
+        composioTools: composioTools.length,
+        mcpTools: mcpTools.length,
+        hasKnowledge,
+      });
+      void q.getContextUsage()
+        .then((usage) => {
+          logger.info(`SDK context usage: ${JSON.stringify(usage).slice(0, 1200)}`);
+          spans?.event("sdk_context_usage", usage as unknown as Record<string, unknown>);
+        })
+        .catch((err) => {
+          logger.warn("SDK context usage unavailable", { error: (err as Error).message });
+        });
+      const expectedKnowledge = Array.isArray(options.allowedTools) &&
+        (options.allowedTools as string[]).includes("mcp__knowledge__search_knowledge");
+      if (expectedKnowledge && !hasKnowledge) {
         logger.warn(`search_knowledge NOT in allowedTools! MCP tools seen: ${mcpTools.join(", ")}`);
       }
     }
@@ -1102,6 +1167,95 @@ async function runAgentLoop(
 interface BuiltQueryOptions {
   options: Record<string, unknown>;
   relevantToolkits: string[];
+  connectedToolkits: string[];
+  warmKey: string | null;
+  profile: ToolProfile;
+  promptAgent: Agent;
+}
+
+interface ToolProfile {
+  recall: boolean;
+  sendMedia: boolean;
+  scheduling: boolean;
+  tasks: boolean;
+  approvals: boolean;
+  knowledge: boolean;
+  integrations: boolean;
+  fastChat: boolean;
+}
+
+function buildRoutingText(job: JobData, history: Message[] = []): string {
+  const text = [
+    job.payload?.instruction || "",
+    job.payload?.body || "",
+    job.payload?.subject || "",
+    ...history.slice(-2).map((m) => m.content),
+  ].join(" ");
+  const cap = Number(process.env.ENGINE_ROUTING_TEXT_MAX_CHARS || 6000);
+  return text.length > cap ? text.slice(0, cap) : text;
+}
+
+function buildToolProfile(
+  agent: Agent,
+  job: JobData,
+  history: Message[] = [],
+  knowledgePrefetch?: { passages?: unknown[] } | null,
+): ToolProfile {
+  const caps = resolveCapabilities(agent);
+  const text = buildRoutingText(job, history);
+  const isInbound = job.type === "inbound_message";
+  const isTask = job.type === "task_assignment";
+  const isScheduled = job.type === "scheduled_task" || job.type === "heartbeat";
+  const hasAttachments = Boolean(job.payload?.attachments?.length || job.payload?.attachment_ids?.length);
+  const integrationIntent = detectIntegrationIntents(text).length > 0 || /\b(connect|integration|oauth|apollo|gmail|google\s*(sheets?|docs?|calendar|drive)|hubspot|slack|notion|airtable|github|vercel)\b/i.test(text);
+  const taskIntent = /\b(task|todo|delegate|assign|ask\s+(sam|alex|casper)|follow\s*up|progress|status update)\b/i.test(text);
+  const schedulingIntent = /\b(remind|reminder|schedule|calendar|meeting|appointment|cron|every\s+(day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tomorrow|next\s+week)\b/i.test(text);
+  const recallIntent = /\b(remember|previous|earlier|last time|what did (i|we|you)|history|conversation)\b/i.test(text);
+  const knowledgeIntent = /\b(policy|contract|document|docs|knowledge|playbook|uploaded|company info|handbook)\b/i.test(text);
+  const mediaIntent = hasAttachments || /\b(send|create|attach|voice|audio|image|screenshot|file|pdf|csv)\b/i.test(text);
+  const webIntent = /\b(find|search|research|look up|latest|current|today|news|website|web)\b/i.test(text);
+  const timeIntent = /\b(what time|current time|date today|what date|right now)\b/i.test(text);
+  const confirmationIntent = /\b(approve|approval|confirm|confirmation|permission|ask me first|ask before|before you|ok to|okay to|should i|would you like|reply yes|yes\/no|send it|publish it|post it|delete it|spend)\b/i.test(text);
+
+  const profile: ToolProfile = {
+    recall: Boolean(caps.recall.enabled && (isTask || isScheduled || recallIntent)),
+    sendMedia: Boolean(caps.send_media.enabled && (isTask || isScheduled || mediaIntent)),
+    scheduling: Boolean(caps.scheduling.enabled && (isTask || isScheduled || schedulingIntent)),
+    tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent)),
+    approvals: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent)),
+    knowledge: Boolean(caps.knowledge_base.enabled && (isTask || isScheduled || knowledgeIntent || (knowledgePrefetch?.passages?.length ?? 0) > 0)),
+    integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent)),
+    fastChat: false,
+  };
+
+  profile.fastChat = Boolean(
+    isInbound &&
+    !hasAttachments &&
+    !profile.recall &&
+    !profile.sendMedia &&
+    !profile.scheduling &&
+    !profile.tasks &&
+    !profile.knowledge &&
+    !profile.integrations &&
+    !webIntent &&
+    !timeIntent &&
+    !confirmationIntent
+  );
+
+  return profile;
+}
+
+function agentForToolProfile(agent: Agent, profile: ToolProfile): Agent {
+  const capabilities = {
+    ...agent.capabilities,
+    recall: { ...(agent.capabilities.recall || { enabled: false }), enabled: profile.recall },
+    send_media: { ...(agent.capabilities.send_media || { enabled: false }), enabled: profile.sendMedia },
+    scheduling: { ...(agent.capabilities.scheduling || { enabled: false }), enabled: profile.scheduling },
+    tasks: { ...(agent.capabilities.tasks || { enabled: false }), enabled: profile.tasks },
+    knowledge_base: { ...(agent.capabilities.knowledge_base || { enabled: false }), enabled: profile.knowledge },
+    integrations: { ...(agent.capabilities.integrations || { enabled: false }), enabled: profile.integrations },
+  };
+  return { ...agent, capabilities };
 }
 
 async function buildQueryOptions(
@@ -1109,9 +1263,8 @@ async function buildQueryOptions(
   job: JobData,
   queryState: QueryState,
   history: Message[] = [],
+  knowledgePrefetch?: { passages?: unknown[] } | null,
 ): Promise<BuiltQueryOptions> {
-  const subAgents = await buildSubAgentDefinitions(agent);
-
   if (config.anthropicBaseUrl) {
     process.env.ANTHROPIC_BASE_URL = config.anthropicBaseUrl;
   }
@@ -1119,16 +1272,19 @@ async function buildQueryOptions(
   // Capability-gated MCP server registration. Agents only pay for tools
   // they have enabled. See `capabilities.ts` for defaults.
   const caps = resolveCapabilities(agent);
+  const profile = buildToolProfile(agent, job, history, knowledgePrefetch);
+  const promptAgent = agentForToolProfile(agent, profile);
+  const subAgents = profile.tasks ? await buildSubAgentDefinitions(agent) : {};
   const mcpServers: Record<string, unknown> = {};
   const baseMcpServers: Record<string, unknown> = {};
 
-  if (caps.recall.enabled) {
+  if (caps.recall.enabled && profile.recall) {
     const recallServer = buildRecallMcpServer(agent.organization_id);
     mcpServers.recall = recallServer;
     baseMcpServers.recall = recallServer;
   }
 
-  if (caps.send_media.enabled) {
+  if (caps.send_media.enabled && profile.sendMedia) {
     // Read bot number from channel config so WhatsApp From number is correct
     const channelConfigs = await host.getChannelConfigs(String(agent.id));
     const waConfig = channelConfigs.find((c) => c.channel_type === "whatsapp");
@@ -1142,7 +1298,7 @@ async function buildQueryOptions(
     baseMcpServers["send-media"] = sendMediaServer;
   }
 
-  if (caps.scheduling.enabled) {
+  if (caps.scheduling.enabled && profile.scheduling) {
     const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
     mcpServers.scheduling = schedulingServer;
     baseMcpServers.scheduling = schedulingServer;
@@ -1158,14 +1314,16 @@ async function buildQueryOptions(
       ? { channel: job.channel, metadata: job.payload?.metadata || {}, conversationId: job.conversationId ?? null }
       : undefined;
 
-  if (caps.tasks.enabled) {
+  if (caps.tasks.enabled && profile.tasks) {
     const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id, taskOrigin, job.payload?.taskId);
     mcpServers.tasks = tasksServer;
     baseMcpServers.tasks = tasksServer;
+  }
 
-    // Item 4 — generic approval tool (request_approval). Lives next to tasks
-    // because it shares the same origin propagation: the user's channel needs
-    // to receive the approval card.
+  if (caps.tasks.enabled && profile.approvals) {
+    // Item 4 — generic approval tool (request_approval). Kept separately
+    // from task tools so integration-heavy inbound jobs can request approval
+    // without loading the whole task-management surface.
     const approvalsServer = buildApprovalsMcpServer({
       agentId: agent.id,
       orgId: agent.organization_id,
@@ -1175,7 +1333,7 @@ async function buildQueryOptions(
     baseMcpServers.approvals = approvalsServer;
   }
 
-  if (caps.knowledge_base.enabled) {
+  if (caps.knowledge_base.enabled && profile.knowledge) {
     const knowledgeServer = buildKnowledgeMcpServer(agent.id, agent.organization_id);
     mcpServers.knowledge = knowledgeServer;
     baseMcpServers.knowledge = knowledgeServer;
@@ -1184,10 +1342,10 @@ async function buildQueryOptions(
   // Integrations capability gates both `integrations` (search) and
   // `composio` (actual execution tools). Disable the capability to
   // produce a pure-knowledge/internal agent with no external tool access.
-  let connectedToolkits: string[] = [];
   let composioToolNames: string[] = [];
   let relevantToolkits: string[] = [];
-  if (caps.integrations.enabled) {
+  let allConnectedToolkits: string[] = [];
+  if (caps.integrations.enabled && profile.integrations) {
     const buildOriginatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
       ?? (job as { user_id?: number }).user_id;
     const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState, buildOriginatingUserId);
@@ -1215,16 +1373,12 @@ async function buildQueryOptions(
     //   load ADDITIONAL toolkits mid-session if needed.
     // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
     const availableToolkits = await getActiveToolkits(agent.organization_id, buildOriginatingUserId);
+    allConnectedToolkits = availableToolkits;
     const toolRouting = process.env.TOOL_ROUTING || "smart";
 
     const layer1 = await getRecentComposioToolkits(agent.id);
 
-    const routingText = [
-      job.payload?.instruction || "",
-      job.payload?.body || "",
-      job.payload?.subject || "",
-      ...history.slice(-2).map((m) => m.content),
-    ].join(" ");
+    const routingText = buildRoutingText(job, history);
     const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
     const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
 
@@ -1250,7 +1404,6 @@ async function buildQueryOptions(
     const toolPolicies = await host.getAgentToolPolicies(agent.id);
     const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits, buildOriginatingUserId, toolPolicies);
     const composioServer = composioResult?.server;
-    connectedToolkits = composioResult?.toolkits || [];
     composioToolNames = composioResult?.toolNames || [];
 
     if (composioServer) {
@@ -1258,6 +1411,8 @@ async function buildQueryOptions(
       // Note: composio is NOT in baseMcpServers — search_integrations
       // swaps composio servers via setMcpServers, but keeps the base set intact.
     }
+  } else if (caps.integrations.enabled) {
+    logger.info(`Tool routing: skipped for job profile (fastChat=${profile.fastChat})`);
   } else {
     logger.info(`Tool routing: integrations capability disabled — no composio/integrations MCP servers`);
   }
@@ -1268,13 +1423,9 @@ async function buildQueryOptions(
 
   logger.info(`MCP servers registered: ${Object.keys(mcpServers).join(", ") || "none"}`);
 
-  const options: Record<string, unknown> = {
-    cwd: config.dataDir,
-    // SDK isolation — don't load the user's ~/.claude/settings.json (which
-    // brings in personal MCP servers like Linear/Sentry/Gmail and pollutes
-    // the agent's tool list with 60+ unrelated tools).
-    settingSources: [],
-    allowedTools: [
+  const builtinTools = profile.fastChat
+    ? []
+    : [
       "Skill",
       "Agent",
       "Read",
@@ -1285,32 +1436,42 @@ async function buildQueryOptions(
       "WebSearch",
       "WebFetch",
       "Browser",
+    ];
+
+  const options: Record<string, unknown> = {
+    cwd: config.dataDir,
+    // SDK isolation — don't load the user's ~/.claude/settings.json (which
+    // brings in personal MCP servers like Linear/Sentry/Gmail and pollutes
+    // the agent's tool list with 60+ unrelated tools).
+    settingSources: [],
+    allowedTools: [
+      ...builtinTools,
       // Capability-gated MCP tools — only listed when their server is registered
-      ...(caps.recall.enabled ? [
+      ...(caps.recall.enabled && profile.recall ? [
         "mcp__recall__search_messages",
         "mcp__recall__search_activity",
       ] : []),
-      ...(caps.send_media.enabled ? [
+      ...(caps.send_media.enabled && profile.sendMedia ? [
         "mcp__send-media__send_voice",
         "mcp__send-media__send_image",
         "mcp__send-media__send_file",
       ] : []),
-      ...(caps.integrations.enabled ? [
+      ...(caps.integrations.enabled && profile.integrations ? [
         "mcp__integrations__search_integrations",
         // Composio tools: explicit list (wildcards may not match)
         ...composioToolNames.map((name) => `mcp__composio__${name}`),
       ] : []),
-      ...(caps.knowledge_base.enabled ? [
+      ...(caps.knowledge_base.enabled && profile.knowledge ? [
         "mcp__knowledge__search_knowledge",
         "mcp__knowledge__share_to_org",
       ] : []),
-      ...(caps.scheduling.enabled ? [
+      ...(caps.scheduling.enabled && profile.scheduling ? [
         "mcp__scheduling__schedule_task",
         "mcp__scheduling__set_reminder",
         "mcp__scheduling__list_schedules",
         "mcp__scheduling__delete_schedule",
       ] : []),
-      ...(caps.tasks.enabled ? [
+      ...(caps.tasks.enabled && profile.tasks ? [
         "mcp__tasks__create_task",
         "mcp__tasks__list_tasks",
         "mcp__tasks__update_task",
@@ -1322,6 +1483,9 @@ async function buildQueryOptions(
         "mcp__tasks__progress_update",
         "mcp__tasks__ask_agent",
         "mcp__tasks__escalate",
+      ] : []),
+      ...(caps.tasks.enabled && profile.approvals ? [
+        "mcp__approvals__request_approval",
       ] : []),
     ],
     permissionMode: "bypassPermissions",
@@ -1445,7 +1609,18 @@ async function buildQueryOptions(
     options.maxThinkingTokens = thinkingBudget[thinkingLevel];
   }
 
-  return { options, relevantToolkits };
+  const mcpCount = Object.keys(mcpServers).length;
+  const warmKey = profile.fastChat && !options.resume && mcpCount === 0
+    ? `agent:${agent.id}:fast-chat:${agent.updated_at ?? "unknown"}:${agent.ai_config?.provider ?? "default"}:${agent.ai_config?.model_id ?? "default"}`
+    : null;
+  return {
+    options,
+    relevantToolkits,
+    connectedToolkits: allConnectedToolkits,
+    warmKey,
+    profile,
+    promptAgent,
+  };
 }
 
 // Scheduled-task channel delivery. Fires after a non-silent scheduled job

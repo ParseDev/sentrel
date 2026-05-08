@@ -22,6 +22,7 @@ export interface Agent {
   id: number;
   organization_id: number;
   manager_id: number | null;
+  updated_at?: string;
   name: string;
   slug: string;
   role: string;

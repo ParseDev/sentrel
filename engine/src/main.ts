@@ -16,6 +16,8 @@ import { initWhatsApp, stopWhatsApp } from "./channels/whatsapp.js";
 import { initSentry, setAgentContext, captureException, flush as flushSentry } from "./sentry.js";
 import { startAnthropicBillingProxy, stopAnthropicBillingProxy } from "./proxy/anthropic-billing-proxy.js";
 import { startOpenAITranslatorProxy, stopOpenAITranslatorProxy } from "./proxy/openai-translator-proxy.js";
+import { invalidateSystemPromptCache } from "./runtime/system-prompt-cache.js";
+import { drainWarmQueryPool } from "./runtime/warm-query-pool.js";
 import { logger, flushLogs } from "./logger.js";
 import type { JobData } from "./types.js";
 
@@ -52,15 +54,19 @@ async function main() {
   const embedInit = initToolEmbeddings().catch((err) =>
     logger.warn("Tool embeddings init failed, using fallbacks", { error: (err as Error).message }),
   );
+  let embedTimedOut = false;
+  let embedTimeout: ReturnType<typeof setTimeout> | null = null;
   await Promise.race([
     embedInit,
     new Promise<void>((resolve) =>
-      setTimeout(() => {
+      embedTimeout = setTimeout(() => {
+        embedTimedOut = true;
         logger.warn("Tool embeddings still loading after 30s — continuing without waiting");
         resolve();
       }, 30_000),
     ),
   ]);
+  if (!embedTimedOut && embedTimeout) clearTimeout(embedTimeout);
 
   // Item 5 — pull the supported-integrations list from Rails (which proxies
   // Composio's auth_configs). Cached + auto-refreshed every 30 min so adding
@@ -99,6 +105,8 @@ async function main() {
   setSyncHandler(async () => {
     const freshAgent = await host.getAgent(config.employeeId);
     invalidateToolkitsCache(freshAgent.organization_id);
+    invalidateSystemPromptCache(freshAgent.id);
+    drainWarmQueryPool(`agent:${freshAgent.id}:`);
     syncWorkspace(freshAgent);
     provisionSkills(freshAgent);
     // DB-installed skills (the ones a user enables on /agents/:id/edit) need

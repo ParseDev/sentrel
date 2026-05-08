@@ -11,6 +11,7 @@ export function buildSystemPrompt(
   skills?: AgentSkill[],
   connectedToolkits: string[] = [],
   teammates: Array<{ name: string; slug: string; role: string; managerId?: number | null; summary?: string | null; skills?: string[] }> = [],
+  options: { includeCurrentTime?: boolean; now?: Date } = {},
 ): string {
   const orgName = agent.organization?.name || "the company";
   const orgContext = agent.organization?.context_md?.trim();
@@ -310,10 +311,15 @@ export function buildSystemPrompt(
     }
   }
 
-  const now = new Date();
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const localTime = now.toLocaleString("en-US", { timeZone: tz, dateStyle: "full", timeStyle: "long" });
-  parts.push(`Current time: ${localTime} (${tz})\nISO: ${now.toISOString()}\nIMPORTANT: When setting reminders, pass the ISO datetime to set_reminder. But when telling the user the time, ALWAYS say it in local time (${tz}), never UTC.`);
+  if (options.includeCurrentTime !== false) {
+    parts.push(buildCurrentTimeSection(options.now));
+  }
 
   return parts.join("\n\n");
+}
+
+export function buildCurrentTimeSection(now = new Date()): string {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const localTime = now.toLocaleString("en-US", { timeZone: tz, dateStyle: "full", timeStyle: "long" });
+  return `Current time: ${localTime} (${tz})\nISO: ${now.toISOString()}\nIMPORTANT: When setting reminders, pass the ISO datetime to set_reminder. But when telling the user the time, ALWAYS say it in local time (${tz}), never UTC.`;
 }
