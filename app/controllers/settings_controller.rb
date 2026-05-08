@@ -1,20 +1,54 @@
 class SettingsController < ApplicationController
   before_action :authenticate_user!
 
-  # POST /settings/claim_managed_subdomain
-  # One-click "give me <slug>.<our-zone>" — sets organization.email_domain to
-  # the suggested subdomain, then runs the same auto-DNS flow as
-  # verify_domain so the user is fully set up in one action.
-  def claim_managed_subdomain
-    suggested = Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug)
-    return render json: { error: "No managed zone configured" }, status: :unprocessable_entity unless suggested
+  # GET /settings/subdomain_availability?label=acme[&zone=double.md]
+  # Live availability check for the subdomain picker. Returns whether
+  # `<label>.<zone>` is reserved (already used by another org or our own
+  # email channel configs). Cheap query — debounced from the UI.
+  def subdomain_availability
+    label = sanitize_subdomain_label(params[:label])
+    zone  = params[:zone].presence || Email::DnsAutoConfigurator.available_zones.first&.dig(:zone)
+    if label.blank? || zone.blank?
+      return render json: { available: false, reason: "Enter a subdomain (letters, numbers, hyphens)" }
+    end
+    full = "#{label}.#{zone}"
 
-    requested = params[:domain].to_s.strip.presence || suggested
+    if Organization.where("LOWER(email_domain) = ?", full).where.not(id: current_tenant.id).exists?
+      return render json: { available: false, full: full, reason: "already taken by another workspace" }
+    end
+    if ChannelConfig.where(channel_type: "email").where("LOWER(config->>'address') LIKE ?", "%@#{full}").exists?
+      return render json: { available: false, full: full, reason: "already in use" }
+    end
+
+    render json: { available: true, full: full }
+  end
+
+  # POST /settings/claim_managed_subdomain
+  # One-click "give me <label>.<zone>" — sets organization.email_domain to
+  # the picked subdomain, then redirects to settings with ?connect=1 so the
+  # page auto-runs Connect on mount. Accepts either a `label` (just the
+  # subdomain part — preferred path from the picker UI) or a full `domain`
+  # (legacy / "claim suggested" button).
+  def claim_managed_subdomain
+    zone = params[:zone].presence || Email::DnsAutoConfigurator.available_zones.first&.dig(:zone)
+    if (label = params[:label].to_s.strip).present? && zone
+      sanitized = sanitize_subdomain_label(label)
+      return render json: { error: "Invalid subdomain — letters, numbers, hyphens only" }, status: :unprocessable_entity if sanitized.blank?
+      requested = "#{sanitized}.#{zone}"
+    else
+      suggested = Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug)
+      requested = params[:domain].to_s.strip.presence || suggested
+    end
+
+    return render json: { error: "No managed zone configured" }, status: :unprocessable_entity unless requested
     unless Email::DnsAutoConfigurator.managed?(requested)
       return render json: { error: "#{requested} is not under any managed zone" }, status: :unprocessable_entity
     end
 
-    if ChannelConfig.where(channel_type: "email").where("config->>'address' LIKE ?", "%@#{requested}").exists?
+    if Organization.where("LOWER(email_domain) = ?", requested).where.not(id: current_tenant.id).exists?
+      return render json: { error: "#{requested} is already taken" }, status: :conflict
+    end
+    if ChannelConfig.where(channel_type: "email").where("LOWER(config->>'address') LIKE ?", "%@#{requested}").exists?
       return render json: { error: "#{requested} is already in use" }, status: :conflict
     end
 
@@ -141,6 +175,14 @@ class SettingsController < ApplicationController
 
   def organization_params
     params.require(:organization).permit(:name, :email_domain, :context_md, :email_provider, :email_aws_region)
+  end
+
+  # Strict subdomain label: lowercase, alphanum + hyphen, 1-63 chars, can't
+  # start/end with hyphen. Matches DNS RFC 1035 label rules.
+  def sanitize_subdomain_label(raw)
+    cleaned = raw.to_s.downcase.gsub(/[^a-z0-9-]/, "-").gsub(/-+/, "-").gsub(/\A-|-\z/, "")
+    return nil if cleaned.empty? || cleaned.length > 63
+    cleaned
   end
 
   def build_dns_records(domain, verification_token, dkim_tokens)

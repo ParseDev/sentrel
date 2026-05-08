@@ -1,6 +1,6 @@
 import { Head, useForm } from "@inertiajs/react"
 import { useEffect, useRef, useState } from "react"
-import { Copy, Check, Loader2, RefreshCw } from "lucide-react"
+import { Copy, Check, Loader2, RefreshCw, X } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -302,7 +302,7 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function claimManagedSubdomain(domain: string) {
+  async function claimManagedSubdomain(args: { label?: string; zone?: string; domain?: string }) {
     setLoading(true)
     setErrorMsg(null)
     try {
@@ -314,11 +314,14 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
       csrfInput.name = "authenticity_token"
       csrfInput.value = csrf()
       form.appendChild(csrfInput)
-      const domainInput = document.createElement("input")
-      domainInput.type = "hidden"
-      domainInput.name = "domain"
-      domainInput.value = domain
-      form.appendChild(domainInput)
+      for (const [k, v] of Object.entries(args)) {
+        if (!v) continue
+        const i = document.createElement("input")
+        i.type = "hidden"
+        i.name = k
+        i.value = v
+        form.appendChild(i)
+      }
       document.body.appendChild(form)
       form.submit()
     } catch (e) {
@@ -331,62 +334,78 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
     <section>
       <Overline className="mb-3">Email Domain</Overline>
       <div className="rounded-lg border border-border p-4 space-y-4">
-        {!organization.email_domain && managedDns?.suggested_subdomain && (
-          <div className="rounded-md border border-indigo-300 bg-indigo-50 p-3 text-[12px] text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-200">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold">Use a managed subdomain</div>
-                <div className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80 mt-0.5">
-                  We'll create <span className="font-mono">{managedDns.suggested_subdomain}</span> on{" "}
-                  <span className="font-mono">{managedDns.zones[0]?.zone}</span> and provision DNS automatically — zero copy/paste.
-                </div>
-              </div>
-              <Button type="button" size="sm" className="h-7 text-xs shrink-0" onClick={() => claimManagedSubdomain(managedDns.suggested_subdomain!)} disabled={loading}>
-                {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
-                Get it
-              </Button>
-            </div>
-          </div>
+        {!organization.email_domain && managedDns?.zones && managedDns.zones.length > 0 && (
+          <SubdomainPicker
+            defaultLabel={managedDns.suggested_subdomain?.split(".")[0] || ""}
+            zone={managedDns.zones[0].zone}
+            onProvision={(label, zone) => claimManagedSubdomain({ label, zone })}
+            loading={loading}
+          />
         )}
-        <form onSubmit={onSave} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email_domain">Domain</Label>
-            <div className="flex items-center gap-3">
-              <Input
-                id="email_domain"
-                placeholder="team.company.com"
-                value={emailDomain}
-                onChange={(e) => onDomainChange(e.target.value)}
-                className="flex-1"
-              />
-              {organization.email_domain_verified ? (
-                <Badge className="bg-emerald-600 shrink-0 text-[10px]">Verified</Badge>
-              ) : organization.email_domain ? (
-                <Badge variant="secondary" className="shrink-0 text-[10px]">{verificationStatus || "Pending"}</Badge>
-              ) : null}
+        {organization.email_domain && (
+          <form onSubmit={onSave} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email_domain">Domain</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="email_domain"
+                  placeholder="team.company.com"
+                  value={emailDomain}
+                  onChange={(e) => onDomainChange(e.target.value)}
+                  className="flex-1"
+                />
+                {organization.email_domain_verified ? (
+                  <Badge className="bg-emerald-600 shrink-0 text-[10px]">Verified</Badge>
+                ) : (
+                  <Badge variant="secondary" className="shrink-0 text-[10px]">{verificationStatus || "Pending"}</Badge>
+                )}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Agents send emails from @{emailDomain || "your-domain.com"}
+              </p>
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              Agents send emails from @{emailDomain || "your-domain.com"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 justify-end">
-            <Button type="submit" disabled={processing} variant="outline" size="sm" className="h-7 text-xs">
-              {processing ? "Saving..." : "Save Domain"}
-            </Button>
-            {organization.email_domain && !organization.email_domain_verified && (
-              <>
-                <Button type="button" size="sm" className="h-7 text-xs" onClick={connectDomain} disabled={loading}>
-                  {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
-                  {dnsRecords.length > 0 ? "Refresh records" : "Connect domain"}
+            <div className="flex items-center gap-2 justify-end">
+              <Button type="submit" disabled={processing} variant="outline" size="sm" className="h-7 text-xs">
+                {processing ? "Saving..." : "Save Domain"}
+              </Button>
+              {!organization.email_domain_verified && (
+                <>
+                  <Button type="button" size="sm" className="h-7 text-xs" onClick={connectDomain} disabled={loading}>
+                    {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+                    {dnsRecords.length > 0 ? "Refresh records" : "Connect domain"}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={checkVerification} disabled={checking}>
+                    {checking ? <Loader2 className="size-3 animate-spin mr-1" /> : <RefreshCw className="size-3 mr-1" />}
+                    Verify
+                  </Button>
+                </>
+              )}
+            </div>
+          </form>
+        )}
+
+        {!organization.email_domain && (
+          <details className="text-[11px] text-muted-foreground">
+            <summary className="cursor-pointer hover:text-foreground transition-colors">Use your own domain instead</summary>
+            <form onSubmit={onSave} className="space-y-3 mt-3 pl-2 border-l border-border/50">
+              <div className="space-y-1">
+                <Label htmlFor="email_domain" className="text-xs">Domain</Label>
+                <Input
+                  id="email_domain"
+                  placeholder="team.company.com"
+                  value={emailDomain}
+                  onChange={(e) => onDomainChange(e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground/80">You'll add the DNS records yourself. We'll show you what to add after Save.</p>
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={processing} variant="outline" size="sm" className="h-7 text-xs">
+                  {processing ? "Saving..." : "Save Domain"}
                 </Button>
-                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={checkVerification} disabled={checking}>
-                  {checking ? <Loader2 className="size-3 animate-spin mr-1" /> : <RefreshCw className="size-3 mr-1" />}
-                  Verify
-                </Button>
-              </>
-            )}
-          </div>
-        </form>
+              </div>
+            </form>
+          </details>
+        )}
 
         {errorMsg && (
           <div className="rounded-md border border-red-300 bg-red-50 p-2 text-[11px] text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
@@ -455,5 +474,85 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
         )}
       </div>
     </section>
+  )
+}
+
+// Picker for grabbing a subdomain on one of our managed zones (default
+// double.md). Live availability check while the user types — debounced
+// 350ms — so we don't hammer the server. Default value is the org slug.
+// One Provision button → claim_managed_subdomain → redirect → auto-runs
+// the SES + DNS provisioning on mount.
+function SubdomainPicker({
+  defaultLabel,
+  zone,
+  onProvision,
+  loading,
+}: {
+  defaultLabel: string
+  zone: string
+  onProvision: (label: string, zone: string) => void
+  loading: boolean
+}) {
+  const [label, setLabel] = useState(defaultLabel)
+  const [status, setStatus] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle")
+  const [reason, setReason] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!label.trim()) { setStatus("idle"); setReason(null); return }
+    setStatus("checking")
+    setReason(null)
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/settings/subdomain_availability?label=${encodeURIComponent(label)}&zone=${encodeURIComponent(zone)}`, {
+          headers: { Accept: "application/json" },
+        })
+        const data = await res.json()
+        if (data.available) { setStatus("available"); setReason(null) }
+        else { setStatus(data.full ? "taken" : "invalid"); setReason(data.reason || null) }
+      } catch { setStatus("idle") }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [label, zone])
+
+  const sanitized = label.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")
+  const canProvision = status === "available" && !loading && sanitized.length > 0
+
+  return (
+    <div className="rounded-lg border border-indigo-300 bg-indigo-50/40 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
+      <div className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">Pick your email subdomain</div>
+      <div className="mt-1 text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+        Your agents will send and receive at <span className="font-mono">your-pick</span><span className="font-mono text-indigo-600 dark:text-indigo-400">.{zone}</span>. We auto-create the SES identity, DKIM, and Route 53 records — no DNS work for you.
+      </div>
+      <div className="mt-3 flex items-stretch gap-2">
+        <div className="flex flex-1 items-stretch rounded-md border bg-background overflow-hidden focus-within:border-indigo-400">
+          <input
+            type="text"
+            placeholder="acme"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="flex-1 px-2.5 py-1.5 text-sm font-mono outline-none bg-transparent"
+            spellCheck={false}
+            autoFocus
+          />
+          <span className="flex items-center pr-2.5 text-xs font-mono text-muted-foreground select-none">.{zone}</span>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="h-auto px-3 text-xs"
+          disabled={!canProvision}
+          onClick={() => onProvision(sanitized, zone)}
+        >
+          {loading ? <Loader2 className="size-3 animate-spin mr-1.5" /> : null}
+          Provision
+        </Button>
+      </div>
+      <div className="mt-1.5 min-h-[16px] text-[11px]">
+        {status === "checking" && <span className="text-muted-foreground inline-flex items-center gap-1"><Loader2 className="size-3 animate-spin" /> Checking…</span>}
+        {status === "available" && <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Check className="size-3" /> <span className="font-mono">{sanitized}.{zone}</span> is available</span>}
+        {status === "taken" && <span className="text-red-600 dark:text-red-400 inline-flex items-center gap-1"><X className="size-3" /> {reason || "already taken"}</span>}
+        {status === "invalid" && <span className="text-amber-600 dark:text-amber-400">{reason || "Invalid subdomain"}</span>}
+      </div>
+    </div>
   )
 }

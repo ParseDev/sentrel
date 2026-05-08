@@ -186,6 +186,7 @@ Rails.application.routes.draw do
       post :verify_domain
       post :check_domain_verification
       post :claim_managed_subdomain
+      get  :subdomain_availability
     end
   end
 
