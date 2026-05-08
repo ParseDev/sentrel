@@ -25,10 +25,10 @@ class Agents::OpsController < ApplicationController
   private
 
   def load_agent
-    @agent = current_tenant.agents.find(params[:agent_id])
+    @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
     authorize @agent, :update? if respond_to?(:authorize)
   rescue ActiveRecord::RecordNotFound
-    head :not_found
+    render json: { ok: false, message: "Agent not found" }, status: :not_found
   end
 
   def render_operation
