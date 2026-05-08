@@ -37,7 +37,7 @@ interface AgentSummary {
 interface Props {
   templates: Template[]
   agents: AgentSummary[]
-  org_email_domain: string
+  org_email_domain: string | null
 }
 
 interface DraftResponse {
@@ -409,14 +409,18 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
               How should people reach this agent? You can connect more later.
             </p>
             <div className="rounded-lg border bg-card divide-y">
-              <label className="flex items-start justify-between gap-4 p-4 cursor-pointer">
+              <label className={`flex items-start justify-between gap-4 p-4 ${org_email_domain ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium">Email address</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    We'll provision <span className="font-mono">{slugify(introName) || "name"}@{org_email_domain}</span>. Replies route to the agent automatically.
+                    {org_email_domain ? (
+                      <>We'll provision <span className="font-mono">{slugify(introName) || "name"}@{org_email_domain}</span>. Replies route to the agent automatically.</>
+                    ) : (
+                      <>Pick a workspace email domain in <a href="/settings" className="underline">Settings</a> first.</>
+                    )}
                   </div>
                 </div>
-                <Checkbox checked={wantEmail} onCheckedChange={(v) => setWantEmail(!!v)} className="mt-1" />
+                <Checkbox checked={wantEmail && !!org_email_domain} disabled={!org_email_domain} onCheckedChange={(v) => setWantEmail(!!v)} className="mt-1" />
               </label>
               <label className="flex items-start justify-between gap-4 p-4 cursor-pointer">
                 <div className="flex-1 min-w-0">
@@ -703,14 +707,18 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
             We'll provision these when the agent is created. You can add more (SMS, WhatsApp, Slack) on the Channels tab.
           </p>
           <div className="rounded-lg border bg-card divide-y">
-            <div className="flex items-start justify-between gap-4 p-4">
+            <div className={`flex items-start justify-between gap-4 p-4 ${org_email_domain ? "" : "opacity-60"}`}>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium">Email</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  <span className="font-mono">{data.slug || "agent"}@{org_email_domain}</span>
+                  {org_email_domain ? (
+                    <span className="font-mono">{data.slug || "agent"}@{org_email_domain}</span>
+                  ) : (
+                    <>Set a workspace email domain in <a href="/settings" className="underline">Settings</a> to enable.</>
+                  )}
                 </div>
               </div>
-              <Checkbox checked={data.channels.email} onCheckedChange={(v) => toggleChannel("email", !!v)} className="mt-1" />
+              <Checkbox checked={data.channels.email && !!org_email_domain} disabled={!org_email_domain} onCheckedChange={(v) => toggleChannel("email", !!v)} className="mt-1" />
             </div>
             <div className="flex items-start justify-between gap-4 p-4">
               <div className="flex-1 min-w-0">

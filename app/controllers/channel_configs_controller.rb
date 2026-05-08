@@ -8,6 +8,8 @@ class ChannelConfigsController < ApplicationController
       channels: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :config, :status]),
       available_channels: YAML.load_file(Rails.root.join("config/channels.yml")),
       twilio_configured: ENV["TWILIO_ACCOUNT_SID"].present?,
+      org_email_domain: current_tenant.email_domain,
+      org_email_domain_verified: current_tenant.email_domain_verified?,
     }
   end
 

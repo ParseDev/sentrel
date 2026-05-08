@@ -59,9 +59,11 @@ interface Props {
   channels: ChannelConfig[]
   available_channels: Record<string, AvailableChannel>
   twilio_configured: boolean
+  org_email_domain: string | null
+  org_email_domain_verified: boolean
 }
 
-export default function ChannelsIndex({ agent, channels, available_channels, twilio_configured }: Props) {
+export default function ChannelsIndex({ agent, channels, available_channels, twilio_configured, org_email_domain, org_email_domain_verified }: Props) {
   const [connectingChannel, setConnectingChannel] = useState<string | null>(null)
   const connectedTypes = channels.map((c) => c.channel_type)
   const isTwilioChannel = (key: string) => key === "whatsapp" || key === "sms"
@@ -178,6 +180,8 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
         <EmailConnectDialog
           agentSlug={agent.slug}
           agentId={agent.id}
+          orgEmailDomain={org_email_domain}
+          orgEmailDomainVerified={org_email_domain_verified}
           onClose={() => setConnectingChannel(null)}
         />
       )}
@@ -427,22 +431,45 @@ function TwilioConnectDialog({ channelKey, channel, agentId, onClose }: {
   )
 }
 
-// ── Generic connect dialog for non-Twilio channels ──
-// ── Email connect dialog — auto-suggest address ──
-function EmailConnectDialog({ agentSlug, agentId, onClose }: {
+// ── Email connect dialog — pre-fills <agent-slug>@<org-domain>. ──
+// If the org hasn't claimed/verified a domain yet, redirect to /settings.
+function EmailConnectDialog({ agentSlug, agentId, orgEmailDomain, orgEmailDomainVerified, onClose }: {
   agentSlug: string
   agentId: number
+  orgEmailDomain: string | null
+  orgEmailDomainVerified: boolean
   onClose: () => void
 }) {
-  const [address, setAddress] = useState(`${agentSlug}@alchemy.scribemd.ai`)
+  const [localPart, setLocalPart] = useState(agentSlug)
+
+  if (!orgEmailDomain) {
+    return (
+      <Dialog open onOpenChange={() => onClose()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set up email first</DialogTitle>
+            <DialogDescription>
+              Pick a workspace email domain in Settings before connecting an agent inbox.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
+            <Button type="button" onClick={() => router.visit("/settings")}>Go to Settings</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const cleaned = localPart.toLowerCase().replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "")
+    if (!cleaned) return
     router.post(`/agents/${agentId}/channel_configs`, {
       channel_config: {
         channel_type: "email",
         enabled: true,
-        config: { address },
+        config: { address: `${cleaned}@${orgEmailDomain}` },
       },
     }, { onSuccess: onClose })
   }
@@ -453,25 +480,33 @@ function EmailConnectDialog({ agentSlug, agentId, onClose }: {
         <DialogHeader>
           <DialogTitle>Connect Email</DialogTitle>
           <DialogDescription>
-            This agent will send and receive emails from this address
+            This agent will send and receive emails from this address.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>Email Address</Label>
-            <Input
-              type="email"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              Make sure the domain is verified in Settings before sending
-            </p>
+            <Label>Email address</Label>
+            <div className="flex items-stretch rounded-md border bg-background focus-within:ring-2 focus-within:ring-ring overflow-hidden">
+              <Input
+                value={localPart}
+                onChange={(e) => setLocalPart(e.target.value)}
+                className="border-0 focus-visible:ring-0 rounded-none"
+                placeholder={agentSlug}
+                required
+              />
+              <div className="flex items-center px-3 text-sm text-muted-foreground bg-muted/40 border-l">
+                @{orgEmailDomain}
+              </div>
+            </div>
+            {!orgEmailDomainVerified && (
+              <p className="text-xs text-amber-600">
+                {orgEmailDomain} is pending DNS verification — outbound and inbound will start once verification completes.
+              </p>
+            )}
           </div>
           <div className="flex gap-2 justify-end">
             <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
-            <Button type="submit">Connect</Button>
+            <Button type="submit" disabled={!localPart.trim()}>Connect</Button>
           </div>
         </form>
       </DialogContent>
