@@ -7,6 +7,14 @@ import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface SupportedService {
   slug: string
@@ -47,6 +55,7 @@ export default function IntegrationsIndex({
   const [pageSize, setPageSize] = useState<number>(60)
   const [requesting, setRequesting] = useState<string | null>(null)
   const [disconnectingId, setDisconnectingId] = useState<number | null>(null)
+  const [pendingDisconnect, setPendingDisconnect] = useState<{ id: number; label: string } | null>(null)
   const [optimisticRequested, setOptimisticRequested] = useState<Set<string>>(new Set())
 
   async function connect(serviceName: string, scope: "org" | "user" = "org") {
@@ -70,13 +79,9 @@ export default function IntegrationsIndex({
     }
   }
 
-  function disconnect(id: number, label: string) {
-    const confirmed = window.confirm(
-      `Disconnect ${label}?\n\nThis removes the connected account from Composio and agents will lose access to it.`
-    )
-    if (!confirmed) return
-
+  function disconnect(id: number) {
     setDisconnectingId(id)
+    setPendingDisconnect(null)
     router.delete(`/integrations/${id}`, {
       preserveScroll: true,
       onFinish: () => setDisconnectingId(null),
@@ -316,7 +321,7 @@ export default function IntegrationsIndex({
                           variant="outline"
                           size="sm"
                           disabled={disconnectingId === connected.id}
-                          onClick={() => disconnect(connected.id, service.label)}
+                          onClick={() => setPendingDisconnect({ id: connected.id, label: service.label })}
                           className="h-7 shrink-0 gap-1.5 border-destructive/20 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                           aria-label={`Disconnect ${service.label}`}
                         >
@@ -368,6 +373,35 @@ export default function IntegrationsIndex({
           )}
         </main>
       </div>
+
+      <Dialog open={pendingDisconnect !== null} onOpenChange={(open) => !open && setPendingDisconnect(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Disconnect {pendingDisconnect?.label}?</DialogTitle>
+            <DialogDescription>
+              This removes the connected account from Composio. Agents will lose access until you reconnect it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setPendingDisconnect(null)}
+              disabled={pendingDisconnect ? disconnectingId === pendingDisconnect.id : false}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pendingDisconnect && disconnect(pendingDisconnect.id)}
+              disabled={pendingDisconnect ? disconnectingId === pendingDisconnect.id : false}
+              className="gap-1.5"
+            >
+              <Trash2 className="size-3.5" />
+              {pendingDisconnect && disconnectingId === pendingDisconnect.id ? "Disconnecting..." : "Disconnect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   )
 }
