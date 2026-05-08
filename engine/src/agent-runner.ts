@@ -1253,7 +1253,7 @@ function buildToolProfile(
   const isTask = job.type === "task_assignment";
   const isScheduled = job.type === "scheduled_task" || job.type === "heartbeat";
   const hasAttachments = Boolean(job.payload?.attachments?.length || job.payload?.attachment_ids?.length);
-  const integrationIntent = detectIntegrationIntents(text).length > 0 || /\b(connect|integration|oauth|apollo|gmail|google\s*(sheets?|docs?|calendar|drive)|hubspot|slack|notion|airtable|github|vercel)\b/i.test(text);
+  const integrationIntent = detectIntegrationIntents(text).length > 0 || /\b(connect|integration|oauth|apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|google[-\s]?meet|zoom|calendly|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin)\b/i.test(text);
   const taskIntent = /\b(task|todo|delegate|assign|ask\s+(sam|alex|casper)|follow\s*up|progress|status update)\b/i.test(text);
   const schedulingIntent = /\b(remind|reminder|schedule|calendar|meeting|appointment|cron|every\s+(day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tomorrow|next\s+week)\b/i.test(text);
   const recallIntent = /\b(remember|previous|earlier|last time|what did (i|we|you)|history|conversation)\b/i.test(text);
@@ -1270,7 +1270,12 @@ function buildToolProfile(
     tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent)),
     approvals: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent || confirmationIntent)),
     knowledge: Boolean(caps.knowledge_base.enabled && (isTask || isScheduled || knowledgeIntent || (knowledgePrefetch?.passages?.length ?? 0) > 0)),
-    integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent)),
+    // Scheduling intent (meeting/appointment/availability) implies we need
+    // calendar tools — most agents that handle inbound mail need to look at
+    // a calendar to answer "when can we meet?". Codex's prior heuristic gated
+    // this on explicit toolkit names ("google calendar"), which missed the
+    // common case of "find some time on google meet" / "book a slot".
+    integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent || schedulingIntent)),
     fastChat: false,
   };
 
