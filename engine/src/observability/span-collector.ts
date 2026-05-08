@@ -100,7 +100,7 @@ export class SpanCollector {
   // Time to first assistant event (first "text" or "tool_use" span)
   firstTokenMs(): number | null {
     const first = this.spans.find((s) =>
-      s.name === "text_block" || s.name.startsWith("tool_use:")
+      s.name === "text_delta" || s.name === "text_block" || s.name.startsWith("tool_use:")
     );
     return first ? first.start_ms : null;
   }

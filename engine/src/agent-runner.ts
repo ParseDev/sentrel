@@ -222,13 +222,20 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
     // OpenClaw-style hygiene cap). Pull the most recent run's actual input
     // tokens for an accurate "how full is this session" signal.
     const lastRun = await host.getMostRecentAuditLog?.(agent.id, conversation.id) ?? null;
+    const lastRunPromptTokens = lastRun
+      ? [
+          lastRun.input_tokens,
+          lastRun.cache_read_input_tokens,
+          lastRun.cache_creation_input_tokens,
+        ].reduce<number>((sum, value) => sum + (Number(value) || 0), 0)
+      : 0;
     const messagesForRotation = await host.getConversationHistory(conversation.id, 500);
     const totalCharsFallback = messagesForRotation.reduce((s, m) => s + (m.content?.length || 0), 0);
     const decision = decideRotation(agent, {
       hasSessionId: !!conversation.claude_session_id,
       lastMessageAt: conversation.last_message_at ?? null,
       messageCount: messagesForRotation.length,
-      lastRunInputTokens: lastRun?.input_tokens ?? null,
+      lastRunInputTokens: lastRunPromptTokens > 0 ? lastRunPromptTokens : null,
       totalCharsFallback,
     });
     const stillUnderHardCap = (conversation.claude_session_turn_count ?? 0) < SESSION_TURN_HARD_CAP;
@@ -989,6 +996,17 @@ async function runAgentLoop(
   let thinkingText = "";
   let thinkingStart: number | null = null;
   let thinkingEnd: number | null = null;
+  let streamingText = "";
+  let lastStreamEmitAt = 0;
+  let lastStreamEmitLength = 0;
+  const emitStreamingText = (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastStreamEmitAt < 80 && streamingText.length - lastStreamEmitLength < 64) return;
+    lastStreamEmitAt = now;
+    lastStreamEmitLength = streamingText.length;
+    emitTextDelta(jobId, streamingText);
+    spans?.event("text_delta", { length: streamingText.length });
+  };
 
   for await (const message of q) {
     const msg = message as any;
@@ -1025,6 +1043,21 @@ async function runAgentLoop(
         (options.allowedTools as string[]).includes("mcp__knowledge__search_knowledge");
       if (expectedKnowledge && !hasKnowledge) {
         logger.warn(`search_knowledge NOT in allowedTools! MCP tools seen: ${mcpTools.join(", ")}`);
+      }
+    }
+
+    if (msg.type === "stream_event" && msg.event) {
+      const event = msg.event;
+      if (event.type === "message_start") {
+        streamingText = "";
+        lastStreamEmitAt = 0;
+        lastStreamEmitLength = 0;
+      } else if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+        streamingText += event.delta.text || "";
+        responseContent = streamingText;
+        emitStreamingText(false);
+      } else if (event.type === "content_block_stop" && streamingText.length > 0) {
+        emitStreamingText(true);
       }
     }
 
@@ -1184,15 +1217,24 @@ interface ToolProfile {
   fastChat: boolean;
 }
 
-function buildRoutingText(job: JobData, history: Message[] = []): string {
-  const text = [
+function capRoutingText(text: string): string {
+  const cap = Number(process.env.ENGINE_ROUTING_TEXT_MAX_CHARS || 6000);
+  return text.length > cap ? text.slice(0, cap) : text;
+}
+
+function buildCurrentTurnText(job: JobData): string {
+  return capRoutingText([
     job.payload?.instruction || "",
     job.payload?.body || "",
     job.payload?.subject || "",
+  ].join(" "));
+}
+
+function buildRoutingText(job: JobData, history: Message[] = []): string {
+  return capRoutingText([
+    buildCurrentTurnText(job),
     ...history.slice(-2).map((m) => m.content),
-  ].join(" ");
-  const cap = Number(process.env.ENGINE_ROUTING_TEXT_MAX_CHARS || 6000);
-  return text.length > cap ? text.slice(0, cap) : text;
+  ].join(" "));
 }
 
 function buildToolProfile(
@@ -1202,7 +1244,11 @@ function buildToolProfile(
   knowledgePrefetch?: { passages?: unknown[] } | null,
 ): ToolProfile {
   const caps = resolveCapabilities(agent);
-  const text = buildRoutingText(job, history);
+  // Tool profile decides what MCP servers to boot for this turn. Keep this
+  // strictly current-turn based; old conversation messages are too noisy and
+  // were causing simple replies to load tasks/integrations because the prior
+  // thread mentioned sheets, Apollo, email, etc.
+  const text = buildCurrentTurnText(job);
   const isInbound = job.type === "inbound_message";
   const isTask = job.type === "task_assignment";
   const isScheduled = job.type === "scheduled_task" || job.type === "heartbeat";
@@ -1221,8 +1267,8 @@ function buildToolProfile(
     recall: Boolean(caps.recall.enabled && (isTask || isScheduled || recallIntent)),
     sendMedia: Boolean(caps.send_media.enabled && (isTask || isScheduled || mediaIntent)),
     scheduling: Boolean(caps.scheduling.enabled && (isTask || isScheduled || schedulingIntent)),
-    tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent)),
-    approvals: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent)),
+    tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent)),
+    approvals: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent || confirmationIntent)),
     knowledge: Boolean(caps.knowledge_base.enabled && (isTask || isScheduled || knowledgeIntent || (knowledgePrefetch?.passages?.length ?? 0) > 0)),
     integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent)),
     fastChat: false,
@@ -1491,6 +1537,7 @@ async function buildQueryOptions(
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     agentProgressSummaries: true,
+    includePartialMessages: true,
     mcpServers,
     // Phase S — PreToolUse hook for dangerous command detection
     hooks: {

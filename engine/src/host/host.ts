@@ -219,7 +219,11 @@ export interface Host {
 
   // Item 8 rotation — most recent run for an agent+conversation, used to read
   // the actual prompt token count for token-utilization-based rotation.
-  getMostRecentAuditLog?(agentId: number, conversationId: number | null): Promise<{ input_tokens: number | null } | null>;
+  getMostRecentAuditLog?(agentId: number, conversationId: number | null): Promise<{
+    input_tokens: number | null;
+    cache_read_input_tokens: number | null;
+    cache_creation_input_tokens: number | null;
+  } | null>;
 
   // ── Scheduling (unified — scheduled_work) ──
   getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]>;
