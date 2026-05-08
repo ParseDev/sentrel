@@ -46,6 +46,7 @@ export default function IntegrationsIndex({
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
   const [pageSize, setPageSize] = useState<number>(60)
   const [requesting, setRequesting] = useState<string | null>(null)
+  const [disconnectingId, setDisconnectingId] = useState<number | null>(null)
   const [optimisticRequested, setOptimisticRequested] = useState<Set<string>>(new Set())
 
   async function connect(serviceName: string, scope: "org" | "user" = "org") {
@@ -69,8 +70,17 @@ export default function IntegrationsIndex({
     }
   }
 
-  function disconnect(id: number) {
-    router.delete(`/integrations/${id}`)
+  function disconnect(id: number, label: string) {
+    const confirmed = window.confirm(
+      `Disconnect ${label}?\n\nThis removes the connected account from Composio and agents will lose access to it.`
+    )
+    if (!confirmed) return
+
+    setDisconnectingId(id)
+    router.delete(`/integrations/${id}`, {
+      preserveScroll: true,
+      onFinish: () => setDisconnectingId(null),
+    })
   }
 
   async function requestIntegration(slug: string) {
@@ -302,13 +312,17 @@ export default function IntegrationsIndex({
                         </p>
                       </div>
                       {connected ? (
-                        <button
-                          onClick={() => disconnect(connected.id)}
-                          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={disconnectingId === connected.id}
+                          onClick={() => disconnect(connected.id, service.label)}
+                          className="h-7 shrink-0 gap-1.5 border-destructive/20 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                           aria-label={`Disconnect ${service.label}`}
                         >
-                          <Trash2 className="size-3.5" />
-                        </button>
+                          <Trash2 className="size-3" />
+                          {disconnectingId === connected.id ? "Disconnecting..." : "Disconnect"}
+                        </Button>
                       ) : service.available ? (
                         <Button
                           variant="outline"
