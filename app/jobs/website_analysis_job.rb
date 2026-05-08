@@ -370,26 +370,28 @@ class WebsiteAnalysisJob < ApplicationJob
 
   # ── AI summary generation ──────────────────────────────────────────────
 
+  OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6"
+
   def generate_summary(org_name, url, pages)
-    api_key = ENV["ANTHROPIC_API_KEY"]
-    raise "ANTHROPIC_API_KEY is not set. Add it to your .env file." unless api_key.present?
+    api_key = ENV["OPENROUTER_API_KEY"]
+    raise "OPENROUTER_API_KEY is not set. Add it to your .env file." unless api_key.present?
 
     content_block = pages.map do |page|
       "--- #{page[:url]} ---\n#{page[:text]}"
     end.join("\n\n").truncate(MAX_TOTAL_TEXT)
 
-    uri = URI.parse("https://api.anthropic.com/v1/messages")
+    uri = URI.parse("https://openrouter.ai/api/v1/chat/completions")
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
     http.read_timeout = 30
 
     request = Net::HTTP::Post.new(uri.path)
     request["Content-Type"] = "application/json"
-    request["x-api-key"] = api_key
-    request["anthropic-version"] = "2023-06-01"
+    request["Authorization"] = "Bearer #{api_key}"
+    request["X-Title"] = "Alchemy Website Analysis"
 
     request.body = {
-      model: "claude-sonnet-4-6",
+      model: OPENROUTER_MODEL,
       max_tokens: 1200,
       messages: [{
         role: "user",
@@ -420,19 +422,19 @@ class WebsiteAnalysisJob < ApplicationJob
       }]
     }.to_json
 
-    Rails.logger.info("[WebsiteAnalysisJob] Calling Anthropic API with key=#{api_key[0..12]}... model=claude-sonnet-4-6")
+    Rails.logger.info("[WebsiteAnalysisJob] Calling OpenRouter API with key=#{api_key[0..12]}... model=#{OPENROUTER_MODEL}")
     response = http.request(request)
     result = JSON.parse(response.body)
 
     unless response.is_a?(Net::HTTPSuccess)
-      error_type = result.dig("error", "type") || response.code
       error_msg = result.dig("error", "message") || response.body.truncate(200)
-      Rails.logger.error("[WebsiteAnalysisJob] Anthropic API error: status=#{response.code} type=#{error_type} message=#{error_msg} key=#{api_key[0..12]}...")
-      raise "Anthropic API returned #{response.code}: #{error_msg}"
+      error_code = result.dig("error", "code") || response.code
+      Rails.logger.error("[WebsiteAnalysisJob] OpenRouter API error: status=#{response.code} code=#{error_code} message=#{error_msg} key=#{api_key[0..12]}...")
+      raise "OpenRouter API returned #{response.code}: #{error_msg}"
     end
 
-    text = result.dig("content", 0, "text")
-    raise "Anthropic API returned empty response" unless text.present?
+    text = result.dig("choices", 0, "message", "content")
+    raise "OpenRouter API returned empty response" unless text.present?
     text
   end
 end
