@@ -482,8 +482,13 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
 
   const selectedConv = conversations.find((c) => c.id === selectedConvId)
 
-  async function selectConversation(conv: ConversationItem) {
+  // Fallback summary for conversations not in the top-20 cache — built from
+  // the latest email row in the inbox list when the user clicks an older
+  // thread. Lets the detail pane render headers without a full conv fetch.
+  const [fallbackConv, setFallbackConv] = useState<Partial<ConversationItem> | null>(null)
+  async function selectConversation(conv: ConversationItem | { id: number; channel?: string | null; contact_name?: string | null; contact_email?: string | null; subject?: string | null }) {
     setSelectedConvId(conv.id)
+    setFallbackConv(conv as Partial<ConversationItem>)
     setLoadingMessages(true)
     try {
       const res = await fetch(`/agents/${agent.id}/conversations/${conv.id}.json`)
@@ -616,52 +621,79 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                   emails.length === 0 ? (
                     <div className="py-12 text-center text-xs text-muted-foreground">No emails</div>
                   ) : (
-                    emails.map((email) => {
-                      const isOutbound = email.direction === "outbound"
-                      const active = selectedEmailId === email.id
-                      return (
-                        <button
-                          key={email.id}
-                          onClick={() => { setSelectedEmailId(email.id); setSelectedConvId(null) }}
-                          className={`w-full px-4 py-3 border-b border-border text-left transition-colors ${active ? "bg-muted/60" : "hover:bg-muted/30"}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              {isOutbound ? (
-                                <ArrowUpRight className="size-3 text-blue-500 shrink-0" />
-                              ) : (
-                                <ArrowDownLeft className="size-3 text-emerald-500 shrink-0" />
-                              )}
-                              <span className="font-medium text-xs truncate">
-                                {(() => {
-                                  if (isOutbound) {
-                                    const toLabel = email.to || email.contact || "—"
-                                    const senderName = email.sender?.name || email.sender_name
-                                    return senderName
-                                      ? `${senderName} → ${toLabel}`
-                                      : `To: ${toLabel}`
-                                  }
-                                  const fromName = email.sender?.name || email.sender_name || email.contact
-                                  const fromAddr = email.sender?.email || email.sender_email || email.from
-                                  return fromName && fromName !== fromAddr
-                                    ? `${fromName} <${fromAddr ?? "?"}>`
-                                    : `From: ${fromAddr || fromName || "Unknown"}`
-                                })()}
+                    // Group emails into threads by conversation_id. Each thread
+                    // row shows the most recent message; clicking opens the
+                    // conversation view (existing convMessages flow) so the
+                    // full Reply / Compose chain renders in order.
+                    (() => {
+                      const threads = new Map<number, { latest: EmailItem; count: number; unreadInbound: boolean }>()
+                      for (const e of emails) {
+                        const existing = threads.get(e.conversation_id)
+                        if (!existing) {
+                          threads.set(e.conversation_id, {
+                            latest: e,
+                            count: 1,
+                            unreadInbound: e.direction === "inbound",
+                          })
+                        } else {
+                          existing.count += 1
+                          if (new Date(e.created_at) > new Date(existing.latest.created_at)) existing.latest = e
+                          if (e.direction === "inbound") existing.unreadInbound = true
+                        }
+                      }
+                      const rows = Array.from(threads.values()).sort(
+                        (a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime(),
+                      )
+                      return rows.map(({ latest: email, count }) => {
+                        const isOutbound = email.direction === "outbound"
+                        const active = selectedConvId === email.conversation_id
+                        // Counterparty: agent ↔ external person. Use the latest
+                        // message's sender for inbound, the recipient for outbound.
+                        const counterpartyName = isOutbound
+                          ? (Array.isArray(email.to) ? email.to[0] : email.to) || email.contact || "—"
+                          : (email.sender?.name || email.sender_name || email.contact || email.from || "Unknown")
+                        return (
+                          <button
+                            key={email.conversation_id}
+                            onClick={() => {
+                              const cached = conversations.find((c) => c.id === email.conversation_id)
+                              selectConversation(cached ?? {
+                                id: email.conversation_id,
+                                channel: "email",
+                                contact_name: counterpartyName,
+                                contact_email: typeof email.from === "string" ? email.from : null,
+                                subject: email.subject,
+                              })
+                              setSelectedEmailId(null)
+                            }}
+                            className={`w-full px-4 py-3 border-b border-border text-left transition-colors ${active ? "bg-muted/60" : "hover:bg-muted/30"}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {isOutbound ? (
+                                  <ArrowUpRight className="size-3 text-blue-500 shrink-0" />
+                                ) : (
+                                  <ArrowDownLeft className="size-3 text-emerald-500 shrink-0" />
+                                )}
+                                <span className="font-medium text-xs truncate">{counterpartyName}</span>
+                                {count > 1 && (
+                                  <span className="text-[10px] text-muted-foreground shrink-0">· {count}</span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {new Date(email.created_at).toLocaleDateString()}
                               </span>
                             </div>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              {new Date(email.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                          {email.subject && (
-                            <p className="text-xs font-medium mt-1 truncate">{email.subject}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate line-clamp-1">
-                            {email.content.slice(0, 80)}
-                          </p>
-                        </button>
-                      )
-                    })
+                            {email.subject && (
+                              <p className="text-xs font-medium mt-1 truncate">{email.subject}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate line-clamp-1">
+                              {email.content.slice(0, 80)}
+                            </p>
+                          </button>
+                        )
+                      })
+                    })()
                   )
                 ) : (
                   filteredConversations.length === 0 ? (
@@ -791,16 +823,62 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
               })()}
 
               {selectedConvId && !selectedEmailId && (() => {
-                const conv = selectedConv
+                // Prefer the conversation from the cached top-20 list; fall
+                // back to a thin summary built from the inbox row when the
+                // user opens an older thread that isn't cached.
+                const conv = (selectedConv ?? fallbackConv) as (ConversationItem & { subject?: string | null }) | null
                 if (!conv) return null
+                const isEmailThread = conv.channel === "email"
+                const counterpartyName = conv.contact_name || conv.contact_email || conv.contact_phone || "Unknown"
+                const counterpartyAddr = conv.contact_email
                 return loadingMessages ? (
                   <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Loading...</div>
                 ) : (
                   <>
                     <div className="px-5 py-3 border-b border-border">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium text-sm">{conv.contact_name || conv.contact_email || conv.contact_phone || "Unknown"}</h3>
-                        <Badge variant="secondary" className="text-[10px]">{conv.channel || "web"}</Badge>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-medium text-sm truncate">
+                            {isEmailThread && (conv as { subject?: string | null }).subject
+                              ? (conv as { subject?: string | null }).subject
+                              : counterpartyName}
+                          </h3>
+                          {isEmailThread && counterpartyAddr && (
+                            <p className="text-[10px] text-muted-foreground truncate">{counterpartyName} · {counterpartyAddr}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="secondary" className="text-[10px]">{conv.channel || "web"}</Badge>
+                          {isEmailThread && agentPrimaryEmail && counterpartyAddr && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1.5"
+                              onClick={() => {
+                                const subj = (conv as { subject?: string | null }).subject?.trim() || ""
+                                const subject = subj
+                                  ? subj.toLowerCase().startsWith("re:") ? subj : `Re: ${subj}`
+                                  : ""
+                                setComposerSeed({
+                                  mode: "reply",
+                                  to: counterpartyAddr,
+                                  subject,
+                                  body: "",
+                                  replyingTo: {
+                                    from: counterpartyName !== counterpartyAddr
+                                      ? `${counterpartyName} <${counterpartyAddr}>`
+                                      : counterpartyAddr,
+                                    subject: subj,
+                                  },
+                                })
+                                setComposerOpen(true)
+                              }}
+                            >
+                              <PenLine className="size-3.5" />
+                              Reply
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-2">

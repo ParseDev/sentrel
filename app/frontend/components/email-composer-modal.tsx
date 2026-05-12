@@ -45,6 +45,17 @@ function csrf(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 }
 
+// Defensive coercion: metadata.to is sometimes an array of strings (the
+// multi-recipient outbound payload). When that shape flows in as
+// initialTo / initialCc, the input keeps state as an array and
+// `to.trim()` blows up on submit. Normalize to a comma-joined string.
+function asString(v: unknown): string {
+  if (v == null) return ""
+  if (Array.isArray(v)) return v.filter(Boolean).join(", ")
+  if (typeof v === "string") return v
+  return String(v)
+}
+
 const MODE_TITLE: Record<ComposerMode, string> = {
   compose: "Compose email",
   reply: "Reply",
@@ -90,15 +101,16 @@ export function EmailComposerModal({
   // component permanently and toggles `open` — without this hook, the
   // form keeps state from the previous open (so clicking Reply after a
   // prior Compose would show empty To / Subject because they were
-  // overwritten earlier).
+  // overwritten earlier). Coerces array values to comma-joined strings
+  // because metadata.to is stored as a JSON array (multi-recipient payload).
   useEffect(() => {
     if (!open) return
-    setTo(initialTo)
-    setCc(initialCc)
+    setTo(asString(initialTo))
+    setCc(asString(initialCc))
     setBcc("")
-    setSubject(initialSubject)
-    setBody(initialBody)
-    setShowCc(initialCc.length > 0)
+    setSubject(asString(initialSubject))
+    setBody(asString(initialBody))
+    setShowCc(asString(initialCc).length > 0)
     setShowBcc(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo, initialCc, initialSubject, initialBody])
