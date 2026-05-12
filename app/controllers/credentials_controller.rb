@@ -5,12 +5,19 @@ class CredentialsController < ApplicationController
   def index
     creds = current_tenant.credentials
       .order(kind: :asc, provider: :asc, name: :asc)
-      .as_json(only: [:id, :kind, :provider, :name, :last_used_at, :meta, :created_at])
-      .map do |row|
-        row.merge(
-          "display_suffix" => current_tenant.credentials.find(row["id"]).display_suffix,
-          "agent_grants_count" => AgentCredentialGrant.where(credential_id: row["id"]).count,
-        )
+      .map do |c|
+        {
+          id: c.id,
+          kind: c.kind,
+          provider: c.provider,
+          name: c.name,
+          last_used_at: c.last_used_at,
+          meta: c.meta,
+          created_at: c.created_at,
+          display_suffix: c.display_suffix,
+          field_names: c.fields.keys,
+          agent_grants_count: AgentCredentialGrant.where(credential_id: c.id).count,
+        }
       end
 
     render inertia: "settings/credentials", props: {
@@ -21,12 +28,29 @@ class CredentialsController < ApplicationController
         cloud_provider: Credential::CLOUD_PROVIDERS,
         generic:        Credential::GENERIC_HINTS,
       },
+      # Per-(kind, provider) field schema so the Add/Edit modal renders the
+      # right form (Access Key ID + Secret for AWS, Account SID + Auth Token
+      # for Twilio, single value for the rest). The frontend posts back a
+      # `fields` hash whose keys match the schema entries.
+      field_schemas: build_field_schemas,
     }
   end
 
   def create
-    cred = current_tenant.credentials.new(credential_params)
+    attrs = credential_params
+    fields = attrs.delete(:fields) || {}
+    # Tolerate the legacy `value` param so single-field UIs still work.
+    if attrs[:kind].present? && attrs[:provider].present? && fields.empty? && attrs[:value].present?
+      schema = Credential.field_schema_for(attrs[:kind], attrs[:provider])
+      primary = (schema.find { |f| f[:primary] } || schema.first)[:key]
+      fields = { primary => attrs.delete(:value) }
+    else
+      attrs.delete(:value)
+    end
+
+    cred = current_tenant.credentials.new(attrs)
     cred.created_by_user_id = current_user.id
+    cred.fields = fields if fields.any?
     if cred.save
       retrigger_dependent_engine_syncs(cred)
       redirect_to credentials_path, notice: "#{cred.provider} credential “#{cred.name}” added"
@@ -37,7 +61,20 @@ class CredentialsController < ApplicationController
 
   def update
     cred = current_tenant.credentials.find(params[:id])
-    if cred.update(credential_params)
+    attrs = credential_params
+    new_fields = attrs.delete(:fields) || {}
+    if attrs[:value].present?
+      new_fields[cred.primary_field_name] ||= attrs.delete(:value)
+    else
+      attrs.delete(:value)
+    end
+
+    # Merge — rotating just one field shouldn't wipe the rest. Blank values
+    # in the submitted hash are ignored (Credential#fields= drops them).
+    cred.assign_attributes(attrs)
+    cred.merge_fields!(new_fields) if new_fields.any?
+
+    if cred.save
       retrigger_dependent_engine_syncs(cred)
       redirect_to credentials_path, notice: "#{cred.provider} credential “#{cred.name}” updated"
     else
@@ -56,7 +93,16 @@ class CredentialsController < ApplicationController
   private
 
   def credential_params
-    params.require(:credential).permit(:kind, :provider, :name, :value, meta: {})
+    params.require(:credential).permit(:kind, :provider, :name, :value, meta: {}, fields: {})
+  end
+
+  # Flatten the schema constant into a key the frontend can look up via
+  # `${kind}:${provider}` or `${kind}:*` as fallback.
+  def build_field_schemas
+    out = {}
+    Credential::FIELD_SCHEMAS.each { |k, v| out[k] = v }
+    out["__default__"] = Credential::DEFAULT_FIELDS
+    out
   end
 
   # Triggers a config sync (env push + agent restart) for every agent that

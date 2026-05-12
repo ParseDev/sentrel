@@ -1,5 +1,5 @@
 import { Head, router } from "@inertiajs/react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { KeyRound, Plus, Trash2, Edit2, Cloud, Sparkles, Lock, RotateCw } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
@@ -27,6 +27,15 @@ import {
 
 type Kind = "llm_api_key" | "cloud_provider" | "generic"
 
+interface FieldDef {
+  key: string
+  label: string
+  sensitive?: boolean
+  optional?: boolean
+  multiline?: boolean
+  primary?: boolean
+}
+
 interface Credential {
   id: number
   kind: Kind
@@ -35,6 +44,7 @@ interface Credential {
   display_suffix: string
   last_used_at: string | null
   agent_grants_count: number
+  field_names: string[]
   meta: Record<string, unknown>
   created_at: string
 }
@@ -43,6 +53,7 @@ interface Props {
   credentials: Credential[]
   kinds: Kind[]
   providers: Record<Kind, string[]>
+  field_schemas: Record<string, FieldDef[]>
 }
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -70,7 +81,13 @@ function csrf(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 }
 
-export default function CredentialsPage({ credentials, kinds, providers }: Props) {
+function lookupSchema(schemas: Record<string, FieldDef[]>, kind: Kind, provider: string): FieldDef[] {
+  return schemas[`${kind}:${provider}`] || schemas[`${kind}:*`] || schemas.__default__ || [
+    { key: "value", label: "Secret value", sensitive: true, primary: true },
+  ]
+}
+
+export default function CredentialsPage({ credentials, kinds, providers, field_schemas }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Credential | null>(null)
   const grouped = useMemo(() => {
@@ -143,6 +160,7 @@ export default function CredentialsPage({ credentials, kinds, providers }: Props
       {addOpen && (
         <CredentialModal
           providers={providers}
+          fieldSchemas={field_schemas}
           onClose={() => setAddOpen(false)}
           mode="create"
         />
@@ -150,6 +168,7 @@ export default function CredentialsPage({ credentials, kinds, providers }: Props
       {editing && (
         <CredentialModal
           providers={providers}
+          fieldSchemas={field_schemas}
           onClose={() => setEditing(null)}
           mode="edit"
           cred={editing}
@@ -195,11 +214,13 @@ function CredentialRow({ cred, onEdit, onDelete }: { cred: Credential; onEdit: (
 
 function CredentialModal({
   providers,
+  fieldSchemas,
   onClose,
   mode,
   cred,
 }: {
   providers: Record<Kind, string[]>
+  fieldSchemas: Record<string, FieldDef[]>
   onClose: () => void
   mode: "create" | "edit"
   cred?: Credential
@@ -207,13 +228,31 @@ function CredentialModal({
   const [kind, setKind] = useState<Kind>(cred?.kind ?? "llm_api_key")
   const [provider, setProvider] = useState(cred?.provider ?? providers.llm_api_key[0] ?? "anthropic")
   const [name, setName] = useState(cred?.name ?? "")
-  const [value, setValue] = useState("")
+  const [fields, setFields] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
+
+  // Resolves the field set for the current (kind, provider). Re-computed on
+  // every change so swapping AWS → Heroku swaps the form inputs immediately.
+  const schema = useMemo<FieldDef[]>(
+    () => lookupSchema(fieldSchemas, kind, provider),
+    [fieldSchemas, kind, provider],
+  )
+
+  // Reset field state when the schema changes so stale values from a prior
+  // provider don't leak into the new shape (AWS access_key_id → Heroku api_key).
+  useEffect(() => {
+    setFields({})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, provider])
+
+  function setField(key: string, value: string) {
+    setFields((prev) => ({ ...prev, [key]: value }))
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const payload = { credential: { kind, provider, name, value: value || undefined } }
+    const payload = { credential: { kind, provider, name, fields } }
     if (mode === "create") {
       router.post("/settings/credentials", payload, {
         headers: { "X-CSRF-Token": csrf() },
@@ -239,7 +278,7 @@ function CredentialModal({
           <DialogDescription>
             {mode === "create"
               ? "Stored encrypted. Agents read it via env (LLM keys) or the secrets.get tool (cloud + generic)."
-              : "Leave the value blank to keep the current secret; fill it to rotate."}
+              : "Leave a field blank to keep its current value; fill it to rotate."}
           </DialogDescription>
         </DialogHeader>
 
@@ -289,17 +328,34 @@ function CredentialModal({
             <p className="text-[10px] text-muted-foreground">Friendly label. Must be unique per provider.</p>
           </div>
 
-          <div className="space-y-1">
-            <Label>{mode === "create" ? "Value" : "New value (optional)"}</Label>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              required={mode === "create"}
-              placeholder="sk-…"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-          </div>
+          {schema.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <Label>
+                {f.label}
+                {f.optional && <span className="text-muted-foreground"> (optional)</span>}
+              </Label>
+              {f.multiline ? (
+                <textarea
+                  required={mode === "create" && !f.optional}
+                  rows={5}
+                  autoComplete={f.sensitive ? "new-password" : "off"}
+                  value={fields[f.key] || ""}
+                  onChange={(e) => setField(f.key, e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                  placeholder={f.sensitive ? "•••" : ""}
+                />
+              ) : (
+                <Input
+                  type={f.sensitive ? "password" : "text"}
+                  autoComplete={f.sensitive ? "new-password" : "off"}
+                  required={mode === "create" && !f.optional}
+                  placeholder={mode === "edit" ? "(unchanged)" : f.sensitive ? "•••" : ""}
+                  value={fields[f.key] || ""}
+                  onChange={(e) => setField(f.key, e.target.value)}
+                />
+              )}
+            </div>
+          ))}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

@@ -51,12 +51,16 @@ class Api::SecretsController < ApplicationController
       action: "secret_fetched",
       tool_name: "secrets.get",
       input: { credential_id: cred.id, name: cred.name, provider: cred.provider, kind: cred.kind },
-      output: { suffix: cred.display_suffix },
+      output: { suffix: cred.display_suffix, fields: cred.fields.keys },
       status: "success",
     )
 
+    # Always return the full fields map — agents that only care about a
+    # single canonical value can read `value` (the primary field). Multi-
+    # field creds (AWS, Twilio, Stripe) get every component in `fields`.
     render json: {
       value:    cred.value,
+      fields:   cred.fields,
       kind:     cred.kind,
       provider: cred.provider,
       name:     cred.name,
