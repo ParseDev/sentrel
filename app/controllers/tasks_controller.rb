@@ -144,7 +144,14 @@ class TasksController < ApplicationController
   end
 
   def task_params
-    params.require(:task).permit(:agent_id, :title, :description, :instruction, :status, :priority, :due_at)
+    permitted = params.require(:task).permit(:agent_id, :title, :description, :instruction, :status, :priority, :due_at)
+    # Frontend posts agent_id as a prefix_id string ("agt_…"); decode to the
+    # numeric FK. Without this, Task.new(agent_id: "agt_xyz") coerces to 0
+    # and the save 422s with "Agent must exist".
+    if permitted[:agent_id].is_a?(String) && permitted[:agent_id].start_with?("agt_")
+      permitted[:agent_id] = Agent._prefix_id.decode(permitted[:agent_id])
+    end
+    permitted
   end
 
   # Create a conversation for the task and seed the first user message with

@@ -1,6 +1,21 @@
 import { Head, router } from "@inertiajs/react"
 import { useEffect, useMemo, useState } from "react"
-import { KeyRound, Plus, Trash2, Edit2, Cloud, Sparkles, Lock, RotateCw } from "lucide-react"
+import {
+  KeyRound,
+  Plus,
+  Trash2,
+  Pencil,
+  Cloud,
+  Sparkles,
+  Lock,
+  RotateCw,
+  Search,
+  Check,
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  ChevronRight,
+} from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { PageHeader } from "@/components/page-header"
@@ -17,13 +32,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 type Kind = "llm_api_key" | "cloud_provider" | "generic"
 
@@ -68,13 +77,100 @@ const KIND_ICON: Record<Kind, typeof KeyRound> = {
   generic: Lock,
 }
 
-const KIND_DESCRIPTION: Record<Kind, string> = {
+const KIND_BLURB: Record<Kind, string> = {
   llm_api_key:
-    "Used to authenticate the engine to your LLM provider. Auto-piped into each agent's runtime env so usage bills against your account.",
+    "Auto-piped into each agent's runtime env so usage bills to your account.",
   cloud_provider:
-    "Available to agents via the secrets.get(name) tool. Use for keys that let agents act on your cloud (deploy, provision, query infra).",
-  generic:
-    "Any other API key your agents need. Same secrets.get() access pattern as cloud creds.",
+    "Reachable from agent code via the secrets.get tool — keys that let agents act on your cloud.",
+  generic: "Any other API key your agents need. Same secrets.get access pattern.",
+}
+
+// Provider-specific brand color + short blurb shown on the picker grid.
+// Keys are lowercase provider slugs; missing → falls through to the generic
+// kind tint so an unknown provider still looks intentional.
+const PROVIDER_META: Record<string, { tint: string; blurb: string; aka?: string }> = {
+  anthropic:    { tint: "bg-orange-500/10 text-orange-600 border-orange-500/20",  blurb: "Claude models" },
+  openai:       { tint: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20", blurb: "GPT-5, GPT-4o" },
+  openrouter:   { tint: "bg-violet-500/10 text-violet-600 border-violet-500/20",  blurb: "Many providers, one key" },
+  google_ai:    { tint: "bg-sky-500/10 text-sky-600 border-sky-500/20",            blurb: "Gemini" },
+  groq:         { tint: "bg-amber-500/10 text-amber-600 border-amber-500/20",      blurb: "Fast inference" },
+  mistral:      { tint: "bg-rose-500/10 text-rose-600 border-rose-500/20",         blurb: "Mistral / Codestral" },
+  together:     { tint: "bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/20",blurb: "Open-weight hosting" },
+  xai:          { tint: "bg-slate-500/10 text-slate-600 border-slate-500/20",      blurb: "Grok" },
+
+  aws:          { tint: "bg-amber-500/10 text-amber-600 border-amber-500/20",      blurb: "Access Key + Secret + Region" },
+  gcp:          { tint: "bg-blue-500/10 text-blue-600 border-blue-500/20",         blurb: "Service Account JSON" },
+  azure:        { tint: "bg-sky-500/10 text-sky-600 border-sky-500/20",            blurb: "Client + Secret + Tenant" },
+  heroku:       { tint: "bg-violet-500/10 text-violet-600 border-violet-500/20",   blurb: "API Key" },
+  hetzner:      { tint: "bg-red-500/10 text-red-600 border-red-500/20",            blurb: "Cloud API Token" },
+  vercel:       { tint: "bg-zinc-700/10 text-zinc-700 border-zinc-700/20 dark:text-zinc-300", blurb: "PAT + Team" },
+  digitalocean: { tint: "bg-blue-500/10 text-blue-500 border-blue-500/20",         blurb: "API Token" },
+  fly:          { tint: "bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/20",blurb: "API Token" },
+  cloudflare:   { tint: "bg-orange-500/10 text-orange-500 border-orange-500/20",   blurb: "API Token + Account" },
+
+  stripe:       { tint: "bg-violet-500/10 text-violet-600 border-violet-500/20",   blurb: "Secret + Publishable + Webhook" },
+  twilio:       { tint: "bg-red-500/10 text-red-600 border-red-500/20",            blurb: "Account SID + Auth Token" },
+  sendgrid:     { tint: "bg-blue-500/10 text-blue-600 border-blue-500/20",         blurb: "API Key" },
+  mailgun:      { tint: "bg-orange-500/10 text-orange-500 border-orange-500/20",   blurb: "API Key + Domain" },
+  composio:     { tint: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",   blurb: "Composio API Key" },
+  resend:       { tint: "bg-zinc-700/10 text-zinc-700 border-zinc-700/20 dark:text-zinc-300", blurb: "API Key" },
+  slack:        { tint: "bg-purple-500/10 text-purple-600 border-purple-500/20",   blurb: "Bot Token" },
+  notion:       { tint: "bg-zinc-700/10 text-zinc-700 border-zinc-700/20 dark:text-zinc-300", blurb: "Integration Token" },
+  github:       { tint: "bg-zinc-700/10 text-zinc-700 border-zinc-700/20 dark:text-zinc-300", blurb: "Personal Access Token" },
+  gitlab:       { tint: "bg-orange-500/10 text-orange-600 border-orange-500/20",   blurb: "Personal Access Token" },
+  linear:       { tint: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",   blurb: "API Key" },
+}
+
+const PROVIDER_LABEL: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  google_ai: "Google AI",
+  groq: "Groq",
+  mistral: "Mistral",
+  together: "Together",
+  xai: "xAI",
+  aws: "AWS",
+  gcp: "Google Cloud",
+  azure: "Azure",
+  heroku: "Heroku",
+  hetzner: "Hetzner",
+  vercel: "Vercel",
+  digitalocean: "DigitalOcean",
+  fly: "Fly.io",
+  cloudflare: "Cloudflare",
+  stripe: "Stripe",
+  twilio: "Twilio",
+  sendgrid: "SendGrid",
+  mailgun: "Mailgun",
+  composio: "Composio",
+  resend: "Resend",
+  slack: "Slack",
+  notion: "Notion",
+  github: "GitHub",
+  gitlab: "GitLab",
+  linear: "Linear",
+}
+
+function providerLabel(slug: string): string {
+  return PROVIDER_LABEL[slug] || slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function providerInitials(slug: string): string {
+  const label = providerLabel(slug)
+  const parts = label.split(/[\s.]+/).filter(Boolean)
+  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || label[0].toUpperCase()
+}
+
+function providerTint(slug: string, kind: Kind): string {
+  return (
+    PROVIDER_META[slug]?.tint ||
+    (kind === "llm_api_key"
+      ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
+      : kind === "cloud_provider"
+      ? "bg-sky-500/10 text-sky-600 border-sky-500/20"
+      : "bg-zinc-500/10 text-zinc-600 border-zinc-500/20 dark:text-zinc-300")
+  )
 }
 
 function csrf(): string {
@@ -109,7 +205,7 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
       <PageHeader
         eyebrow="Settings"
         title="Credentials"
-        description="Store API keys and cloud secrets once; agents reuse them through env (LLM keys) or the secrets.get tool (everything else)."
+        description="Store API keys and cloud secrets once; agents reuse them via env (LLM keys) or the secrets.get tool."
         action={
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="size-4 mr-1.5" />
@@ -118,34 +214,43 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
         }
       />
 
-      <div className="space-y-8 max-w-3xl">
+      <div className="max-w-3xl space-y-8">
         {kinds.map((kind) => {
           const Icon = KIND_ICON[kind]
           const items = grouped[kind] ?? []
           return (
             <section key={kind}>
-              <div className="flex items-baseline gap-2 mb-2">
-                <Icon className="size-4 text-muted-foreground" />
-                <h2 className="font-semibold text-sm">{KIND_LABEL[kind]}</h2>
-                <span className="text-xs text-muted-foreground">{items.length}</span>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-baseline gap-2">
+                  <Icon className="size-4 text-muted-foreground" />
+                  <h2 className="font-semibold text-sm">{KIND_LABEL[kind]}</h2>
+                  <span className="text-xs text-muted-foreground">{items.length}</span>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">{KIND_DESCRIPTION[kind]}</p>
+              <p className="text-xs text-muted-foreground mb-3">{KIND_BLURB[kind]}</p>
 
               {items.length === 0 ? (
-                <Card>
-                  <CardContent className="py-6 text-center text-xs text-muted-foreground">
-                    No {KIND_LABEL[kind].toLowerCase()} yet.
+                <Card className="border-dashed">
+                  <CardContent className="py-5 text-center text-xs text-muted-foreground">
+                    None yet ·{" "}
+                    <button
+                      type="button"
+                      onClick={() => setAddOpen(true)}
+                      className="text-foreground underline-offset-2 hover:underline"
+                    >
+                      add one
+                    </button>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {items.map((c) => (
                     <CredentialRow
                       key={c.id}
                       cred={c}
                       onEdit={() => setEditing(c)}
                       onDelete={() => {
-                        if (!confirm(`Delete ${c.provider} credential “${c.name}”?`)) return
+                        if (!confirm(`Delete ${providerLabel(c.provider)} credential “${c.name}”?`)) return
                         router.delete(`/settings/credentials/${c.id}`)
                       }}
                     />
@@ -180,36 +285,55 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
 
 function CredentialRow({ cred, onEdit, onDelete }: { cred: Credential; onEdit: () => void; onDelete: () => void }) {
   return (
-    <Card>
-      <CardContent className="py-3 flex items-center justify-between gap-4">
+    <Card className="border-border/60 hover:border-border transition-colors">
+      <CardContent className="py-3 flex items-center gap-3">
+        <div
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold",
+            providerTint(cred.provider, cred.kind),
+          )}
+        >
+          {providerInitials(cred.provider)}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-medium text-sm truncate">{cred.name}</span>
-            <Badge variant="secondary" className="text-[10px] uppercase">{cred.provider}</Badge>
+            <Badge variant="secondary" className="text-[10px]">{providerLabel(cred.provider)}</Badge>
             {cred.agent_grants_count > 0 && (
               <Badge variant="outline" className="text-[10px]">
                 {cred.agent_grants_count} {cred.agent_grants_count === 1 ? "agent" : "agents"}
               </Badge>
             )}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5 truncate">
+          <div className="text-[11px] text-muted-foreground mt-0.5 truncate flex items-center gap-3">
             <span className="font-mono">…{cred.display_suffix}</span>
-            {cred.last_used_at && (
-              <span className="ml-3">last used {new Date(cred.last_used_at).toLocaleString()}</span>
+            {cred.field_names.length > 1 && (
+              <span>{cred.field_names.length} fields</span>
             )}
+            {cred.last_used_at && <span>used {timeAgo(cred.last_used_at)}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="sm" onClick={onEdit} title="Rotate / rename">
-            <Edit2 className="size-4" />
+        <div className="flex items-center gap-0.5 shrink-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onEdit} title="Rotate / rename">
+            <Pencil className="size-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onDelete} title="Delete">
-            <Trash2 className="size-4 text-destructive" />
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onDelete} title="Delete">
+            <Trash2 className="size-3.5 text-destructive" />
           </Button>
         </div>
       </CardContent>
     </Card>
   )
+}
+
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime()
+  const diff = (Date.now() - then) / 1000
+  if (diff < 60) return "just now"
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`
+  return new Date(iso).toLocaleDateString()
 }
 
 function CredentialModal({
@@ -225,28 +349,41 @@ function CredentialModal({
   mode: "create" | "edit"
   cred?: Credential
 }) {
+  // Two-step flow on create: pick provider, then fill the form. Edit jumps
+  // straight to the form because the provider can't change.
+  const [step, setStep] = useState<"pick" | "form">(mode === "create" ? "pick" : "form")
   const [kind, setKind] = useState<Kind>(cred?.kind ?? "llm_api_key")
-  const [provider, setProvider] = useState(cred?.provider ?? providers.llm_api_key[0] ?? "anthropic")
+  const [provider, setProvider] = useState<string>(cred?.provider ?? "")
   const [name, setName] = useState(cred?.name ?? "")
   const [fields, setFields] = useState<Record<string, string>>({})
+  const [revealMap, setRevealMap] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
 
-  // Resolves the field set for the current (kind, provider). Re-computed on
-  // every change so swapping AWS → Heroku swaps the form inputs immediately.
   const schema = useMemo<FieldDef[]>(
     () => lookupSchema(fieldSchemas, kind, provider),
     [fieldSchemas, kind, provider],
   )
 
-  // Reset field state when the schema changes so stale values from a prior
-  // provider don't leak into the new shape (AWS access_key_id → Heroku api_key).
+  // Reset field values when provider changes so AWS keys don't leak into
+  // a Heroku payload.
   useEffect(() => {
     setFields({})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setRevealMap({})
   }, [kind, provider])
 
   function setField(key: string, value: string) {
     setFields((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function toggleReveal(key: string) {
+    setRevealMap((m) => ({ ...m, [key]: !m[key] }))
+  }
+
+  function pickProvider(nextKind: Kind, nextProvider: string) {
+    setKind(nextKind)
+    setProvider(nextProvider)
+    setName((prev) => prev || `${providerLabel(nextProvider).toLowerCase()}-${randomTag()}`)
+    setStep("form")
   }
 
   function submit(e: React.FormEvent) {
@@ -268,104 +405,280 @@ function CredentialModal({
     }
   }
 
-  const providerList = providers[kind] ?? []
-
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{mode === "create" ? "Add credential" : `Rotate ${cred?.name}`}</DialogTitle>
-          <DialogDescription>
-            {mode === "create"
-              ? "Stored encrypted. Agents read it via env (LLM keys) or the secrets.get tool (cloud + generic)."
-              : "Leave a field blank to keep its current value; fill it to rotate."}
-          </DialogDescription>
+      <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b border-border">
+          <div className="flex items-center gap-3">
+            {mode === "create" && step === "form" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 -ml-2"
+                onClick={() => setStep("pick")}
+                aria-label="Back to provider list"
+              >
+                <ArrowLeft className="size-4" />
+              </Button>
+            )}
+            {step === "form" && provider && (
+              <div
+                className={cn(
+                  "flex size-9 items-center justify-center rounded-md border text-[11px] font-semibold",
+                  providerTint(provider, kind),
+                )}
+              >
+                {providerInitials(provider)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <DialogTitle className="text-base">
+                {mode === "create"
+                  ? step === "pick"
+                    ? "Add credential"
+                    : `Add ${providerLabel(provider)} credential`
+                  : `Rotate ${cred?.name}`}
+              </DialogTitle>
+              <DialogDescription className="text-xs mt-0.5">
+                {mode === "create"
+                  ? step === "pick"
+                    ? "Pick the service first. We'll show the right fields."
+                    : "Stored encrypted at rest. Agents read via env or secrets.get."
+                  : "Leave a field blank to keep its current value."}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
-        <form onSubmit={submit} className="space-y-4">
-          {mode === "create" && (
-            <>
-              <div className="space-y-1">
-                <Label>Type</Label>
-                <Select value={kind} onValueChange={(v) => { setKind(v as Kind); setProvider(providers[v as Kind][0] || "") }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="llm_api_key">LLM API key</SelectItem>
-                    <SelectItem value="cloud_provider">Cloud provider</SelectItem>
-                    <SelectItem value="generic">Generic secret</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label>Provider</Label>
-                <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger><SelectValue placeholder="Provider" /></SelectTrigger>
-                  <SelectContent>
-                    {providerList.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[10px] text-muted-foreground">Not listed? Type below.</p>
-                <Input
-                  placeholder="custom provider slug"
-                  value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="space-y-1">
-            <Label>Name</Label>
-            <Input
-              required
-              placeholder="production-anthropic"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <p className="text-[10px] text-muted-foreground">Friendly label. Must be unique per provider.</p>
-          </div>
-
-          {schema.map((f) => (
-            <div key={f.key} className="space-y-1">
-              <Label>
-                {f.label}
-                {f.optional && <span className="text-muted-foreground"> (optional)</span>}
-              </Label>
-              {f.multiline ? (
-                <textarea
-                  required={mode === "create" && !f.optional}
-                  rows={5}
-                  autoComplete={f.sensitive ? "new-password" : "off"}
-                  value={fields[f.key] || ""}
-                  onChange={(e) => setField(f.key, e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
-                  placeholder={f.sensitive ? "•••" : ""}
-                />
-              ) : (
-                <Input
-                  type={f.sensitive ? "password" : "text"}
-                  autoComplete={f.sensitive ? "new-password" : "off"}
-                  required={mode === "create" && !f.optional}
-                  placeholder={mode === "edit" ? "(unchanged)" : f.sensitive ? "•••" : ""}
-                  value={fields[f.key] || ""}
-                  onChange={(e) => setField(f.key, e.target.value)}
-                />
-              )}
+        {step === "pick" ? (
+          <ProviderPicker
+            providers={providers}
+            onPick={pickProvider}
+          />
+        ) : (
+          <form onSubmit={submit} className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Name</Label>
+              <Input
+                required
+                placeholder={`${providerLabel(provider).toLowerCase()}-prod`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Friendly label, unique per provider. Used by agents to distinguish prod vs staging.
+              </p>
             </div>
-          ))}
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy}>
-              {busy ? <RotateCw className="size-3.5 animate-spin mr-1.5" /> : null}
-              {mode === "create" ? "Add credential" : "Save"}
-            </Button>
-          </DialogFooter>
-        </form>
+            <div className="border-t border-border/60 pt-4 space-y-3">
+              {schema.map((f) => {
+                const revealed = !f.sensitive || revealMap[f.key]
+                return (
+                  <div key={f.key} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium">
+                        {f.label}
+                        {f.optional && <span className="text-muted-foreground font-normal"> · optional</span>}
+                      </Label>
+                      {f.sensitive && !f.multiline && (
+                        <button
+                          type="button"
+                          onClick={() => toggleReveal(f.key)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                          tabIndex={-1}
+                        >
+                          {revealed ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                          {revealed ? "Hide" : "Show"}
+                        </button>
+                      )}
+                    </div>
+                    {f.multiline ? (
+                      <textarea
+                        required={mode === "create" && !f.optional}
+                        rows={5}
+                        autoComplete={f.sensitive ? "new-password" : "off"}
+                        value={fields[f.key] || ""}
+                        onChange={(e) => setField(f.key, e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                        placeholder={mode === "edit" ? "(unchanged)" : f.sensitive ? '{\n  "type": "service_account",\n  ...\n}' : ""}
+                      />
+                    ) : (
+                      <Input
+                        type={revealed ? "text" : "password"}
+                        autoComplete={f.sensitive ? "new-password" : "off"}
+                        required={mode === "create" && !f.optional}
+                        placeholder={mode === "edit" ? "(unchanged)" : ""}
+                        value={fields[f.key] || ""}
+                        onChange={(e) => setField(f.key, e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            <DialogFooter className="-mx-6 px-6 pt-3 pb-1 border-t border-border/60">
+              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy}>
+                {busy && <RotateCw className="size-3.5 animate-spin mr-1.5" />}
+                {mode === "create" ? "Add credential" : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )
+}
+
+// Provider picker: grouped grid (LLM keys, Cloud providers, Generic) with
+// brand tinting + 2-letter avatars. Search filters across both label and slug.
+function ProviderPicker({
+  providers,
+  onPick,
+}: {
+  providers: Record<Kind, string[]>
+  onPick: (kind: Kind, provider: string) => void
+}) {
+  const [query, setQuery] = useState("")
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customSlug, setCustomSlug] = useState("")
+  const [customKind, setCustomKind] = useState<Kind>("generic")
+
+  const sections: Array<{ kind: Kind; title: string }> = [
+    { kind: "llm_api_key", title: "LLM API keys" },
+    { kind: "cloud_provider", title: "Cloud providers" },
+    { kind: "generic", title: "Generic secrets" },
+  ]
+
+  const q = query.trim().toLowerCase()
+  const filtered = sections.map((s) => ({
+    ...s,
+    items: providers[s.kind].filter((p) => {
+      if (!q) return true
+      return p.toLowerCase().includes(q) || providerLabel(p).toLowerCase().includes(q)
+    }),
+  }))
+
+  const noMatches = filtered.every((s) => s.items.length === 0)
+
+  return (
+    <div className="px-6 py-4 max-h-[70vh] overflow-y-auto space-y-5">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+        <Input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search providers — aws, stripe, openai…"
+          className="pl-8 h-9"
+        />
+      </div>
+
+      {filtered.map(
+        (s) =>
+          s.items.length > 0 && (
+            <section key={s.kind}>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                {s.title}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {s.items.map((p) => (
+                  <button
+                    type="button"
+                    key={p}
+                    onClick={() => onPick(s.kind, p)}
+                    className="group flex items-center gap-3 rounded-md border border-border/60 hover:border-border bg-card hover:bg-muted/30 px-3 py-2.5 text-left transition-colors"
+                  >
+                    <div
+                      className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold",
+                        providerTint(p, s.kind),
+                      )}
+                    >
+                      {providerInitials(p)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-sm truncate">{providerLabel(p)}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        {PROVIDER_META[p]?.blurb ?? p}
+                      </div>
+                    </div>
+                    <ChevronRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ),
+      )}
+
+      {noMatches && (
+        <div className="rounded-md border border-dashed border-border py-6 text-center text-xs text-muted-foreground">
+          No matching providers.
+          {!customOpen && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={() => { setCustomOpen(true); setCustomSlug(query) }}
+                className="text-foreground underline-offset-2 hover:underline"
+              >
+                Add a custom one
+              </button>
+              .
+            </>
+          )}
+        </div>
+      )}
+
+      <details
+        open={customOpen}
+        onToggle={(e) => setCustomOpen((e.target as HTMLDetailsElement).open)}
+        className="rounded-md border border-border/60 bg-muted/20"
+      >
+        <summary className="px-3 py-2 text-xs font-medium cursor-pointer select-none flex items-center justify-between">
+          <span>Custom provider</span>
+          <span className="text-[10px] text-muted-foreground">type the slug yourself</span>
+        </summary>
+        <div className="px-3 pb-3 pt-1 space-y-2">
+          <div className="flex gap-2">
+            <select
+              value={customKind}
+              onChange={(e) => setCustomKind(e.target.value as Kind)}
+              className="rounded-md border border-input bg-background px-2 text-xs h-8"
+            >
+              <option value="llm_api_key">LLM key</option>
+              <option value="cloud_provider">Cloud</option>
+              <option value="generic">Generic</option>
+            </select>
+            <Input
+              value={customSlug}
+              onChange={(e) => setCustomSlug(e.target.value)}
+              placeholder="provider-slug"
+              className="h-8 flex-1 font-mono text-xs"
+            />
+            <Button
+              type="button"
+              size="sm"
+              disabled={!customSlug.trim()}
+              onClick={() => onPick(customKind, customSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_"))}
+            >
+              <Check className="size-3.5" />
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Falls back to a single-field “Secret value” form. Add per-provider schemas in
+            <span className="font-mono"> app/models/credential.rb</span> for richer inputs.
+          </p>
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function randomTag(): string {
+  return Math.random().toString(36).slice(2, 5)
 }
