@@ -93,12 +93,13 @@ export default function CredentialsPage({ credentials, kinds, providers }: Props
         eyebrow="Settings"
         title="Credentials"
         description="Store API keys and cloud secrets once; agents reuse them through env (LLM keys) or the secrets.get tool (everything else)."
-      >
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus className="size-4 mr-1.5" />
-          Add credential
-        </Button>
-      </PageHeader>
+        action={
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="size-4 mr-1.5" />
+            Add credential
+          </Button>
+        }
+      />
 
       <div className="space-y-8 max-w-3xl">
         {kinds.map((kind) => {
