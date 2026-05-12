@@ -380,9 +380,19 @@ export default function TasksIndex({ tasks, agents }: Props) {
     }
   }
 
+  // Controlled open state so we can close the modal once the server
+  // confirms the create. Inertia's `onSuccess` fires after the response
+  // lands, so resetting + closing there is the natural hook.
+  const [newTaskOpen, setNewTaskOpen] = useState(false)
+
   function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    post(tasksPath(), { onSuccess: () => reset() })
+    post(tasksPath(), {
+      onSuccess: () => {
+        reset()
+        setNewTaskOpen(false)
+      },
+    })
   }
 
   const pageCrumbs = [
@@ -391,7 +401,7 @@ export default function TasksIndex({ tasks, agents }: Props) {
   ]
 
   const newTaskDialog = (
-    <Dialog>
+    <Dialog open={newTaskOpen} onOpenChange={setNewTaskOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="h-8 gap-1.5">
           <Plus className="size-3.5" />
