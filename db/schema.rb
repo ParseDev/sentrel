@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_12_110100) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_12_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -179,6 +179,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_110100) do
   end
 
   create_table "audit_logs", force: :cascade do |t|
+    t.bigint "acting_user_id"
     t.string "action", null: false
     t.jsonb "active_capabilities", default: {}, null: false
     t.bigint "agent_id"
@@ -203,6 +204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_110100) do
     t.decimal "total_cost_usd", precision: 10, scale: 6
     t.datetime "updated_at", null: false
     t.boolean "was_resume", default: false, null: false
+    t.index ["acting_user_id"], name: "index_audit_logs_on_acting_user_id"
     t.index ["agent_id", "created_at"], name: "index_audit_logs_on_agent_id_and_created_at"
     t.index ["agent_id"], name: "index_audit_logs_on_agent_id"
     t.index ["duration_ms"], name: "index_audit_logs_on_duration_ms"
@@ -605,6 +607,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_110100) do
   add_foreign_key "audit_logs", "agents"
   add_foreign_key "audit_logs", "organizations"
   add_foreign_key "audit_logs", "tasks"
+  add_foreign_key "audit_logs", "users", column: "acting_user_id", validate: false
   add_foreign_key "channel_configs", "agents"
   add_foreign_key "composio_toolkit_caches", "organizations"
   add_foreign_key "conversations", "agents"

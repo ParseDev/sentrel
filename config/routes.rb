@@ -100,6 +100,10 @@ Rails.application.routes.draw do
           get "tools/:toolkit_slug", action: :tools, as: :tools
         end
       end
+      # Human user composes / replies to an email AS the agent (uses the
+      # agent's SES identity but persists Message.sender_user_id +
+      # AuditLog.acting_user_id so the trail attributes it to the human).
+      resources :outbound_emails, only: [:create], module: :agents
     end
 
     resources :tasks do

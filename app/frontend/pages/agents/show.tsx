@@ -34,6 +34,7 @@ function formatBytes(bytes: number): string {
 import { StatusDot } from "@/components/brand"
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
+import { EmailComposerModal } from "@/components/email-composer-modal"
 import { AgentOpsMenu } from "@/components/agent-ops-menu"
 import { AgentModelPicker } from "@/components/agent-model-picker"
 import { AgentSpendCard } from "@/components/agent-spend-card"
@@ -453,6 +454,11 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
   const [channelFilter, setChannelFilter] = useState<string>("all")
   const [convMessages, setConvMessages] = useState<MessageItem[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [composerSeed, setComposerSeed] = useState<{
+    to?: string; cc?: string; subject?: string; body?: string;
+    replyingTo?: { from: string | null; subject: string | null } | null
+  } | null>(null)
 
   const filteredConversations = channelFilter === "all"
     ? conversations
@@ -575,6 +581,19 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                   )
                 })}
               </div>
+
+              {channelFilter === "email" && agentPrimaryEmail && (
+                <div className="px-3 py-2 border-b border-border">
+                  <Button
+                    size="sm"
+                    className="w-full h-7 gap-1.5"
+                    onClick={() => { setComposerSeed(null); setComposerOpen(true) }}
+                  >
+                    <PenLine className="size-3.5" />
+                    Compose
+                  </Button>
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto">
                 {channelFilter === "email" ? (
@@ -706,6 +725,33 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                             {isOutbound ? "Sent" : "Received"}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">{new Date(email.created_at).toLocaleString()}</span>
+                          {!isOutbound && agentPrimaryEmail && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1.5"
+                              onClick={() => {
+                                const replyAddr = email.sender?.email || email.sender_email || email.from || ""
+                                const replyName = email.sender?.name || email.sender_name || ""
+                                const subject = (email.subject || "").startsWith("Re:")
+                                  ? (email.subject || "")
+                                  : `Re: ${email.subject || ""}`
+                                setComposerSeed({
+                                  to: replyAddr,
+                                  subject,
+                                  body: "",
+                                  replyingTo: {
+                                    from: replyName ? `${replyName} <${replyAddr}>` : replyAddr,
+                                    subject: email.subject,
+                                  },
+                                })
+                                setComposerOpen(true)
+                              }}
+                            >
+                              <PenLine className="size-3.5" />
+                              Reply
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -932,6 +978,21 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
           </div>
         )}
       </div>
+
+      <EmailComposerModal
+        open={composerOpen}
+        onClose={() => { setComposerOpen(false); setComposerSeed(null) }}
+        agentId={agent.id}
+        agentName={agent.name}
+        agentEmail={agentPrimaryEmail}
+        currentUser={currentUser}
+        initialTo={composerSeed?.to ?? ""}
+        initialCc={composerSeed?.cc ?? ""}
+        initialSubject={composerSeed?.subject ?? ""}
+        initialBody={composerSeed?.body ?? ""}
+        replyingTo={composerSeed?.replyingTo ?? null}
+        onSent={() => router.reload({ only: ["emails"] })}
+      />
     </AppLayout>
   )
 }

@@ -219,6 +219,7 @@ module Email
         input: @payload.except(:body_html, :body_text).as_json,
         output: { status: "sent", ses_message_id: ses_message_id },
         status: "success",
+        acting_user_id: @payload[:acting_user_id].presence,
       )
       Rails.logger.info "Email sent: #{@from_address} → #{@to_address} (#{@subject})"
     end
@@ -231,6 +232,7 @@ module Email
         input: @payload.except(:body_html, :body_text).as_json,
         output: { error: error },
         status: "failed",
+        acting_user_id: @payload[:acting_user_id].presence,
       )
     end
   end
