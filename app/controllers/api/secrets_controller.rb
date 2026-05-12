@@ -20,23 +20,12 @@ class Api::SecretsController < ApplicationController
     provider = params[:provider].to_s.presence
     kind     = params[:kind].to_s.presence || "cloud_provider"
 
-    # When a name is given, treat it as a direct lookup that ignores the
-    # (provider, kind) resolution path — useful for "give me the value of
-    # the credential called X" workflows. Otherwise use Credential.find_for
-    # which prefers the per-agent grant.
+    # When a name is given, look up unscoped within the org and then run the
+    # ACL — so a credential the agent has no grant for returns 403, not 404
+    # (the credential DOES exist, the agent just can't read it).
     cred =
       if name.present?
-        ActsAsTenant.with_tenant(agent.organization) do
-          if agent.credentials.where(name: name).exists?
-            agent.credentials.find_by(name: name)
-          else
-            # Fall back to an org-default credential of this name only when no
-            # grants exist for the agent yet (matches Credential.find_for).
-            agent.agent_credential_grants.exists? ?
-              nil :
-              Credential.where(organization_id: agent.organization_id, name: name).first
-          end
-        end
+        Credential.where(organization_id: agent.organization_id, name: name).first
       elsif provider.present?
         Credential.find_for(agent, provider: provider, kind: kind)
       end
@@ -64,12 +53,31 @@ class Api::SecretsController < ApplicationController
       kind:     cred.kind,
       provider: cred.provider,
       name:     cred.name,
+      # Hint to the engine — when true, the engine pauses the agent's turn
+      # and surfaces a request_approval card to the human user before the
+      # value gets handed to the model. Default = true for cloud providers
+      # (which can spend money / mutate infra) unless the credential
+      # explicitly opts out via meta.requires_approval = false.
+      requires_approval: requires_approval?(cred),
     }
   rescue ActiveRecord::RecordNotFound
     render json: { error: "agent not found" }, status: :not_found
   end
 
   private
+
+  # Credentials that can mutate paying infrastructure default to requiring
+  # an explicit human ok before the engine hands the value to the model.
+  # LLM keys are excluded (they're piped into env at boot, never fetched
+  # at runtime). Generic creds default to no-gate unless meta opts in.
+  HIGH_RISK_PROVIDERS = %w[aws gcp azure heroku hetzner vercel digitalocean fly cloudflare].freeze
+
+  def requires_approval?(cred)
+    explicit = cred.meta && cred.meta.key?("requires_approval") ? cred.meta["requires_approval"] : nil
+    return explicit unless explicit.nil?
+    return false if cred.kind == "llm_api_key"
+    cred.kind == "cloud_provider" && HIGH_RISK_PROVIDERS.include?(cred.provider)
+  end
 
   def allowed?(agent, cred)
     # Same-org rule — never cross-tenant.

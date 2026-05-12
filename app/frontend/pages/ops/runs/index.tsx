@@ -1,5 +1,7 @@
 import { Head, router, Link } from "@inertiajs/react"
-import { Activity, CheckCircle2, XCircle, Clock, Zap, TrendingDown } from "lucide-react"
+import { useState } from "react"
+import { Activity, CheckCircle2, XCircle, Clock, Zap, TrendingDown, Rocket, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
@@ -84,6 +86,7 @@ export default function OpsRunsIndex({ runs, totals, agents, filters }: Props) {
       ]}
       topBarActions={
         <div className="flex items-center gap-2">
+          <RollEngineButton />
           <Button variant="outline" size="sm" asChild className="h-8">
             <Link href="/ops/traces">Trace tree</Link>
           </Button>
@@ -258,5 +261,40 @@ function StatCard({
       </div>
       <div className={`text-lg font-semibold tabular-nums ${toneClasses}`}>{value}</div>
     </div>
+  )
+}
+
+// Top-bar action: rolls every running agent in the org onto the latest engine
+// image. POSTs to /ops/roll_engine which enqueues RollEngineUpdateJob (one
+// AgentMachineOps.redeploy per agent, throttled inside the job). Confirmation
+// prompt before firing because it briefly disrupts every agent.
+function RollEngineButton() {
+  const [busy, setBusy] = useState(false)
+  function csrf() {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+  }
+  async function go() {
+    if (!confirm("Roll EVERY agent onto the latest engine image? Each agent briefly restarts.")) return
+    setBusy(true)
+    try {
+      const res = await fetch("/ops/roll_engine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
+        body: "{}",
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`)
+      toast.success(data.message || "Rolling update queued")
+    } catch (err) {
+      toast.error(`Roll failed: ${(err as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={go} disabled={busy} title="Redeploy every agent in this workspace onto the latest engine image">
+      {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Rocket className="size-3.5" />}
+      Roll all agents
+    </Button>
   )
 }

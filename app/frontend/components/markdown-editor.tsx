@@ -3,6 +3,7 @@ import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Placeholder from "@tiptap/extension-placeholder"
 import { Markdown } from "tiptap-markdown"
+import { TemplateVariableDecoration } from "./template-variable-decoration"
 import { useCallback, useEffect, useRef } from "react"
 import {
   Bold,
@@ -72,6 +73,11 @@ export function MarkdownEditor({
         linkify: true,
         transformPastedText: true,
       }),
+      // Paints {{agent_name}} / {{company_name}} / {{user_name}} / {{role}}
+      // (and any other mustache token) as inline chips so template authors
+      // can see where AgentTemplate#render will inject values. Pure visual
+      // decoration — markdown text is unchanged.
+      TemplateVariableDecoration,
     ],
     content: value,
     editable: !readOnly,
@@ -124,6 +130,15 @@ export function MarkdownEditor({
           "[&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_blockquote]:text-muted-foreground",
           "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:py-0.5 [&_.ProseMirror_code]:text-xs",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
+          // Template-variable chip styling. Pure inline decoration applied
+          // by the TemplateVariableDecoration plugin — the text under the
+          // span is still the raw {{token}} so the engine sees it unchanged.
+          "[&_.aui-tplvar]:rounded [&_.aui-tplvar]:px-1 [&_.aui-tplvar]:py-0 [&_.aui-tplvar]:text-[12px] [&_.aui-tplvar]:font-mono [&_.aui-tplvar]:font-medium",
+          "[&_.aui-tplvar-agent]:bg-indigo-500/15 [&_.aui-tplvar-agent]:text-indigo-600 dark:[&_.aui-tplvar-agent]:text-indigo-300",
+          "[&_.aui-tplvar-company]:bg-emerald-500/15 [&_.aui-tplvar-company]:text-emerald-600 dark:[&_.aui-tplvar-company]:text-emerald-300",
+          "[&_.aui-tplvar-user]:bg-amber-500/15 [&_.aui-tplvar-user]:text-amber-700 dark:[&_.aui-tplvar-user]:text-amber-300",
+          "[&_.aui-tplvar-role]:bg-violet-500/15 [&_.aui-tplvar-role]:text-violet-600 dark:[&_.aui-tplvar-role]:text-violet-300",
+          "[&_.aui-tplvar-other]:bg-zinc-500/15 [&_.aui-tplvar-other]:text-zinc-700 dark:[&_.aui-tplvar-other]:text-zinc-300",
         )}
         style={{ minHeight }}
       />

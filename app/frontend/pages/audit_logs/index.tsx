@@ -16,23 +16,45 @@ interface LogEntry {
   status: string | null
   created_at: string
   agent: { id: number; name: string; slug: string } | null
+  acting_user_id: number | null
+  acting_user: { id: number; name: string; email: string } | null
+}
+
+interface Filters {
+  agent_id?: string | null
+  action_filter?: string | null
+  actor?: "all" | "human" | "agent"
 }
 
 interface Props {
   logs: LogEntry[]
   agents: { id: number; name: string; slug: string }[]
+  filters: Filters
 }
 
-export default function AuditLogsIndex({ logs, agents }: Props) {
+export default function AuditLogsIndex({ logs, agents, filters }: Props) {
   const [status, setStatus] = useState<"all" | "success" | "failed">("all")
   const [query, setQuery] = useState("")
 
-  function filterByAgent(agentId: string) {
+  function navigate(patch: Record<string, string | undefined>) {
     router.get(
       "/audit_logs",
-      { agent_id: agentId === "all" ? undefined : agentId },
+      {
+        agent_id: filters.agent_id || undefined,
+        action_filter: filters.action_filter || undefined,
+        actor: filters.actor && filters.actor !== "all" ? filters.actor : undefined,
+        ...patch,
+      },
       { preserveState: true },
     )
+  }
+
+  function filterByAgent(agentId: string) {
+    navigate({ agent_id: agentId === "all" ? undefined : agentId })
+  }
+
+  function filterByActor(actor: string) {
+    navigate({ actor: actor === "all" ? undefined : actor })
   }
 
   const visible = useMemo(() => {
@@ -88,21 +110,41 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
         description="A chronological ledger of every tool call, every approval, every run."
       />
 
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 rounded-md border bg-card p-1">
-          {(["all", "success", "failed"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatus(s)}
-              className={`rounded-sm px-3 py-1 text-[11px] font-medium capitalize transition-colors ${
-                status === s
-                  ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+      <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 rounded-md border bg-card p-1">
+            {(["all", "success", "failed"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                className={`rounded-sm px-3 py-1 text-[11px] font-medium capitalize transition-colors ${
+                  status === s
+                    ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          {/* Server-side filter: who triggered the audit row. "Human" =
+              acting_user_id IS NOT NULL (someone clicked Send / Approve
+              through an agent's identity). "Agent" = autonomous run. */}
+          <div className="flex items-center gap-1 rounded-md border bg-card p-1">
+            {(["all", "human", "agent"] as const).map((a) => (
+              <button
+                key={a}
+                onClick={() => filterByActor(a)}
+                className={`rounded-sm px-3 py-1 text-[11px] font-medium capitalize transition-colors ${
+                  (filters.actor || "all") === a
+                    ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {a === "all" ? "Any actor" : a === "human" ? "Human-acted" : "Agent-autonomous"}
+              </button>
+            ))}
+          </div>
         </div>
         <span className="font-mono text-[11px] text-muted-foreground">
           {visible.length} of {logs.length}
@@ -128,6 +170,7 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
               <tr className="border-b">
                 <th className="px-4 py-2.5 text-left">Time</th>
                 <th className="px-4 py-2.5 text-left">Agent</th>
+                <th className="px-4 py-2.5 text-left">Actor</th>
                 <th className="px-4 py-2.5 text-left">Action</th>
                 <th className="px-4 py-2.5 text-left">Tool</th>
                 <th className="px-4 py-2.5 text-left">Status</th>
@@ -140,6 +183,16 @@ export default function AuditLogsIndex({ logs, agents }: Props) {
                     {new Date(log.created_at).toLocaleString()}
                   </td>
                   <td className="px-4 py-2.5 text-sm font-medium">{log.agent?.name || "—"}</td>
+                  <td className="px-4 py-2.5">
+                    {log.acting_user ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Badge variant="outline" className="text-[10px]">Human</Badge>
+                        <span className="text-xs text-muted-foreground truncate max-w-[12rem]">{log.acting_user.name}</span>
+                      </span>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px]">Agent</Badge>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">
                     <Badge variant="secondary">{log.action}</Badge>
                   </td>
