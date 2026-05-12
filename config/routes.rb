@@ -39,6 +39,10 @@ Rails.application.routes.draw do
     # Engine fetches the canonical supported-integrations list from Composio
     # at boot + every 30 min. Source of truth — no hard-coded list to drift.
     get "integrations/supported", to: "integrations#supported"
+    # Engine asks for a stored credential via the secrets.get MCP tool.
+    # ACL: Credential.find_for resolves per-agent grant first, falls back to
+    # org default. Every fetch writes an audit log row.
+    get "secrets", to: "secrets#show"
   end
 
   # Webhook gateway (external services + dashboard chat)
