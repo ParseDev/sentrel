@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_12_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_12_110100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -41,6 +41,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_100000) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "agent_credential_grants", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.datetime "created_at", null: false
+    t.bigint "credential_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "credential_id"], name: "index_agent_credential_grants_uniq", unique: true
+    t.index ["agent_id"], name: "index_agent_credential_grants_on_agent_id"
+    t.index ["credential_id"], name: "index_agent_credential_grants_on_credential_id"
   end
 
   create_table "agent_skills", force: :cascade do |t|
@@ -260,6 +270,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_100000) do
     t.index ["unified_conversation_id", "updated_at"], name: "index_conversations_on_unified_and_updated"
     t.index ["unified_conversation_id"], name: "index_conversations_on_unified_conversation_id"
     t.index ["user_id"], name: "index_conversations_on_user_id"
+  end
+
+  create_table "credentials", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "created_by_user_id"
+    t.string "kind", null: false
+    t.datetime "last_used_at"
+    t.jsonb "meta", default: {}, null: false
+    t.string "name", null: false
+    t.bigint "organization_id", null: false
+    t.string "provider", null: false
+    t.datetime "updated_at", null: false
+    t.text "value_ciphertext"
+    t.index ["created_by_user_id"], name: "index_credentials_on_created_by_user_id"
+    t.index ["kind"], name: "index_credentials_on_kind"
+    t.index ["organization_id", "provider", "name"], name: "index_credentials_uniq_per_org", unique: true
+    t.index ["organization_id"], name: "index_credentials_on_organization_id"
   end
 
   create_table "email_events", force: :cascade do |t|
@@ -562,6 +589,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_100000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "agent_credential_grants", "agents"
+  add_foreign_key "agent_credential_grants", "credentials"
   add_foreign_key "agent_skills", "agents"
   add_foreign_key "agent_skills", "skill_definitions"
   add_foreign_key "agent_summaries", "agents"
@@ -582,6 +611,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_100000) do
   add_foreign_key "conversations", "conversations", column: "unified_conversation_id"
   add_foreign_key "conversations", "organizations"
   add_foreign_key "conversations", "users"
+  add_foreign_key "credentials", "organizations"
+  add_foreign_key "credentials", "users", column: "created_by_user_id"
   add_foreign_key "email_events", "agents"
   add_foreign_key "email_events", "organizations"
   add_foreign_key "email_suppressions", "organizations"

@@ -192,6 +192,13 @@ Rails.application.routes.draw do
       post :reset_email_domain
       get  :subdomain_availability
     end
+
+    # BYO secrets (LLM API keys, cloud provider creds, generic API keys).
+    # LLM keys auto-pipe into the agent's Fly machine env via
+    # AgentProvisioner. Cloud + generic creds expose via the secrets.get
+    # MCP tool. Per-agent ACL: agent_credential_grants restricts which
+    # creds a given agent may use (empty = use org defaults).
+    resources :credentials, only: [:index, :create, :update, :destroy], path: "settings/credentials"
   end
 
   # Root always renders the public landing page (auth-aware actions inside).

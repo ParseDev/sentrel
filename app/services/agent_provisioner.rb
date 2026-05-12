@@ -165,8 +165,12 @@ module AgentProvisioner
         "REDIS_URL"           => ENV.fetch("ENGINE_REDIS_URL", ENV["REDIS_URL"].to_s),
         "ENGINE_API_SECRET"   => ENV["ENGINE_API_SECRET"].to_s,
         "RAILS_INTERNAL_URL"  => ENV["RAILS_INTERNAL_URL"].to_s,
-        "COMPOSIO_API_KEY"    => ENV["COMPOSIO_API_KEY"].to_s,
-        "OPENAI_API_KEY"      => ENV["OPENAI_API_KEY"].to_s,
+        # BYO LLM keys — Credential.find_for(agent, …) prefers the org's
+        # stored key over the platform-wide ENV fallback so customers can
+        # bill against their own account. Same lookup for openai (for
+        # transcribe / embed) + composio.
+        "COMPOSIO_API_KEY"    => byo_key(agent, "composio", ENV["COMPOSIO_API_KEY"]),
+        "OPENAI_API_KEY"      => byo_key(agent, "openai", ENV["OPENAI_API_KEY"]),
         "SENTRY_DSN"          => ENV["SENTRY_DSN"].to_s,
         # "all" loads every connected Composio toolkit into allowedTools
         # at session start, so tools discovered via search_integrations
@@ -183,9 +187,10 @@ module AgentProvisioner
 
       case provider
       when "openrouter"
-        if ENV["OPENROUTER_API_KEY"].present?
+        openrouter_key = byo_key(agent, "openrouter", ENV["OPENROUTER_API_KEY"])
+        if openrouter_key.present?
           env["ANTHROPIC_BASE_URL"]             = "https://openrouter.ai/api"
-          env["ANTHROPIC_AUTH_TOKEN"]           = ENV["OPENROUTER_API_KEY"]
+          env["ANTHROPIC_AUTH_TOKEN"]           = openrouter_key
           env["ANTHROPIC_API_KEY"]              = ""
           env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]  = model_id
           env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model_id
@@ -227,10 +232,21 @@ module AgentProvisioner
           env["ANTHROPIC_DEFAULT_OPUS_MODEL"]    = model_id
         end
       else
-        env["ANTHROPIC_API_KEY"] = ENV["ANTHROPIC_API_KEY"].to_s
+        env["ANTHROPIC_API_KEY"] = byo_key(agent, "anthropic", ENV["ANTHROPIC_API_KEY"])
       end
 
       env.compact
+    end
+
+    # Prefer the org's stored llm_api_key for `provider`; fall back to the
+    # platform-wide ENV value (so existing deployments without any custom
+    # credentials keep working). Returns "" instead of nil so env.compact
+    # doesn't drop "I'm deliberately blanking this" overrides.
+    def byo_key(agent, provider, fallback)
+      cred = Credential.find_for(agent, provider: provider, kind: "llm_api_key") rescue nil
+      key = cred&.value.presence || fallback.to_s
+      cred&.use! if cred && key.present?
+      key
     end
 
     def ai_provider_credential(org_id, provider)

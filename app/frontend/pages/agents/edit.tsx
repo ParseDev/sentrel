@@ -59,12 +59,21 @@ interface AgentSummary {
   role: string
 }
 
+interface OrgCredential {
+  id: number
+  kind: "llm_api_key" | "cloud_provider" | "generic"
+  provider: string
+  name: string
+}
+
 interface Props {
   agent: Agent
   agents: AgentSummary[]
+  org_credentials?: OrgCredential[]
+  granted_credential_ids?: number[]
 }
 
-export default function AgentEdit({ agent, agents = [] }: Props) {
+export default function AgentEdit({ agent, agents = [], org_credentials = [], granted_credential_ids = [] }: Props) {
   const currentManagerId = (agent as any).manager?.id
     ? (typeof (agent as any).manager.id === "string" ? (agent as any).manager.id : String((agent as any).manager.id))
     : "none"
@@ -96,6 +105,10 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
       recall:       { enabled: true },
       send_media:   { enabled: true },
     },
+    // Per-agent credential allowlist. Empty = use org defaults (the
+    // controller treats "no rows" as "all credentials in scope"). Any
+    // selection narrows the agent to those specific credentials.
+    granted_credential_ids: granted_credential_ids,
   })
 
   function setCap(key: string, patch: Record<string, unknown>) {
@@ -406,6 +419,12 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
           </div>
 
           <ToolPoliciesSection agentId={agentId} />
+
+          <CredentialsGrantSection
+            credentials={org_credentials}
+            granted={data.granted_credential_ids}
+            onChange={(ids) => setData("granted_credential_ids", ids)}
+          />
         </section>
         </>)}
 
@@ -420,4 +439,71 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
       </form>
     )
   }
+}
+
+// Renders the org's credentials grouped by kind with checkboxes for "this
+// agent may use it". Empty selection means "no restriction — use org
+// defaults for whichever (kind, provider) the agent needs at runtime".
+function CredentialsGrantSection({
+  credentials,
+  granted,
+  onChange,
+}: {
+  credentials: OrgCredential[]
+  granted: number[]
+  onChange: (ids: number[]) => void
+}) {
+  if (!credentials || credentials.length === 0) {
+    return (
+      <div className="mt-6 rounded-lg border border-dashed border-border bg-card p-4 text-xs text-muted-foreground">
+        No org credentials yet. Add one in{" "}
+        <Link href="/settings/credentials" className="underline">
+          Settings → Credentials
+        </Link>
+        .
+      </div>
+    )
+  }
+  const grouped: Record<string, OrgCredential[]> = {}
+  for (const c of credentials) (grouped[c.kind] ||= []).push(c)
+  const toggle = (id: number) => {
+    if (granted.includes(id)) onChange(granted.filter((x) => x !== id))
+    else onChange([...granted, id])
+  }
+  const LABEL: Record<string, string> = {
+    llm_api_key: "LLM API keys",
+    cloud_provider: "Cloud providers",
+    generic: "Generic secrets",
+  }
+  return (
+    <div className="mt-6 space-y-3">
+      <Overline className="mb-1">Credentials this agent may use</Overline>
+      <p className="text-[10px] text-muted-foreground">
+        Leave everything unchecked to fall back to org defaults. Any selection narrows
+        the agent to those specific credentials only.
+      </p>
+      {Object.entries(grouped).map(([kind, items]) => (
+        <div key={kind} className="rounded-lg border border-border p-3">
+          <div className="text-xs font-semibold mb-2">{LABEL[kind] ?? kind}</div>
+          <div className="space-y-1.5">
+            {items.map((c) => (
+              <label
+                key={c.id}
+                className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-2 py-1"
+              >
+                <input
+                  type="checkbox"
+                  className="size-3.5"
+                  checked={granted.includes(c.id)}
+                  onChange={() => toggle(c.id)}
+                />
+                <span className="font-medium">{c.name}</span>
+                <span className="text-[10px] uppercase text-muted-foreground">{c.provider}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }

@@ -304,12 +304,17 @@ class AgentsController < ApplicationController
       agents: current_tenant.agents.where.not(id: @agent.id).select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
+      org_credentials: current_tenant.credentials
+        .order(kind: :asc, provider: :asc, name: :asc)
+        .map { |c| { id: c.id, kind: c.kind, provider: c.provider, name: c.name } },
+      granted_credential_ids: @agent.credentials.pluck(:id),
     }
   end
 
   def update
     if @agent.update(agent_params)
       @agent.ai_config&.update(ai_config_params) if params[:ai_config].present?
+      update_credential_grants if params.key?(:granted_credential_ids)
       EngineSync.trigger(@agent)
       redirect_to agent_path(@agent), notice: "Agent updated"
     else
@@ -398,6 +403,22 @@ class AgentsController < ApplicationController
 
   def ai_config_params
     params.fetch(:ai_config, {}).permit(:provider, :model_id, :temperature, :max_tokens, :thinking_level)
+  end
+
+  # Replaces the agent's credential grants with whatever the form sent.
+  # Empty array clears all grants — agent falls back to org defaults.
+  def update_credential_grants
+    requested_ids = Array(params[:granted_credential_ids]).map(&:to_i).reject(&:zero?)
+    # Only allow grants for credentials in the agent's organization.
+    allowed_ids = current_tenant.credentials.where(id: requested_ids).pluck(:id)
+
+    AgentCredentialGrant.transaction do
+      @agent.agent_credential_grants.where.not(credential_id: allowed_ids).destroy_all
+      existing_ids = @agent.agent_credential_grants.pluck(:credential_id)
+      (allowed_ids - existing_ids).each do |cid|
+        @agent.agent_credential_grants.create!(credential_id: cid)
+      end
+    end
   end
 
   # Stores the channel preferences captured in the new-agent wizard intro.

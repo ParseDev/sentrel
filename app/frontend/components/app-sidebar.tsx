@@ -15,6 +15,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeft,
+  KeyRound,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
@@ -61,6 +62,7 @@ const controlNavItems: NavItem[] = [
   { title: "Ops", href: "/ops/runs", icon: Activity },
   { title: "Audit Log", href: auditLogsPath(), icon: ScrollText },
   { title: "Team",      href: "/invitations",  icon: Users },
+  { title: "Credentials", href: "/settings/credentials", icon: KeyRound },
   { title: "Settings",  href: settingsPath(), icon: Settings },
 ]
 
