@@ -21,6 +21,7 @@ import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
 import { buildSecretsMcpServer } from "./tools/secrets.js";
+import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
 import { detectIntegrationIntents, hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
@@ -1403,6 +1404,14 @@ async function buildQueryOptions(
   });
   mcpServers.secrets = secretsServer;
   baseMcpServers.secrets = secretsServer;
+
+  // Self-authoring skills MCP — agents can compose new SKILL.md bundles and
+  // install them on themselves via skills.create + skills.install_on_me.
+  // Always-on; org scoping flows from agent.id → agent.organization_id on
+  // the Rails side.
+  const skillsCreatorServer = buildSkillsCreatorMcpServer({ agentId: agent.id });
+  mcpServers.skills = skillsCreatorServer;
+  baseMcpServers.skills = skillsCreatorServer;
 
   // Integrations capability gates both `integrations` (search) and
   // `composio` (actual execution tools). Disable the capability to
