@@ -14,6 +14,16 @@ class ChannelConfigsController < ApplicationController
   end
 
   def create
+    # Block connect attempts on channels marked coming_soon in config/channels.yml
+    # so a hand-rolled POST can't bypass the UI gate.
+    catalog = YAML.load_file(Rails.root.join("config/channels.yml"))
+    requested_type = channel_config_params[:channel_type].to_s
+    if catalog[requested_type].is_a?(Hash) && catalog[requested_type]["coming_soon"]
+      redirect_back fallback_location: agent_channel_configs_path(@agent),
+        alert: "#{catalog[requested_type]['label'] || requested_type.capitalize} channel is coming soon — not available yet."
+      return
+    end
+
     config = @agent.channel_configs.build(channel_config_params)
     config.status = "connected"
 

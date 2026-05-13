@@ -35,6 +35,11 @@ interface AvailableChannel {
   icon: string
   description: string
   always_available?: boolean
+  // When true, render the card but disable the Connect button and show a
+  // "Coming soon" badge. Channels still wire up in the backend (so we don't
+  // break existing connections), they just can't be newly enabled from the
+  // UI until we flip the flag in config/channels.yml.
+  coming_soon?: boolean
   fields: Record<string, { type: string; label: string; placeholder?: string; required?: boolean; sensitive?: boolean; hint?: string }>
 }
 
@@ -138,23 +143,42 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
           .filter(([key, val]) => !connectedTypes.includes(key) && !val.always_available)
           .map(([key, channel]) => {
             const Icon = CHANNEL_ICONS[key] || MessageSquare
+            const comingSoon = !!channel.coming_soon
 
             return (
-              <Card key={key} className="opacity-60 hover:opacity-100 transition-opacity">
+              <Card
+                key={key}
+                className={comingSoon
+                  ? "opacity-50 cursor-not-allowed"
+                  : "opacity-60 hover:opacity-100 transition-opacity"}
+              >
                 <CardContent className="flex items-center justify-between py-3">
                   <div className="flex items-center gap-3">
                     <div className="flex size-8 items-center justify-center rounded-md bg-muted">
                       <Icon className="size-4 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium text-sm">{channel.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{channel.label}</p>
+                        {comingSoon && (
+                          <Badge variant="secondary" className="text-[10px] font-medium">
+                            Coming soon
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{channel.description}</p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setConnectingChannel(key)}>
-                    <Plus className="size-4 mr-1" />
-                    Connect
-                  </Button>
+                  {comingSoon ? (
+                    <Button variant="outline" size="sm" disabled>
+                      Coming soon
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => setConnectingChannel(key)}>
+                      <Plus className="size-4 mr-1" />
+                      Connect
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )

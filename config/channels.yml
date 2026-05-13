@@ -20,6 +20,7 @@ whatsapp:
   label: "WhatsApp"
   icon: "phone"
   description: "Send and receive via Twilio WhatsApp"
+  coming_soon: true
   fields:
     phone_number:
       type: string
@@ -32,6 +33,7 @@ sms:
   label: "SMS"
   icon: "message-circle"
   description: "Send and receive SMS via Twilio"
+  coming_soon: true
   fields:
     phone_number:
       type: string
@@ -44,6 +46,7 @@ slack:
   label: "Slack"
   icon: "hash"
   description: "Appears in your Slack workspace"
+  coming_soon: true
   fields:
     display_name:
       type: string
