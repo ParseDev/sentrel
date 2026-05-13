@@ -36,4 +36,20 @@ module EngineSync
     # next inbound message picks up any change if this sync fails.
     Rails.logger.warn "EngineSync failed for agent #{agent&.id}: #{e.message}"
   end
+
+  # Fan out a sync to every agent that has a given skill installed. Called
+  # from SkillsController#update so editing a skill propagates to all
+  # consumers without per-agent Redeploy clicks.
+  def trigger_for_skill(skill)
+    return unless skill&.id
+
+    # Walk agent_skills directly to avoid loading the full Agent records.
+    AgentSkill.where(skill_definition_id: skill.id).distinct.pluck(:agent_id).each do |agent_id|
+      redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+      channel = "agent-#{agent_id}-sync"
+      redis.publish(channel, "{}")
+    rescue => e
+      Rails.logger.warn "EngineSync.trigger_for_skill: agent=#{agent_id} skill=#{skill.id} failed: #{e.message}"
+    end
+  end
 end

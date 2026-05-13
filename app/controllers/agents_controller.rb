@@ -211,11 +211,18 @@ class AgentsController < ApplicationController
         as.skill_definition.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
           .merge(enabled: as.enabled, agent_skill_id: as.id)
       },
-      available_skills: SkillDefinition.where.not(
-        id: @agent.agent_skills.select(:skill_definition_id)
-      ).order(:category, :name).as_json(
-        only: [:id, :slug, :name, :description, :category, :icon, :requires_connections]
-      )
+      # Available skills = anything the org can see (own skills + system seeds
+      # + published marketplace skills from other orgs) minus what's already
+      # installed. Source flag flows through so the picker can show System /
+      # Yours / Community badges.
+      available_skills: SkillDefinition.visible_to(current_tenant)
+        .where.not(id: @agent.agent_skills.select(:skill_definition_id))
+        .order(:category, :name)
+        .map { |s|
+          s.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections, :source, :visibility, :install_count]).merge(
+            owned_by_me: s.organization_id == current_tenant&.id,
+          )
+        },
     }
   end
 

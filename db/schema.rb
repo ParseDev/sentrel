@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_12_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_13_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -523,9 +523,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_130000) do
   create_table "skill_definitions", force: :cascade do |t|
     t.string "category"
     t.datetime "created_at", null: false
+    t.bigint "created_by_user_id"
     t.string "description"
     t.string "icon"
+    t.integer "install_count", default: 0, null: false
     t.string "name"
+    t.bigint "organization_id"
+    t.boolean "published", default: false, null: false
     t.jsonb "required_capabilities", default: [], null: false
     t.jsonb "required_integrations", default: [], null: false
     t.jsonb "requires_connections", default: []
@@ -534,7 +538,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_130000) do
     t.string "source", default: "built_in"
     t.text "system_prompt_fragment"
     t.datetime "updated_at", null: false
+    t.integer "version", default: 1, null: false
+    t.string "visibility", default: "private", null: false
+    t.index ["organization_id"], name: "index_skill_definitions_on_organization_id"
+    t.index ["published"], name: "index_skill_definitions_on_published"
     t.index ["slug"], name: "index_skill_definitions_on_slug", unique: true
+    t.index ["visibility"], name: "index_skill_definitions_on_visibility"
+  end
+
+  create_table "skill_files", force: :cascade do |t|
+    t.text "content"
+    t.datetime "created_at", null: false
+    t.string "file_type", default: "md", null: false
+    t.string "path", null: false
+    t.integer "position", default: 0, null: false
+    t.bigint "skill_definition_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["skill_definition_id", "path"], name: "index_skill_files_unique_path", unique: true
+    t.index ["skill_definition_id"], name: "index_skill_files_on_skill_definition_id"
   end
 
   create_table "tasks", force: :cascade do |t|
@@ -645,6 +666,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_130000) do
   add_foreign_key "pending_approvals", "users", column: "reviewed_by_id"
   add_foreign_key "scheduled_work", "agents"
   add_foreign_key "scheduled_work", "organizations"
+  add_foreign_key "skill_definitions", "organizations", validate: false
+  add_foreign_key "skill_definitions", "users", column: "created_by_user_id", validate: false
+  add_foreign_key "skill_files", "skill_definitions"
   add_foreign_key "tasks", "agents"
   add_foreign_key "tasks", "agents", column: "assigned_by_agent_id"
   add_foreign_key "tasks", "conversations"

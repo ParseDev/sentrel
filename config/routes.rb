@@ -131,6 +131,20 @@ Rails.application.routes.draw do
     # to the org unless published = true.
     resources :agent_templates, only: [:index, :show, :create, :update, :destroy]
 
+    # Skills editor + marketplace. Org-owned skills (organization_id is set)
+    # are editable by anyone in that org; marketplace-published skills
+    # (visibility = "marketplace", published = true) are visible to every org
+    # but only editable by the owning org. Forking copies a marketplace skill
+    # into the current org so users can customize without affecting the
+    # original. Slug is the URL identifier (param: :id below).
+    resources :skills, only: [:index, :show, :new, :create, :edit, :update, :destroy], param: :id do
+      member do
+        post :publish
+        post :unpublish
+        post :fork
+      end
+    end
+
     # Fleet-wide ops: roll-update every agent's engine image in the org.
     post "ops/roll_engine", to: "ops#roll_engine", as: :ops_roll_engine
 
