@@ -505,10 +505,11 @@ export function startAnthropicBillingProxy(): void {
     port: PROXY_PORT,
     hostname: "127.0.0.1",
     // Anthropic responses for long prompts (Read SKILL.md + tool decision)
-    // can take 30–60s. Bun's default idleTimeout is 10s, which closes the
-    // socket mid-response — the SDK then sees "connection closed
-    // unexpectedly". 255 is Bun's max; effectively no timeout.
-    idleTimeout: 255,
+    // can take 30–60s — sometimes longer for big context windows. Bun's
+    // default idleTimeout is 10s and the option is a uint8 (max 255s),
+    // so we pass 0 to disable it entirely. Safe here because this is a
+    // loopback proxy on 127.0.0.1; no DDoS / exhaustion surface.
+    idleTimeout: 0,
     async fetch(req) {
       const url = new URL(req.url);
 

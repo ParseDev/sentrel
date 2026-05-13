@@ -162,9 +162,10 @@ export function startOpenAITranslatorProxy(): void {
   server = Bun.serve({
     port: PROXY_PORT,
     hostname: "127.0.0.1",
-    // OpenAI Responses for long prompts can take 30–60s; Bun's default
-    // idleTimeout of 10s kills the socket mid-stream. 255 = Bun max.
-    idleTimeout: 255,
+    // OpenAI Responses for long prompts can take 30–60s+. Bun's default
+    // idleTimeout is 10s; the option is a uint8 (max 255), pass 0 to
+    // disable entirely. Loopback only, no exhaustion concern.
+    idleTimeout: 0,
     async fetch(req) {
       try {
         const url = new URL(req.url);
