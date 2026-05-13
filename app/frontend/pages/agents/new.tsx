@@ -150,6 +150,11 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     },
     capabilities: {} as Record<string, { enabled?: boolean; [k: string]: unknown }>,
     channels: { email: true, telegram: false } as Record<string, boolean>,
+    // Per-action permission gates. Right now the agent edit page exposes
+    // these but the new-agent wizard hid them, so every new agent shipped
+    // with send_email defaulting to "auto" — meaning brand-new agents
+    // would send mail without approval the first time they tried.
+    permissions: { send_email: "auto" } as Record<string, string>,
   })
 
   // Inertia ships the form as flat params; reshape `channels` into the
@@ -166,6 +171,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       template_slug: d.template_slug,
       ai_config: d.ai_config,
       capabilities: d.capabilities,
+      permissions: d.permissions,
       channel_configs,
     }
   })
@@ -728,6 +734,36 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                 </div>
               </div>
               <Checkbox checked={data.channels.telegram} onCheckedChange={(v) => toggleChannel("telegram", !!v)} className="mt-1" />
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <Overline className="mb-3">Permissions</Overline>
+          <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+            Control whether the agent acts autonomously or asks first. You can change this anytime on the agent edit page.
+          </p>
+          <div className="rounded-lg border bg-card p-4 space-y-4 max-w-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="text-sm font-medium">Send email</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Default for new agents. Draft mode is safest while you're getting a feel for how the agent behaves.
+                </div>
+              </div>
+              <Select
+                value={data.permissions?.send_email || "auto"}
+                onValueChange={(v) => setData("permissions", { ...data.permissions, send_email: v })}
+              >
+                <SelectTrigger className="w-48 h-8 text-xs shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (send immediately)</SelectItem>
+                  <SelectItem value="draft">Draft (require approval)</SelectItem>
+                  <SelectItem value="never">Never (disabled)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </section>
