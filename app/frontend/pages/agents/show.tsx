@@ -1544,10 +1544,18 @@ function describeCron(expr: string | null | undefined): string {
   return map[expr] ?? expr
 }
 
+// Per-row state machine: closed | new | edit:<id> | view:<id>. View is
+// read-only and renders the full instruction so a long body isn't clipped.
+// id is the prefixed_id string ("sch_…") matching ScheduledTask.id.
+type ScheduleEditorState =
+  | { mode: "closed" }
+  | { mode: "new" }
+  | { mode: "edit"; id: string }
+  | { mode: "view"; id: string }
+
 function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTasks: ScheduledTask[] }) {
   const [tasks, setTasks] = useState(initialTasks)
-  const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState<number | null>(null)
+  const [editor, setEditor] = useState<ScheduleEditorState>({ mode: "closed" })
   const [runsFor, setRunsFor] = useState<ScheduledTask | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const cronRef = useRef<HTMLInputElement>(null)
@@ -1581,7 +1589,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
     if (res.ok) {
       const created = await res.json()
       setTasks((prev) => [created, ...prev])
-      setShowForm(false)
+      setEditor({ mode: "closed" })
     }
   }
 
@@ -1599,7 +1607,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
     if (res.ok) {
       const updated = await res.json()
       setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)))
-      setEditId(null)
+      setEditor({ mode: "closed" })
     }
   }
 
@@ -1633,115 +1641,16 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
         <Button
           size="sm"
           className="h-8 gap-1.5 font-semibold"
-          onClick={() => { setShowForm(!showForm); setEditId(null) }}
+          onClick={() => setEditor({ mode: "new" })}
         >
-          {showForm ? <XIcon className="size-3.5" /> : <Plus className="size-3.5" strokeWidth={2.5} />}
-          {showForm ? "Cancel" : "New schedule"}
+          <Plus className="size-3.5" strokeWidth={2.5} />
+          New schedule
         </Button>
       </div>
 
       <div className="px-6 py-4">
 
-      {(showForm || editId) && (
-        <div className="rounded-lg border bg-card p-4 mb-4 space-y-3">
-          <input ref={nameRef} placeholder="Name (e.g. Weekly Report)" defaultValue={editId ? tasks.find(t => t.id === editId)?.name : ""} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm" />
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Schedule</label>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {[
-                { label: "Every minute", cron: "* * * * *" },
-                { label: "Every hour", cron: "0 * * * *" },
-                { label: "Daily 9am", cron: "0 9 * * *" },
-                { label: "Weekdays 9am", cron: "0 9 * * 1-5" },
-                { label: "Monday 9am", cron: "0 9 * * 1" },
-                { label: "Every 6 hours", cron: "0 */6 * * *" },
-                { label: "1st of month", cron: "0 9 1 * *" },
-              ].map((preset) => (
-                <button key={preset.cron} type="button" onClick={() => { if (cronRef.current) cronRef.current.value = preset.cron }}
-                  className="px-2 py-0.5 rounded border text-[11px] hover:bg-muted transition-colors">
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-            <input ref={cronRef} placeholder="Custom cron (e.g. 30 8 * * 1-5)" defaultValue={editId ? tasks.find(t => t.id === editId)?.cron_expression : ""} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm font-mono" />
-            <p className="text-[10px] text-muted-foreground mt-1">Format: minute hour day-of-month month day-of-week</p>
-          </div>
-
-          <textarea ref={instructionRef} placeholder="Instruction — what to do when this fires..." defaultValue={editId ? tasks.find(t => t.id === editId)?.instruction || "" : ""} rows={2} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm resize-none" />
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Deliver results to</label>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { value: "web",      label: "Web chat"  },
-                { value: "telegram", label: "Telegram"  },
-                { value: "whatsapp", label: "WhatsApp"  },
-                { value: "email",    label: "Email"     },
-                { value: "silent",   label: "Silent (audit only)" },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setDeliveryChannel(opt.value)}
-                  className={`px-2.5 py-1 rounded border text-[11px] transition-colors ${
-                    deliveryChannel === opt.value
-                      ? "bg-foreground text-background border-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Final response is delivered here. "Silent" runs the task but only records the output in audit logs.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Popover open={tzOpen} onOpenChange={setTzOpen}>
-              <PopoverTrigger asChild>
-                <button className="flex items-center justify-between w-56 rounded-md border bg-background px-3 py-1.5 text-sm hover:bg-muted transition-colors">
-                  <span className="truncate">{timezone.replace(/_/g, " ")}</span>
-                  <ChevronsUpDown className="size-3 opacity-50 ml-2 shrink-0" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="Search timezone..." />
-                  <CommandList className="max-h-[250px]">
-                    <CommandEmpty>No timezone found.</CommandEmpty>
-                    {[
-                      { group: "Americas", zones: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Mexico_City", "America/Argentina/Buenos_Aires", "America/Bogota", "America/Lima"] },
-                      { group: "Europe", zones: ["Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid", "Europe/Rome", "Europe/Zurich", "Europe/Stockholm", "Europe/Warsaw", "Europe/Moscow", "Europe/Istanbul"] },
-                      { group: "Asia & Pacific", zones: ["Asia/Dubai", "Asia/Riyadh", "Asia/Kolkata", "Asia/Bangkok", "Asia/Singapore", "Asia/Hong_Kong", "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Jakarta", "Asia/Manila"] },
-                      { group: "Oceania & Africa", zones: ["Australia/Sydney", "Australia/Melbourne", "Australia/Perth", "Pacific/Auckland", "Pacific/Honolulu", "Africa/Cairo", "Africa/Lagos", "Africa/Johannesburg", "Africa/Nairobi"] },
-                      { group: "Other", zones: ["UTC"] },
-                    ].map(({ group, zones }) => (
-                      <CommandGroup key={group} heading={group}>
-                        {zones.map((tz) => (
-                          <CommandItem key={tz} value={tz} onSelect={() => { setTimezone(tz); setTzOpen(false) }}>
-                            <Check className={`size-3 mr-2 ${timezone === tz ? "opacity-100" : "opacity-0"}`} />
-                            {tz.replace(/_/g, " ")}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    ))}
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            <div className="flex-1" />
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowForm(false); setEditId(null) }}>Cancel</Button>
-            <Button size="sm" className="h-7 text-xs" onClick={() => editId ? handleUpdate(editId) : handleCreate()}>
-              {editId ? "Update" : "Create"}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {tasks.length === 0 && !showForm ? (
+      {tasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
           <div className="mb-3 flex size-12 items-center justify-center rounded-md border border-dashed">
             <Clock className="size-5 text-muted-foreground" />
@@ -1750,7 +1659,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
           <p className="mt-1 max-w-xs text-xs text-muted-foreground">
             Create a recurring task — the agent will wake up and run it automatically.
           </p>
-          <Button size="sm" className="mt-5 gap-1.5" onClick={() => setShowForm(true)}>
+          <Button size="sm" className="mt-5 gap-1.5" onClick={() => setEditor({ mode: "new" })}>
             <Plus className="size-3.5" />
             New schedule
           </Button>
@@ -1777,7 +1686,9 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                 key={st.id}
                 className="overflow-hidden rounded-lg border bg-card transition-colors hover:border-[var(--border-strong)]"
               >
-                {/* Primary row */}
+                {/* Primary row — body opens a read-only view modal so long
+                    instructions show in full; action buttons on the right
+                    pause/edit/delete inline. */}
                 <div className="flex items-start gap-3 px-4 py-3">
                   <span
                     className={`mt-1.5 flex size-2 shrink-0 items-center justify-center rounded-full ${
@@ -1788,7 +1699,11 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                       <span className="absolute inline-flex size-2 animate-ping rounded-full bg-[var(--color-success)] opacity-50" />
                     )}
                   </span>
-                  <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditor({ mode: "view", id: st.id })}
+                    className="min-w-0 flex-1 text-left cursor-pointer"
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[14px] font-semibold tracking-[-0.005em] text-foreground">
                         {st.name}
@@ -1853,7 +1768,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                         </span>
                       )}
                     </div>
-                  </div>
+                  </button>
 
                   <div className="flex items-center gap-1">
                     <button
@@ -1865,10 +1780,11 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                     </button>
                     <button
                       onClick={() => {
-                        setEditId(st.id)
                         const isSilent = (st.instruction || "").trim().startsWith("[SILENT]")
                         const storedChannel = (st as any).delivery_channel as string | null | undefined
                         setDeliveryChannel(isSilent ? "silent" : (storedChannel || "web"))
+                        setTimezone(st.timezone || "UTC")
+                        setEditor({ mode: "edit", id: st.id })
                       }}
                       className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       title="Edit"
@@ -1909,7 +1825,286 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
           {runsFor && <RunsDialogBody schedule={runsFor} />}
         </DialogContent>
       </Dialog>
+
+      {/* Add / Edit / View modal — single dialog drives all three modes. */}
+      <ScheduleEditorDialog
+        editor={editor}
+        tasks={tasks}
+        onClose={() => setEditor({ mode: "closed" })}
+        onEdit={(id: string) => {
+          const st = tasks.find((t) => t.id === id)
+          if (!st) return
+          const isSilent = (st.instruction || "").trim().startsWith("[SILENT]")
+          const storedChannel = (st as { delivery_channel?: string | null }).delivery_channel
+          setDeliveryChannel(isSilent ? "silent" : (storedChannel || "web"))
+          setTimezone(st.timezone || "UTC")
+          setEditor({ mode: "edit", id })
+        }}
+        onSubmit={async () => {
+          if (editor.mode === "new") await handleCreate()
+          else if (editor.mode === "edit") await handleUpdate(editor.id)
+        }}
+        nameRef={nameRef}
+        cronRef={cronRef}
+        instructionRef={instructionRef}
+        timezone={timezone}
+        setTimezone={setTimezone}
+        tzOpen={tzOpen}
+        setTzOpen={setTzOpen}
+        deliveryChannel={deliveryChannel}
+        setDeliveryChannel={setDeliveryChannel}
+      />
     </div>
+  )
+}
+
+// Modal that drives add / edit / view of a schedule. View is read-only and
+// renders the full instruction (no clipping). Edit + new share the same form.
+function ScheduleEditorDialog({
+  editor,
+  tasks,
+  onClose,
+  onEdit,
+  onSubmit,
+  nameRef,
+  cronRef,
+  instructionRef,
+  timezone,
+  setTimezone,
+  tzOpen,
+  setTzOpen,
+  deliveryChannel,
+  setDeliveryChannel,
+}: {
+  editor: ScheduleEditorState
+  tasks: ScheduledTask[]
+  onClose: () => void
+  onEdit: (id: string) => void
+  onSubmit: () => Promise<void>
+  nameRef: React.RefObject<HTMLInputElement | null>
+  cronRef: React.RefObject<HTMLInputElement | null>
+  instructionRef: React.RefObject<HTMLTextAreaElement | null>
+  timezone: string
+  setTimezone: (tz: string) => void
+  tzOpen: boolean
+  setTzOpen: (b: boolean) => void
+  deliveryChannel: string
+  setDeliveryChannel: (c: string) => void
+}) {
+  const isOpen = editor.mode !== "closed"
+  const task = editor.mode === "edit" || editor.mode === "view"
+    ? tasks.find((t) => t.id === editor.id)
+    : null
+  const readOnly = editor.mode === "view"
+  const title = editor.mode === "new" ? "New schedule"
+    : editor.mode === "edit" ? "Edit schedule"
+    : "Schedule details"
+
+  // Default content for the input fields (uncontrolled — we use refs).
+  const defaultName = task?.name ?? ""
+  const defaultCron = task?.cron_expression ?? ""
+  const defaultInstruction = task?.instruction?.replace(/^\[SILENT\]\s*/i, "") ?? ""
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="!w-[min(720px,95vw)] !max-w-[min(720px,95vw)] gap-0 !p-0 max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="border-b px-5 py-4 shrink-0">
+          <DialogTitle className="text-base">{title}</DialogTitle>
+          {readOnly && task && (
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {describeCron(task.cron_expression)} · {task.timezone || "UTC"} · {task.active ? "active" : "paused"}
+            </p>
+          )}
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Name</Label>
+            {readOnly ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{task?.name || "—"}</p>
+            ) : (
+              <Input
+                key={`name-${editor.mode === "edit" ? editor.id : "new"}`}
+                ref={nameRef}
+                placeholder="Weekly Report"
+                defaultValue={defaultName}
+              />
+            )}
+          </div>
+
+          {!readOnly && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Schedule presets</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: "Every minute", cron: "* * * * *" },
+                  { label: "Every hour", cron: "0 * * * *" },
+                  { label: "Daily 9am", cron: "0 9 * * *" },
+                  { label: "Weekdays 9am", cron: "0 9 * * 1-5" },
+                  { label: "Monday 9am", cron: "0 9 * * 1" },
+                  { label: "Every 6 hours", cron: "0 */6 * * *" },
+                  { label: "1st of month", cron: "0 9 1 * *" },
+                ].map((preset) => (
+                  <button
+                    key={preset.cron}
+                    type="button"
+                    onClick={() => { if (cronRef.current) cronRef.current.value = preset.cron }}
+                    className="px-2 py-0.5 rounded border text-[11px] hover:bg-muted transition-colors"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">{readOnly ? "Cron expression" : "Cron expression"}</Label>
+            {readOnly ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-mono">
+                {task?.cron_expression || "—"}
+                <span className="ml-2 text-muted-foreground text-xs">
+                  ({describeCron(task?.cron_expression ?? "")})
+                </span>
+              </p>
+            ) : (
+              <>
+                <Input
+                  key={`cron-${editor.mode === "edit" ? editor.id : "new"}`}
+                  ref={cronRef}
+                  placeholder="30 8 * * 1-5"
+                  defaultValue={defaultCron}
+                  className="font-mono text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Format: minute hour day-of-month month day-of-week
+                </p>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Instruction</Label>
+            {readOnly ? (
+              <pre className="rounded-md border bg-muted/30 px-3 py-2 text-sm whitespace-pre-wrap break-words max-h-[40vh] overflow-y-auto font-sans">
+                {task?.instruction?.replace(/^\[SILENT\]\s*/i, "") || "—"}
+              </pre>
+            ) : (
+              <textarea
+                key={`inst-${editor.mode === "edit" ? editor.id : "new"}`}
+                ref={instructionRef}
+                rows={10}
+                defaultValue={defaultInstruction}
+                placeholder="What should the agent do when this fires? Be specific — the agent has no context outside this prompt."
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y min-h-[220px]"
+              />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Delivery channel</Label>
+            {readOnly ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm capitalize">
+                {(task?.instruction || "").startsWith("[SILENT]")
+                  ? "Silent (audit only)"
+                  : ((task as { delivery_channel?: string | null })?.delivery_channel || "web")}
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { value: "web",      label: "Web chat"  },
+                    { value: "telegram", label: "Telegram"  },
+                    { value: "whatsapp", label: "WhatsApp"  },
+                    { value: "email",    label: "Email"     },
+                    { value: "silent",   label: "Silent (audit only)" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setDeliveryChannel(opt.value)}
+                      className={`px-2.5 py-1 rounded border text-[11px] transition-colors ${
+                        deliveryChannel === opt.value
+                          ? "bg-foreground text-background border-foreground"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Final response is delivered here. "Silent" runs the task but only records output in audit logs.
+                </p>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Timezone</Label>
+            {readOnly ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                {(task?.timezone || "UTC").replace(/_/g, " ")}
+              </p>
+            ) : (
+              <Popover open={tzOpen} onOpenChange={setTzOpen}>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center justify-between w-full rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted transition-colors">
+                    <span className="truncate">{timezone.replace(/_/g, " ")}</span>
+                    <ChevronsUpDown className="size-3 opacity-50 ml-2 shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search timezone..." />
+                    <CommandList className="max-h-[260px]">
+                      <CommandEmpty>No timezone found.</CommandEmpty>
+                      {[
+                        { group: "Americas", zones: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Toronto", "America/Vancouver", "America/Sao_Paulo", "America/Mexico_City", "America/Argentina/Buenos_Aires", "America/Bogota", "America/Lima"] },
+                        { group: "Europe", zones: ["Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Amsterdam", "Europe/Madrid", "Europe/Rome", "Europe/Zurich", "Europe/Stockholm", "Europe/Warsaw", "Europe/Moscow", "Europe/Istanbul"] },
+                        { group: "Asia & Pacific", zones: ["Asia/Dubai", "Asia/Riyadh", "Asia/Kolkata", "Asia/Bangkok", "Asia/Singapore", "Asia/Hong_Kong", "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Jakarta", "Asia/Manila"] },
+                        { group: "Oceania & Africa", zones: ["Australia/Sydney", "Australia/Melbourne", "Australia/Perth", "Pacific/Auckland", "Pacific/Honolulu", "Africa/Cairo", "Africa/Lagos", "Africa/Johannesburg", "Africa/Nairobi"] },
+                        { group: "Other", zones: ["UTC"] },
+                      ].map(({ group, zones }) => (
+                        <CommandGroup key={group} heading={group}>
+                          {zones.map((tz) => (
+                            <CommandItem key={tz} value={tz} onSelect={() => { setTimezone(tz); setTzOpen(false) }}>
+                              <Check className={`size-3 mr-2 ${timezone === tz ? "opacity-100" : "opacity-0"}`} />
+                              {tz.replace(/_/g, " ")}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t px-5 py-3 shrink-0">
+          {readOnly ? (
+            <>
+              <Button variant="ghost" onClick={onClose}>Close</Button>
+              {task && (
+                <Button onClick={() => onEdit(task.id)}>
+                  <PenLine className="size-3.5 mr-1.5" />
+                  Edit
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              <Button onClick={() => onSubmit()}>
+                {editor.mode === "edit" ? "Save changes" : "Create schedule"}
+              </Button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
