@@ -35,7 +35,6 @@ interface Props {
     email_domain: string | null
     email_domain_verified: boolean
     context_md: string | null
-    email_aws_region?: string | null
   }
   members: Member[]
   anthropic_account?: AiAccount
@@ -437,7 +436,6 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
                 onDomainChange={onDomainChange}
                 processing={processing}
                 onSave={onSave}
-                regionDefault={organization.email_aws_region ?? null}
               />
             )}
           </>
@@ -671,67 +669,26 @@ function ConnectedDomainCard({
   )
 }
 
-// BYO domain form with two pre-flight checks:
-// 1. Apex-domain detection — when the user types `acme.com` (no dot before
-//    the last 2 segments), warn that the MX record would override their
-//    regular mail. Warning only — they can still submit if they really mean it.
-// 2. SES region/sandbox probe — polls /settings/ses_status for the chosen
-//    AWS region, surfaces sandbox vs production status + whether inbound
-//    is supported in that region. Users on a non-inbound region see a hint
-//    pointing them at us-east-1 / us-west-2 / eu-west-1.
-type SesStatus = {
-  region: string
-  max_24_hour_send?: number
-  max_send_rate?: number
-  sent_last_24h?: number
-  sandbox?: boolean
-  inbound_supported?: boolean
-  error?: string
-}
-
+// BYO domain form. Apex-domain warning is the only customer-facing check —
+// SES region selection is now backend-controlled (we host the email infra,
+// so users don't need to know what AWS region we run them on).
 function ByoDomainForm({
   emailDomain,
   onDomainChange,
   processing,
   onSave,
-  regionDefault,
 }: {
   emailDomain: string
   onDomainChange: (v: string) => void
   processing: boolean
   onSave: (e: React.FormEvent) => void
-  regionDefault: string | null
 }) {
-  const REGIONS = [
-    { value: "us-east-1",      label: "us-east-1 (N. Virginia)",    inbound: true },
-    { value: "us-west-2",      label: "us-west-2 (Oregon)",         inbound: true },
-    { value: "eu-west-1",      label: "eu-west-1 (Ireland)",        inbound: true },
-    { value: "eu-central-1",   label: "eu-central-1 (Frankfurt)",   inbound: false },
-    { value: "ap-southeast-1", label: "ap-southeast-1 (Singapore)", inbound: false },
-    { value: "ap-southeast-2", label: "ap-southeast-2 (Sydney)",    inbound: false },
-  ]
-  const [region, setRegion] = useState(regionDefault || "us-east-1")
-  const [ses, setSes] = useState<SesStatus | null>(null)
-  const [sesLoading, setSesLoading] = useState(false)
-
   // Detect apex (e.g. "acme.com") vs subdomain ("agents.acme.com"). PSL-aware
   // parsing would be overkill — a simple "≥ 3 labels, none empty" check
   // covers the .com / .co.uk / .double.md cases well enough to warn.
   const trimmed = emailDomain.trim().toLowerCase()
   const labels = trimmed.split(".").filter(Boolean)
   const looksLikeApex = trimmed && labels.length === 2 // e.g. acme.com
-
-  // SES sandbox + region probe. Re-runs when the user switches region.
-  useEffect(() => {
-    let cancelled = false
-    setSesLoading(true)
-    fetch(`/settings/ses_status?region=${region}`)
-      .then((r) => r.json())
-      .then((data) => { if (!cancelled) setSes(data) })
-      .catch(() => { if (!cancelled) setSes({ region, error: "Probe failed" }) })
-      .finally(() => { if (!cancelled) setSesLoading(false) })
-    return () => { cancelled = true }
-  }, [region])
 
   return (
     <form onSubmit={onSave} className="space-y-3 rounded-md border border-dashed border-border p-3">
@@ -750,62 +707,8 @@ function ByoDomainForm({
 
       {looksLikeApex && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          <span className="font-medium">Heads up:</span> <span className="font-mono">{trimmed}</span> looks like an apex domain. Adding our MX record will redirect ALL mail for this domain through our agents — you'll lose any existing email setup on it. Use a subdomain (e.g. <span className="font-mono">agents.{trimmed}</span>) unless you really mean to take over the apex.
+          <span className="font-medium">Heads up:</span> <span className="font-mono">{trimmed}</span> looks like an apex domain. Adding our MX record will redirect ALL mail for this domain through us — you'll lose any existing email setup on it. Use a subdomain (e.g. <span className="font-mono">agents.{trimmed}</span>) unless you really mean to take over the apex.
         </div>
-      )}
-
-      <div className="space-y-1">
-        <Label className="text-xs font-medium">AWS region (where SES + inbound rules live)</Label>
-        <select
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs"
-        >
-          {REGIONS.map((r) => (
-            <option key={r.value} value={r.value}>
-              {r.label}{r.inbound ? "" : " · outbound only"}
-            </option>
-          ))}
-        </select>
-        <p className="text-[10px] text-muted-foreground">
-          Inbound mail is only supported in us-east-1 / us-west-2 / eu-west-1.
-        </p>
-      </div>
-
-      {ses && !ses.error && (
-        <div className={`rounded-md border p-2 text-[11px] ${
-          ses.sandbox
-            ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
-            : "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-        }`}>
-          <div className="flex items-center gap-2">
-            <span className={`size-1.5 rounded-full ${ses.sandbox ? "bg-amber-500" : "bg-emerald-500"}`} />
-            <span className="font-medium">
-              {ses.region}: {ses.sandbox ? "Send limited (sandbox)" : "Send unlimited (production)"}
-            </span>
-            <span className="text-[10px] opacity-80 ml-auto">
-              {ses.max_24_hour_send}/24h · {ses.max_send_rate}/s
-            </span>
-          </div>
-          {ses.sandbox && (
-            <p className="text-[10px] mt-1">
-              Outbound from agents in this region will only deliver to addresses our platform has pre-verified. To send to anyone, contact support to expand the region's send limits.
-            </p>
-          )}
-          {ses.inbound_supported === false && (
-            <p className="text-[10px] mt-1">
-              <span className="font-medium">Inbound not supported in {ses.region}.</span> Receive-from-anyone agents need us-east-1, us-west-2, or eu-west-1.
-            </p>
-          )}
-        </div>
-      )}
-      {ses?.error && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-2 text-[11px] text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          SES probe failed: {ses.error}
-        </div>
-      )}
-      {sesLoading && !ses && (
-        <div className="text-[10px] text-muted-foreground">Checking SES status…</div>
       )}
 
       <div className="flex justify-end">
