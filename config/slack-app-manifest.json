@@ -1,0 +1,54 @@
+{
+  "display_information": {
+    "name": "Alchemy",
+    "description": "Run AI teammates inside your Slack workspace",
+    "background_color": "#0b0b0f"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Alchemy",
+      "always_online": true
+    },
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    }
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://<YOUR-HOST>/slack/oauth/callback"
+    ],
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "chat:write",
+        "chat:write.customize",
+        "channels:manage",
+        "channels:read",
+        "channels:history",
+        "groups:write",
+        "im:history",
+        "im:read",
+        "im:write",
+        "users:read",
+        "users:read.email"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://<YOUR-HOST>/webhooks/slack",
+      "bot_events": [
+        "app_mention",
+        "message.im",
+        "message.channels",
+        "message.groups",
+        "app_home_opened"
+      ]
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
