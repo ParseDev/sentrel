@@ -1,0 +1,51 @@
+# Slack app manifest for Alchemy Agents.
+#
+# Paste this at https://api.slack.com/apps → "Create New App" → "From a manifest".
+# Swap <YOUR-HOST> for your production hostname (no trailing slash).
+#
+# After creating:
+#   1. Basic Information → copy "Signing Secret" → set SLACK_SIGNING_SECRET in Rails env
+#   2. Basic Information → "App Credentials" → copy Client ID + Client Secret
+#      → set SLACK_CLIENT_ID + SLACK_CLIENT_SECRET in Rails env
+#   3. Install the app to your own dev workspace via "Install to Workspace"
+#      OR have users hit /slack/install?agent_id=AGT (the in-app install link)
+#
+# Updating the manifest later: api.slack.com/apps/<APP_ID>/app-manifest
+
+display_information:
+  name: Alchemy Agents
+  description: Run AI teammates inside your Slack workspace
+  background_color: "#0b0b0f"
+
+features:
+  bot_user:
+    display_name: Alchemy
+    always_online: true
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+
+oauth_config:
+  redirect_urls:
+    - https://<YOUR-HOST>/slack/oauth/callback
+  scopes:
+    bot:
+      - app_mentions:read   # @mentions in public channels
+      - chat:write          # post messages as the bot
+      - im:history          # read DM history when needed for context
+      - im:read             # see DM channel metadata
+      - im:write            # open / send DMs
+      - users:read          # resolve user IDs to display names
+      - users:read.email    # match Slack users back to org members by email
+
+settings:
+  event_subscriptions:
+    request_url: https://<YOUR-HOST>/webhooks/slack
+    bot_events:
+      - app_mention         # public @mention
+      - message.im          # DM to the bot
+      - app_home_opened     # user opens the bot's Home tab
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
