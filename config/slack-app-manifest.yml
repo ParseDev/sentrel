@@ -38,6 +38,7 @@ oauth_config:
       - channels:read           # list / inspect channels we manage
       - channels:history        # read messages in agent channels
       - groups:write            # private channel variant
+      - groups:history          # required by message.groups event
       - im:history              # read DM history when needed for context
       - im:read                 # see DM channel metadata
       - im:write                # open / send DMs
