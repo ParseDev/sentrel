@@ -225,6 +225,7 @@ Rails.application.routes.draw do
       post :claim_managed_subdomain
       post :reset_email_domain
       get  :subdomain_availability
+      get  :ses_status
     end
 
     # BYO secrets (LLM API keys, cloud provider creds, generic API keys).

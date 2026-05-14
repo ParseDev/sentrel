@@ -66,6 +66,29 @@ class SettingsController < ApplicationController
     redirect_to settings_path(connect: 1), notice: "Claimed #{requested}; we'll auto-configure DNS now."
   end
 
+  # GET /settings/ses_status?region=us-east-1
+  # Queries SES for the current account's send quota in the requested region.
+  # max_24_hour_send = 200 is the sandbox cap; anything above means
+  # production access was approved. Polled by the UI on the BYO card so
+  # users see if their region is gated before they spin up a domain.
+  def ses_status
+    region = params[:region].presence ||
+             current_tenant.email_aws_region.presence ||
+             ENV.fetch("AWS_REGION", "us-east-1")
+    client = Aws::SES::Client.new(region: region)
+    quota = client.get_send_quota
+    render json: {
+      region: region,
+      max_24_hour_send: quota.max_24_hour_send,
+      max_send_rate: quota.max_send_rate,
+      sent_last_24h: quota.sent_last_24_hours,
+      sandbox: quota.max_24_hour_send.to_i <= 200,
+      inbound_supported: %w[us-east-1 us-west-2 eu-west-1].include?(region),
+    }
+  rescue Aws::SES::Errors::ServiceError => e
+    render json: { region: region, error: e.message, code: e.class.name.demodulize }, status: :unprocessable_entity
+  end
+
   def show
     # Subscription auth (Anthropic Pro/Max paste-token) lives here, not on
     # /integrations — different mental model. /integrations is "what services
