@@ -76,17 +76,19 @@ class WebhooksController < ApplicationController
 
     # Skip bot echoes (our own outbound) + non-text events.
     return head :ok if event["bot_id"].present?
-    return head :ok unless %w[message app_mention message.im].include?(event["type"])
+    return head :ok unless %w[message app_mention].include?(event["type"])
 
-    team_id = parsed["team_id"]
-    agent = find_agent_by_channel("slack", "team_id", team_id)
-    return head :ok unless agent  # 404 is unhelpful — silent OK keeps Slack from retrying
+    team_id    = parsed["team_id"]
+    channel_id = event["channel"]
+
+    agent = find_slack_agent(team_id: team_id, channel_id: channel_id)
+    return head :ok unless agent  # silent OK keeps Slack from retrying on unmapped events
 
     enqueue(agent, "slack", {
       from: event["user"],
       body: event["text"],
       metadata: {
-        channel: event["channel"],
+        channel: channel_id,
         thread_ts: event["thread_ts"] || event["ts"],
         ts: event["ts"],
         event_type: event["type"],
@@ -94,6 +96,19 @@ class WebhooksController < ApplicationController
       },
     })
     head :ok
+  end
+
+  # Multi-agent Slack routing: exact (team_id, channel_id) match wins. We do
+  # NOT fall back to team_id-only — an unmapped channel/DM should be a no-op
+  # rather than spamming a random agent in the org.
+  def find_slack_agent(team_id:, channel_id:)
+    return nil if team_id.blank? || channel_id.blank?
+    ChannelConfig
+      .where(channel_type: "slack", enabled: true)
+      .where("config->>'team_id' = ?", team_id)
+      .where("config->>'slack_channel_id' = ?", channel_id)
+      .first
+      &.agent
   end
 
   # POST /webhooks/whatsapp

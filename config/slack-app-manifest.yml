@@ -31,21 +31,28 @@ oauth_config:
     - https://<YOUR-HOST>/slack/oauth/callback
   scopes:
     bot:
-      - app_mentions:read   # @mentions in public channels
-      - chat:write          # post messages as the bot
-      - im:history          # read DM history when needed for context
-      - im:read             # see DM channel metadata
-      - im:write            # open / send DMs
-      - users:read          # resolve user IDs to display names
-      - users:read.email    # match Slack users back to org members by email
+      - app_mentions:read       # @mentions in public channels
+      - chat:write              # post messages as the bot
+      - chat:write.customize    # override username + icon_url per message
+      - channels:manage         # auto-create per-agent public channels
+      - channels:read           # list / inspect channels we manage
+      - channels:history        # read messages in agent channels
+      - groups:write            # private channel variant
+      - im:history              # read DM history when needed for context
+      - im:read                 # see DM channel metadata
+      - im:write                # open / send DMs
+      - users:read              # resolve user IDs to display names
+      - users:read.email        # match Slack users back to org members by email
 
 settings:
   event_subscriptions:
     request_url: https://<YOUR-HOST>/webhooks/slack
     bot_events:
-      - app_mention         # public @mention
-      - message.im          # DM to the bot
-      - app_home_opened     # user opens the bot's Home tab
+      - app_mention             # public @mention
+      - message.im              # DM to the bot
+      - message.channels        # messages in public channels the bot is in
+      - message.groups          # messages in private channels the bot is in
+      - app_home_opened         # user opens the bot's Home tab
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

@@ -1,14 +1,12 @@
-require "net/http"
-require "uri"
-require "json"
-
 module Slack
-  # Sends a message AS the agent's Slack bot user. Mirrors Email::OutboundSender.
-  # The engine never holds bot tokens — it calls Rails /api/send_slack_message,
-  # which delegates to this service.
+  # Sends a message AS the agent in the Slack workspace. The bot user is
+  # shared across all agents in the org — what differentiates agents is the
+  # `username` + `icon_url` per-message override (chat:write.customize scope).
+  #
+  # Channel defaulting: if the caller omits `channel`, we route to the agent's
+  # dedicated channel (config.slack_channel_id) so `slack.post(text:...)` Just
+  # Works without the agent having to remember channel ids.
   class OutboundSender
-    POST_MESSAGE_URL = "https://slack.com/api/chat.postMessage".freeze
-
     def initialize(agent:, acting_user_id: nil)
       @agent = agent
       @acting_user_id = acting_user_id
@@ -19,33 +17,31 @@ module Slack
       @cc.present? && @cc.secrets["bot_token"].present?
     end
 
-    # Post to a channel or DM. `thread_ts` keeps the reply in-thread (Slack's
-    # threading model — pass the parent message's ts).
-    def deliver(channel:, text:, thread_ts: nil, blocks: nil)
+    # Post a message. `channel` defaults to the agent's bound channel; pass
+    # an explicit channel id to override (e.g. agent posting in a customer
+    # DM channel id received via inbound metadata).
+    def deliver(channel: nil, text:, thread_ts: nil, blocks: nil)
       return { ok: false, error: "Slack not configured for this agent" } unless configured?
 
-      payload = { channel: channel, text: text.to_s }
-      payload[:thread_ts] = thread_ts if thread_ts.present?
-      payload[:blocks]    = blocks    if blocks.is_a?(Array) && blocks.any?
+      target_channel = channel.presence || @cc.config["slack_channel_id"]
+      return { ok: false, error: "no channel bound for agent" } if target_channel.blank?
 
-      uri = URI.parse(POST_MESSAGE_URL)
-      req = Net::HTTP::Post.new(uri)
-      req["Content-Type"]  = "application/json; charset=utf-8"
-      req["Authorization"] = "Bearer #{@cc.secrets['bot_token']}"
-      req.body = payload.to_json
-
-      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 10) do |http|
-        http.request(req)
-      end
-      body = JSON.parse(res.body) rescue {}
+      body = Slack::Api.post_message(
+        token: @cc.secrets["bot_token"],
+        channel: target_channel,
+        text: text,
+        thread_ts: thread_ts,
+        username: @agent.name,
+        icon_url: agent_icon_url,
+        icon_emoji: agent_icon_url.present? ? nil : ":robot_face:",
+        blocks: blocks,
+      )
 
       if body["ok"]
-        log_success(channel, text, body["ts"])
+        log_success(target_channel, text, body["ts"])
         { ok: true, ts: body["ts"], channel: body["channel"] }
       else
-        log_failure(channel, body["error"])
-        # If Slack tells us the token is revoked, flip the ChannelConfig so
-        # the UI can prompt for reinstall instead of silently 500-ing.
+        log_failure(target_channel, body["error"])
         if %w[token_revoked invalid_auth account_inactive].include?(body["error"])
           @cc.update_column(:status, "error")
         end
@@ -57,6 +53,12 @@ module Slack
     end
 
     private
+
+    # Per-agent avatar override on outbound. Falls back to nil (Slack default)
+    # if the agent doesn't have a public avatar URL configured.
+    def agent_icon_url
+      @agent.try(:avatar_url) || @agent.try(:icon_url)
+    end
 
     def log_success(channel, text, ts)
       Message.create!(

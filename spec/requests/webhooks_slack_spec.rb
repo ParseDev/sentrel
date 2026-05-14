@@ -56,7 +56,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       channel_type: "slack",
       enabled: true,
       status: "connected",
-      config: { "team_id" => "T_X", "bot_user_id" => "U_BOT" },
+      config: { "team_id" => "T_X", "bot_user_id" => "U_BOT", "slack_channel_id" => "C1", "slack_channel_name" => "casper" },
     )
     body = {
       type: "event_callback",
@@ -80,6 +80,23 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       type: "event_callback",
       event_id: "Ev_#{SecureRandom.hex(4)}",
       event: { type: "message", text: "echo", user: "U_BOT", bot_id: "B1", channel: "C1", ts: "1.2" },
+      team_id: "T_X",
+    }.to_json
+    expect_any_instance_of(WebhooksController).not_to receive(:enqueue)
+    post "/webhooks/slack", params: body, headers: slack_headers(body)
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "ignores events for channels not bound to any agent (no fallback)" do
+    # Same team_id, different channel_id — must NOT route to Casper.
+    agent.channel_configs.create!(
+      channel_type: "slack", enabled: true, status: "connected",
+      config: { "team_id" => "T_X", "slack_channel_id" => "C_BOUND" },
+    )
+    body = {
+      type: "event_callback",
+      event_id: "Ev_unmapped",
+      event: { type: "message", text: "hi", user: "U1", channel: "C_OTHER", ts: "1.1" },
       team_id: "T_X",
     }.to_json
     expect_any_instance_of(WebhooksController).not_to receive(:enqueue)

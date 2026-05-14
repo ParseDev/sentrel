@@ -133,6 +133,16 @@ settings:
 - **Slash commands** (`/ask <agent>`) — second sprint. Easy to add: extra route `/webhooks/slack/commands`, route by command name.
 - **Block Kit modals + interactive components** — needed for approval prompts inside Slack. Second sprint.
 - **Multi-workspace sharing of a single agent** — for v1, one ChannelConfig = one workspace = one agent. A user installing the same agent in two workspaces creates two ChannelConfigs.
+
+## Multi-agent in one workspace (v1.5, shipped)
+
+ONE Slack app per workspace = ONE bot user. To let N agents in the same org show up as distinct identities in Slack we use the **channel-per-agent** pattern:
+
+- First agent install: standard OAuth → bot_token saved on that agent's ChannelConfig → auto-create `#<agent-slug>` channel via `conversations.create` → invite bot → set topic.
+- Subsequent agents in the same org: skip OAuth (we have the bot_token already), provision a fresh channel, bind it.
+- Inbound routing: webhook matches on `(team_id, channel_id)`. No fallback to team_id-only — unmapped events are silent no-ops.
+- Outbound: `chat.postMessage` includes `username` + `icon_url` per call (chat:write.customize scope), so each agent reads as its own identity inside Slack. Channel defaults to the agent's bound channel; the agent can override only to reply outside its home channel.
+- DMs to the bot: currently silent (no channel binding exists for DM channels). Future: route to a designated "front desk" agent or open a Block Kit picker.
 - **Slack Connect (external workspaces)** — out of scope.
 - **Enterprise Grid org-deploy** — out of scope.
 

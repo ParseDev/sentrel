@@ -9,10 +9,11 @@ class Api::SlackMessagesController < ApplicationController
   # PendingApproval and return { pending: true, approval_id } so the engine
   # can pause until the user clicks Approve.
   #
-  # Params (all required unless noted):
-  #   agent_id    — internal id
-  #   channel     — Slack channel id (C…) or DM channel id (D…)
-  #   text        — message body
+  # Params:
+  #   agent_id    — internal id (required)
+  #   text        — message body (required)
+  #   channel     — Slack channel id; defaults to the agent's bound channel
+  #                 (config.slack_channel_id). Override for cross-channel replies.
   #   thread_ts   — optional, keeps reply in-thread
   def create
     agent = Agent.find_by(id: params[:agent_id])
