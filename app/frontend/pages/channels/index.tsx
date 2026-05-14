@@ -110,7 +110,21 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
                     <p className="font-medium text-sm">{def?.label || ch.channel_type}</p>
                     <p className="text-xs text-muted-foreground">
                       {ch.channel_type === "slack" && ch.config?.slack_channel_name ? (
-                        <>#{String(ch.config.slack_channel_name)} · {String(ch.config.team_name || "Slack")}</>
+                        <>
+                          {ch.config.team_id && ch.config.slack_channel_id ? (
+                            <a
+                              href={`https://app.slack.com/client/${String(ch.config.team_id)}/${String(ch.config.slack_channel_id)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline underline-offset-2 hover:text-foreground"
+                            >
+                              #{String(ch.config.slack_channel_name)}
+                            </a>
+                          ) : (
+                            <>#{String(ch.config.slack_channel_name)}</>
+                          )}
+                          {" · "}{String(ch.config.team_name || "Slack")}
+                        </>
                       ) : (
                         Object.entries(ch.config || {})
                           .filter(([k]) => !k.includes("token") && !k.includes("secret") && !k.includes("id") && k !== "app_id")

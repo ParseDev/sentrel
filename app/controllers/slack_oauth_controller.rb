@@ -48,9 +48,14 @@ class SlackOauthController < ApplicationController
 
     existing = org_slack_install(current_tenant)
     if existing
-      provision_channel_for(agent, existing)
+      # Subsequent agent install in an org that already has Slack connected.
+      # No OAuth round-trip — we already have the bot_token. Try to invite the
+      # current human by email so they land in the new channel automatically.
+      invite_user_id = lookup_slack_user_id_by_email(token: existing.secrets["bot_token"], email: current_user&.email)
+      provision_channel_for(agent, existing, invite_user_id: invite_user_id)
+      cc = agent.channel_configs.find_by(channel_type: "slack")
       return redirect_to agent_channel_configs_path(agent),
-        notice: "Added Slack channel ##{agent.channel_configs.find_by(channel_type: 'slack')&.config&.dig('slack_channel_name')} for #{agent.name}"
+        notice: connected_notice(agent, cc, cc&.config&.dig("team_name"))
     end
 
     # No existing install — kick off OAuth for the first agent in the org.
@@ -83,11 +88,12 @@ class SlackOauthController < ApplicationController
     res = exchange_code(params[:code])
     return redirect_with_alert("Slack OAuth failed: #{res['error'] || 'unknown'}") unless res["ok"]
 
-    bot_token   = res["access_token"]
-    bot_user_id = res["bot_user_id"]
-    team_id     = res.dig("team", "id")
-    team_name   = res.dig("team", "name")
-    app_id      = res["app_id"]
+    bot_token       = res["access_token"]
+    bot_user_id     = res["bot_user_id"]
+    team_id         = res.dig("team", "id")
+    team_name       = res.dig("team", "name")
+    app_id          = res["app_id"]
+    authed_user_id  = res.dig("authed_user", "id")
 
     # Persist the install on this agent's ChannelConfig. Other agents in the
     # org will reuse these secrets via org_slack_install / provision_channel_for.
@@ -103,11 +109,11 @@ class SlackOauthController < ApplicationController
     cc.enabled = true
     cc.save!
 
-    # Auto-create a channel for this agent.
-    provision_channel_for(agent, cc)
+    # Auto-create a channel for this agent and pull the installing human in.
+    provision_channel_for(agent, cc, invite_user_id: authed_user_id)
 
     EngineSync.trigger(agent)
-    redirect_to agent_channel_configs_path(agent), notice: "Connected #{team_name} to #{agent.name}"
+    redirect_to agent_channel_configs_path(agent), notice: connected_notice(agent, cc, team_name)
   end
 
   # DELETE /slack/oauth/disconnect?agent_id=AGT
@@ -143,7 +149,10 @@ class SlackOauthController < ApplicationController
   # bot_token + signing_secret + team_id/bot_user_id. Idempotent: if the
   # agent already has a slack ChannelConfig with a channel_id, skip the
   # create and just refresh the secrets.
-  def provision_channel_for(agent, source_install_cc)
+  #
+  # invite_user_id: if provided, invite this Slack user to the channel so the
+  # human who installed lands in their bot's channel automatically.
+  def provision_channel_for(agent, source_install_cc, invite_user_id: nil)
     bot_token = source_install_cc.secrets["bot_token"]
     return unless bot_token.present?
 
@@ -162,19 +171,20 @@ class SlackOauthController < ApplicationController
       channel_name = Slack::Api.sanitize_channel_name(agent.slug.presence || agent.name)
       created = Slack::Api.create_channel(token: bot_token, name: channel_name)
       if created["ok"]
+        channel_id = created.dig("channel", "id")
         cc.config = cc.config.merge(
-          "slack_channel_id"   => created.dig("channel", "id"),
+          "slack_channel_id"   => channel_id,
           "slack_channel_name" => created.dig("channel", "name"),
         )
-        # Invite the bot user (some workspaces require explicit invite).
-        Slack::Api.invite_to_channel(
-          token: bot_token,
-          channel: created.dig("channel", "id"),
-          user: source_install_cc.config["bot_user_id"],
-        )
+        # Pull humans in: bot user + the installing user (so they actually see
+        # the new channel in their sidebar instead of having to dig for it).
+        invitees = [source_install_cc.config["bot_user_id"], invite_user_id].compact.uniq
+        if invitees.any?
+          Slack::Api.invite_to_channel(token: bot_token, channel: channel_id, user: invitees.join(","))
+        end
         Slack::Api.set_channel_topic(
           token: bot_token,
-          channel: created.dig("channel", "id"),
+          channel: channel_id,
           topic: "#{agent.name} — #{agent.role}. DM or @mention to talk.",
         )
       elsif created["error"] == "name_taken"
@@ -196,6 +206,33 @@ class SlackOauthController < ApplicationController
 
     cc.save!
     EngineSync.trigger(agent)
+  end
+
+  # Look up a Slack user id by email so we can invite the installing human
+  # to their agent's channel even on the skip-OAuth path (where we don't
+  # have authed_user.id from the OAuth response). Returns nil on miss.
+  def lookup_slack_user_id_by_email(token:, email:)
+    return nil if token.blank? || email.blank?
+    uri = URI.parse("https://slack.com/api/users.lookupByEmail?email=#{URI.encode_www_form_component(email)}")
+    req = Net::HTTP::Get.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5) { |http| http.request(req) }
+    body = JSON.parse(res.body)
+    body["ok"] ? body.dig("user", "id") : nil
+  rescue StandardError => e
+    Rails.logger.warn "[SlackOauth] users.lookupByEmail failed: #{e.message}"
+    nil
+  end
+
+  # Build the success notice with a deeplink so the human can jump straight
+  # into the channel — Slack's sidebar doesn't auto-update on channel join.
+  def connected_notice(agent, cc, team_name)
+    team_id    = cc&.config&.dig("team_id")
+    channel_id = cc&.config&.dig("slack_channel_id")
+    channel    = cc&.config&.dig("slack_channel_name")
+    base = "Connected #{team_name || 'Slack'} to #{agent.name}"
+    return base if channel.blank? || team_id.blank? || channel_id.blank?
+    "#{base} — open ##{channel} → https://app.slack.com/client/#{team_id}/#{channel_id}"
   end
 
   def resolve_agent(id)
