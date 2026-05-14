@@ -61,35 +61,31 @@ module Slack
     end
 
     def log_success(channel, text, ts)
-      Message.create!(
-        agent: @agent,
-        channel: "slack",
-        direction: "outbound",
-        body: text,
-        sender_user_id: @acting_user_id,
-        sender_name: @agent.name,
-        metadata: { channel: channel, ts: ts },
-      ) if defined?(Message)
-
-      audit("slack.send", "ok", channel: channel, ts: ts)
+      # We deliberately don't write a Message row for Slack outbound — Message
+      # requires a conversation_id and Slack threads don't map 1:1 to our
+      # Conversation model. AuditLog gives us the trail we need for now; if we
+      # later want Slack outbound in the chat tab we'll thread it through a
+      # synthetic conversation per channel.
+      audit("slack.send", "success", channel: channel, ts: ts, length: text.to_s.length)
     end
 
     def log_failure(channel, error)
       audit("slack.send", "error", channel: channel, error: error)
     end
 
-    def audit(action, outcome, **details)
+    def audit(action, status, **output_fields)
       return unless defined?(AuditLog)
       AuditLog.create!(
         organization_id: @agent.organization_id,
         agent_id: @agent.id,
         acting_user_id: @acting_user_id,
         action: action,
-        outcome: outcome,
-        details: details,
+        status: status,
+        output: output_fields,
       )
-    rescue StandardError
+    rescue StandardError => e
       # Don't take the send down for an audit-log failure.
+      Rails.logger.warn "[Slack::OutboundSender] audit failed: #{e.class}: #{e.message}"
     end
   end
 end
