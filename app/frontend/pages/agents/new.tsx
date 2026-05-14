@@ -146,11 +146,15 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       )
     : templates
 
+  // Per-action permission gates. Right now the agent edit page exposes
+  // these but the new-agent wizard hid them, so every new agent shipped
+  // with send_email defaulting to "auto" — meaning brand-new agents
+  // would send mail without approval the first time they tried.
   const { data, setData, post, processing, transform } = useForm({
     name: "",
     slug: "",
     role: "",
-    manager_id: "none" as string,
+    manager_id: "none",
     template_slug: "",
     ai_config: {
       provider: "anthropic",
@@ -159,12 +163,8 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       max_tokens: 8192,
       thinking_level: "none",
     },
-    capabilities: {} as Record<string, { enabled?: boolean; [k: string]: unknown }>,
+    capabilities: {} as Record<string, { enabled?: boolean }>,
     channels: { email: true, telegram: false } as Record<string, boolean>,
-    // Per-action permission gates. Right now the agent edit page exposes
-    // these but the new-agent wizard hid them, so every new agent shipped
-    // with send_email defaulting to "auto" — meaning brand-new agents
-    // would send mail without approval the first time they tried.
     permissions: { send_email: "auto" } as Record<string, string>,
   })
 

@@ -1,6 +1,6 @@
 # Slack integration — plan
 
-Status: planning. No code yet. The user explicitly asked for a proper plan before any implementation.
+Status: **v1 shipped** (OAuth install + signature verification + outbound sender + Api::SlackMessagesController + engine MCP tool `slack.post` + Channels UI "Install in Slack" button). Slash commands + Block Kit modals + Marketplace listing still pending — see "What we explicitly defer" below.
 
 ## Today
 

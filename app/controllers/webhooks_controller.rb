@@ -49,21 +49,49 @@ class WebhooksController < ApplicationController
   end
 
   # POST /webhooks/slack
+  # Slack-as-channel inbound. Verifies HMAC signature, dedups by event_id,
+  # routes by team_id to the matching ChannelConfig, enqueues an inbound
+  # message. Outbound replies happen via Slack::OutboundSender, not here.
   def slack
-    if params[:type] == "url_verification"
-      return render json: { challenge: params[:challenge] }
+    body = request.raw_post
+
+    # URL verification challenge — Slack hits this once when you set the
+    # request_url. No signature header on this request type.
+    parsed = JSON.parse(body) rescue {}
+    if parsed["type"] == "url_verification"
+      return render json: { challenge: parsed["challenge"] }
     end
 
-    event = params[:event]
-    return head :ok unless event&.dig(:type) == "message" && !event[:bot_id]
+    return head :unauthorized unless valid_slack_signature?(body)
 
-    agent = find_agent_by_channel("slack", "workspace_id", params[:team_id])
-    return head :not_found unless agent
+    # Slack retries on a 3s timeout — idempotency is on us. Stash event_id in
+    # Redis for 5min so retries become a no-op.
+    event_id = parsed["event_id"]
+    if event_id.present? && slack_event_seen?(event_id)
+      return head :ok
+    end
+
+    event = parsed["event"]
+    return head :ok unless event
+
+    # Skip bot echoes (our own outbound) + non-text events.
+    return head :ok if event["bot_id"].present?
+    return head :ok unless %w[message app_mention message.im].include?(event["type"])
+
+    team_id = parsed["team_id"]
+    agent = find_agent_by_channel("slack", "team_id", team_id)
+    return head :ok unless agent  # 404 is unhelpful — silent OK keeps Slack from retrying
 
     enqueue(agent, "slack", {
-      from: event[:user],
-      body: event[:text],
-      metadata: { channel: event[:channel], thread_ts: event[:thread_ts], ts: event[:ts] },
+      from: event["user"],
+      body: event["text"],
+      metadata: {
+        channel: event["channel"],
+        thread_ts: event["thread_ts"] || event["ts"],
+        ts: event["ts"],
+        event_type: event["type"],
+        team_id: team_id,
+      },
     })
     head :ok
   end
@@ -319,6 +347,38 @@ class WebhooksController < ApplicationController
       .where(channel_type: channel_type, enabled: true)
       .find { |cc| block.call(cc.config) }
       &.agent
+  end
+
+  # Slack signs every request with HMAC-SHA256 over `v0:{ts}:{body}` using the
+  # signing_secret. Reject replays > 5 min old. Skip in dev when no secret set.
+  def valid_slack_signature?(body)
+    secret = ENV["SLACK_SIGNING_SECRET"]
+    return true if secret.blank? && !Rails.env.production?
+    return false if secret.blank?
+
+    ts = request.headers["X-Slack-Request-Timestamp"].to_s
+    sig = request.headers["X-Slack-Signature"].to_s
+    return false if ts.blank? || sig.blank?
+    return false if (Time.now.to_i - ts.to_i).abs > 300  # replay guard
+
+    base = "v0:#{ts}:#{body}"
+    digest = OpenSSL::HMAC.hexdigest("SHA256", secret, base)
+    expected = "v0=#{digest}"
+    ActiveSupport::SecurityUtils.secure_compare(expected, sig)
+  end
+
+  # Idempotency for Slack retries. Returns true if we've already seen the
+  # event_id within the TTL window — caller should ack 200 and skip work.
+  def slack_event_seen?(event_id)
+    return false if event_id.blank?
+    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+    key = "slack:event:#{event_id}"
+    # SETNX with 5-min TTL — first writer wins, retries find the key and return true.
+    res = redis.set(key, "1", nx: true, ex: 300)
+    !res  # SETNX returns true on first write; we want "seen?" semantics inverted
+  rescue StandardError => e
+    Rails.logger.warn "[Slack webhook] dedup check failed: #{e.message}"
+    false
   end
 
   def valid_twilio_request?

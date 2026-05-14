@@ -16,6 +16,9 @@ Rails.application.routes.draw do
   namespace :api do
     resources :blobs, only: [:create, :show], param: :signed_id
     resource :send_email, only: [:create]
+    # Engine -> Rails for Slack outbound. Same auth pattern as send_email;
+    # gated by send_slack_message permission on the agent.
+    resource :send_slack_message, only: [:create], controller: "slack_messages"
     resources :task_events, only: [:create]
     # Engine relays every broadcast() event here; Rails re-emits over
     # AgentChatChannel so the browser sees live tool calls, progress, and
@@ -186,6 +189,17 @@ Rails.application.routes.draw do
     # Works because claude.ai/oauth/authorize rejects unregistered client_ids.
     post   "oauth/anthropic/import_token", to: "oauth#import_token", as: :oauth_import_anthropic
   end
+
+  # Slack-as-channel OAuth install. Agent-scoped: /slack/install?agent_id=AGT
+  # → consent screen → /slack/oauth/callback exchanges code and persists a
+  # ChannelConfig + encrypted bot_token. Distinct from Slack-as-integration
+  # (Composio path), which gives agents Slack tool calls instead of making
+  # them the bot user.
+  authenticate :user do
+    get    "slack/install",            to: "slack_oauth#install",    as: :slack_install
+    delete "slack/oauth/disconnect",   to: "slack_oauth#disconnect", as: :slack_disconnect
+  end
+  get "slack/oauth/callback", to: "slack_oauth#callback", as: :slack_oauth_callback
 
   # OAuth 2.0 self-identifying client metadata documents (RFC-style, public).
   # Anthropic's claude.ai/oauth/authorize accepts any URL as client_id as long

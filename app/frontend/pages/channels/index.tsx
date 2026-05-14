@@ -40,7 +40,10 @@ interface AvailableChannel {
   // break existing connections), they just can't be newly enabled from the
   // UI until we flip the flag in config/channels.yml.
   coming_soon?: boolean
-  fields: Record<string, { type: string; label: string; placeholder?: string; required?: boolean; sensitive?: boolean; hint?: string }>
+  // Slack is set up via /slack/install (OAuth) — no form fields to fill in;
+  // we render an "Install in Slack" button instead of the generic Connect form.
+  install_via_oauth?: boolean
+  fields?: Record<string, { type: string; label: string; placeholder?: string; required?: boolean; sensitive?: boolean; hint?: string }>
 }
 
 interface TwilioNumber {
@@ -172,6 +175,13 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
                   {comingSoon ? (
                     <Button variant="outline" size="sm" disabled>
                       Coming soon
+                    </Button>
+                  ) : channel.install_via_oauth ? (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={`/slack/install?agent_id=${agent.id}`}>
+                        <Plus className="size-4 mr-1" />
+                        Install in Slack
+                      </a>
                     </Button>
                   ) : (
                     <Button variant="outline" size="sm" onClick={() => setConnectingChannel(key)}>
