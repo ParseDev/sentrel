@@ -139,7 +139,8 @@ module Slack
       when "send_email"
         subject = ti["subject"].presence || "(no subject)"
         body    = ti["body_text"].presence || ti["body"].presence || ""
-        "To: #{Array(ti['to']).join(', ')}\nSubject: #{subject}\n\n#{body.to_s[0, 240]}"
+        warning = ti["email_not_configured"] ? "\n\n⚠ This agent has no email channel connected — connect one in /agents/#{approval.agent.slug}/channels to actually send." : ""
+        "To: #{Array(ti['to']).join(', ')}\nSubject: #{subject}\n\n#{body.to_s[0, 240]}#{warning}"
       when "slack.post"
         ti["text"].to_s[0, 280]
       else
