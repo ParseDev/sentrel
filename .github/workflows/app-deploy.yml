@@ -1,4 +1,4 @@
-name: Deploy Rails (kamal)
+name: app-deploy
 
 # Builds the Rails container image and runs `kamal deploy` to the EC2 host
 # defined in config/deploy.yml. Triggered manually OR on push to main when
