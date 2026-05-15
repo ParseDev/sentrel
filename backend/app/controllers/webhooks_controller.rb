@@ -81,11 +81,25 @@ class WebhooksController < ApplicationController
     return head :ok if event["bot_id"].present?
     return head :ok unless %w[message app_mention].include?(event["type"])
 
-    team_id    = parsed["team_id"]
-    channel_id = event["channel"]
+    team_id     = parsed["team_id"]
+    channel_id  = event["channel"]
+    is_dm       = event["channel_type"] == "im"
 
-    agent = find_slack_agent(team_id: team_id, channel_id: channel_id)
-    return head :ok unless agent  # silent OK keeps Slack from retrying on unmapped events
+    agent = if is_dm
+              # DMs: route by binding first, then org's front-desk agent, then
+              # nothing (we'll post a picker reply via slack_dm_picker_reply).
+              find_slack_dm_agent(team_id: team_id, im_channel_id: channel_id) ||
+                find_org_default_slack_agent(team_id: team_id)
+    else
+              # Channel messages: exact (team_id, channel_id) match required.
+              find_slack_agent(team_id: team_id, channel_id: channel_id)
+    end
+
+    if agent.nil? && is_dm
+      respond_with_dm_picker(team_id: team_id, channel: channel_id)
+      return head :ok
+    end
+    return head :ok unless agent
 
     enqueue(agent, "slack", {
       from: event["user"],
@@ -96,8 +110,73 @@ class WebhooksController < ApplicationController
         ts: event["ts"],
         event_type: event["type"],
         team_id: team_id,
+        is_dm: is_dm,
       },
     })
+    head :ok
+  end
+
+  # POST /webhooks/slack/commands
+  # /alchemy <slug> <text>      → route to that agent in the calling channel
+  # /alchemy <text>             → route to the org's default Slack agent
+  # /alchemy help               → ephemeral usage message
+  # Slash commands arrive as form-encoded, not JSON.
+  def slack_command
+    body = request.raw_post
+    return head :unauthorized unless valid_slack_signature?(body)
+
+    team_id    = params[:team_id]
+    channel_id = params[:channel_id]
+    raw_text   = params[:text].to_s.strip
+    user_id    = params[:user_id]
+
+    install = find_slack_install(team_id: team_id)
+    return render_command_ephemeral("Alchemy isn't installed in this workspace yet.") unless install
+
+    if raw_text.downcase == "help" || raw_text.empty?
+      return render_command_ephemeral(slack_command_help_text)
+    end
+
+    slug, message = raw_text.split(/\s+/, 2)
+    agent =
+      if message.present? && (a = install.organization.agents.find_by(slug: slug))
+        a
+      else
+        # No slug match — treat the whole text as a message for the default agent.
+        message = raw_text
+        find_org_default_slack_agent(team_id: team_id)
+      end
+
+    return render_command_ephemeral("No agent matched. Try `/alchemy <agent-slug> <message>` or set a default in /settings.") unless agent
+
+    enqueue(agent, "slack", {
+      from: user_id,
+      body: message,
+      metadata: {
+        channel: channel_id,
+        thread_ts: nil,
+        ts: nil,
+        event_type: "slash_command",
+        team_id: team_id,
+        is_dm: channel_id.to_s.start_with?("D"),
+      },
+    })
+
+    # 200 with an ephemeral ack so Slack doesn't show "/alchemy failed" while
+    # the agent thinks. The actual reply lands separately via deliverSlackReply.
+    render json: {
+      response_type: "ephemeral",
+      text: "✓ #{agent.name} is on it.",
+    }
+  end
+
+  # POST /webhooks/slack/interactivity
+  # Stub — full Block Kit approval handling lands in Slack v2 phase 2.
+  # For now, accept + 200 so Slack doesn't show "request failed" on button
+  # clicks. Real action dispatch wired in next commit.
+  def slack_interactivity
+    body = request.raw_post
+    return head :unauthorized unless valid_slack_signature?(body)
     head :ok
   end
 
@@ -112,6 +191,92 @@ class WebhooksController < ApplicationController
       .where("config->>'slack_channel_id' = ?", channel_id)
       .first
       &.agent
+  end
+
+  # DM routing: same lookup, but specifically against `slack_dm_channel_id`
+  # which is populated when an agent and a user have an established DM.
+  # We persist the binding on first DM, so subsequent DMs from the same user
+  # land on the same agent without prompting.
+  def find_slack_dm_agent(team_id:, im_channel_id:)
+    return nil if team_id.blank? || im_channel_id.blank?
+    ChannelConfig
+      .where(channel_type: "slack", enabled: true)
+      .where("config->>'team_id' = ?", team_id)
+      .where("config->>'slack_dm_channel_id' = ?", im_channel_id)
+      .first
+      &.agent
+  end
+
+  # Fallback for an unbound DM: route to the org's designated front-desk
+  # agent (set on /settings). Returns nil if no default is configured —
+  # caller is responsible for prompting the user via respond_with_dm_picker.
+  def find_org_default_slack_agent(team_id:)
+    return nil if team_id.blank?
+    install = find_slack_install(team_id: team_id)
+    return nil unless install&.organization&.default_slack_agent_id
+    install.organization.agents.find_by(id: install.organization.default_slack_agent_id)
+  end
+
+  # Find ANY enabled Slack ChannelConfig for the workspace. The bot_token +
+  # signing_secret live on this row and are shared across every agent in
+  # the org (one workspace = one bot install).
+  def find_slack_install(team_id:)
+    return nil if team_id.blank?
+    ChannelConfig
+      .where(channel_type: "slack", enabled: true)
+      .where("config->>'team_id' = ?", team_id)
+      .first
+  end
+
+  # DM picker — when the user DMs the bot but no agent is bound, post a
+  # Block Kit message listing the org's agents so they can pick one.
+  # Future improvement: persist the picked agent as the user's binding on
+  # the ChannelConfig so they don't get prompted again.
+  def respond_with_dm_picker(team_id:, channel:)
+    install = find_slack_install(team_id: team_id)
+    return unless install
+
+    agents = install.organization.agents.where.not(role: nil).order(:name).limit(10)
+    return if agents.empty?
+
+    blocks = [
+      { type: "section",
+        text: { type: "mrkdwn",
+                text: "Hey! Which agent would you like to talk to? Pick one and your next message will go to them." } },
+      { type: "actions",
+        elements: agents.map { |a|
+          {
+            type: "button",
+            text: { type: "plain_text", text: a.name },
+            value: a.id.to_s,
+            action_id: "dm_pick_agent:#{a.id}",
+          }
+        } }
+    ]
+    Slack::Api.post_message(
+      token: install.secrets["bot_token"],
+      channel: channel,
+      text: "Pick an agent to talk to",
+      blocks: blocks,
+    )
+  end
+
+  # Help text shown for `/alchemy` with no args or `/alchemy help`.
+  def slack_command_help_text
+    <<~HELP
+      *Alchemy slash command*
+      `/alchemy <agent-slug> <message>` — send a message to a specific agent
+      `/alchemy <message>` — send to your org's default Slack agent (set in /settings)
+      `/alchemy help` — show this
+
+      The agent replies in the same channel you typed the command from.
+      To set a default agent, open https://alchemy.scribemd.ai/settings.
+    HELP
+  end
+
+  # Slash-command ephemeral response — only the user who typed sees it.
+  def render_command_ephemeral(text)
+    render json: { response_type: "ephemeral", text: text }
   end
 
   # POST /webhooks/whatsapp

@@ -129,8 +129,19 @@ class SettingsController < ApplicationController
       nil
     end
 
+    # Front-desk Slack agent picker — only show when at least one agent in
+    # the org has Slack connected. Empty list = no Slack installed yet, so
+    # we don't need to render the dropdown at all.
+    slack_agents = current_tenant.agents.joins(:channel_configs)
+      .where(channel_configs: { channel_type: "slack", enabled: true })
+      .distinct.order(:name)
+      .as_json(only: [:id, :name, :role])
+
     render inertia: "settings/show", props: {
-      organization: current_tenant.as_json(only: [:id, :name, :slug, :email_domain, :email_domain_verified, :context_md]),
+      organization: current_tenant.as_json(only: [
+        :id, :name, :slug, :email_domain, :email_domain_verified, :context_md,
+        :default_slack_agent_id,
+      ]),
       members: current_tenant.users.order(:name).as_json(only: [:id, :name, :email, :role, :created_at]),
       anthropic_account: {
         provider: "anthropic",
@@ -144,6 +155,7 @@ class SettingsController < ApplicationController
         suggested_subdomain: Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug),
         auto_connect: params[:connect] == "1",
       },
+      slack_agents: slack_agents,
     }
   end
 
@@ -250,7 +262,7 @@ class SettingsController < ApplicationController
   end
 
   def organization_params
-    params.require(:organization).permit(:name, :email_domain, :context_md)
+    params.require(:organization).permit(:name, :email_domain, :context_md, :default_slack_agent_id)
   end
 
   # Strict subdomain label: lowercase, alphanum + hyphen, 1-63 chars, can't

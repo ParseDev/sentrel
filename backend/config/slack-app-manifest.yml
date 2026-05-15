@@ -25,6 +25,15 @@ features:
     home_tab_enabled: true
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
+  # Slash commands — users type `/alchemy <agent> <message>` to route a
+  # request to any agent in the workspace without @mentioning. Handy when
+  # the agent doesn't live in the channel they're typing from.
+  slash_commands:
+    - command: /alchemy
+      url: https://<YOUR-HOST>/webhooks/slack/commands
+      description: Send a message to one of your Alchemy agents
+      usage_hint: "<agent-slug> <message>   (or just <message> for the default agent)"
+      should_escape: false
 
 oauth_config:
   redirect_urls:
@@ -54,6 +63,11 @@ settings:
       - message.channels        # messages in public channels the bot is in
       - message.groups          # messages in private channels the bot is in
       - app_home_opened         # user opens the bot's Home tab
+  # Interactivity — required for Block Kit approval buttons. Slack POSTs
+  # here when a user clicks Approve/Reject on an inline approval message.
+  interactivity:
+    is_enabled: true
+    request_url: https://<YOUR-HOST>/webhooks/slack/interactivity
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

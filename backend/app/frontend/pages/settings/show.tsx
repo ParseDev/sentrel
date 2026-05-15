@@ -27,6 +27,12 @@ interface ManagedDnsInfo {
   auto_connect?: boolean
 }
 
+interface SlackAgentOption {
+  id: number
+  name: string
+  role: string | null
+}
+
 interface Props {
   organization: {
     id: number
@@ -35,18 +41,21 @@ interface Props {
     email_domain: string | null
     email_domain_verified: boolean
     context_md: string | null
+    default_slack_agent_id: number | null
   }
   members: Member[]
   anthropic_account?: AiAccount
   managed_dns?: ManagedDnsInfo
+  slack_agents?: SlackAgentOption[]
 }
 
-export default function SettingsShow({ organization, members, anthropic_account, managed_dns }: Props) {
+export default function SettingsShow({ organization, members, anthropic_account, managed_dns, slack_agents }: Props) {
   const { data, setData, patch, processing } = useForm({
     organization: {
       name: organization.name,
       email_domain: organization.email_domain || "",
       context_md: organization.context_md || "",
+      default_slack_agent_id: organization.default_slack_agent_id ?? "",
     },
   })
 
@@ -144,6 +153,48 @@ export default function SettingsShow({ organization, members, anthropic_account,
             </form>
           </div>
         </section>
+
+        {/* Slack front-desk agent — only rendered when at least one agent
+            in the org has Slack connected. Routes DMs that aren't bound to
+            a specific agent here. Otherwise users get a Block Kit picker. */}
+        {slack_agents && slack_agents.length > 0 && (
+          <section>
+            <Overline className="mb-3">Slack default agent</Overline>
+            <div className="rounded-lg border border-border p-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="default_slack_agent_id">Front-desk agent for Slack DMs</Label>
+                  <select
+                    id="default_slack_agent_id"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
+                    value={data.organization.default_slack_agent_id || ""}
+                    onChange={(e) =>
+                      setData("organization", {
+                        ...data.organization,
+                        default_slack_agent_id: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">— No default (show picker instead) —</option>
+                    {slack_agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}{a.role ? ` · ${a.role}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground">
+                    When someone DMs the bot in Slack and the conversation isn't already bound to an agent, the message goes here. Leave blank to ask the user via a Block Kit picker instead.
+                  </p>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={processing}>
+                    {processing ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </section>
+        )}
 
         {/* Team Members */}
         <section>

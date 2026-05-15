@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_14_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_15_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -444,6 +444,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_110000) do
     t.text "composio_api_key_encrypted"
     t.text "context_md"
     t.datetime "created_at", null: false
+    t.bigint "default_slack_agent_id"
     t.string "detected_email_provider"
     t.string "email_aws_region", default: "us-east-1"
     t.string "email_bounce_topic_arn"
@@ -458,6 +459,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_110000) do
     t.datetime "updated_at", null: false
     t.text "website_analysis_error"
     t.string "website_url"
+    t.index ["default_slack_agent_id"], name: "index_organizations_on_default_slack_agent_id"
     t.index ["slug"], name: "index_organizations_on_slug", unique: true
   end
 
@@ -664,6 +666,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_110000) do
   add_foreign_key "messages", "conversations"
   add_foreign_key "messages", "users", column: "sender_user_id", validate: false
   add_foreign_key "oauth_credentials", "organizations"
+  add_foreign_key "organizations", "agents", column: "default_slack_agent_id", on_delete: :nullify
   add_foreign_key "pending_approvals", "agents"
   add_foreign_key "pending_approvals", "messages"
   add_foreign_key "pending_approvals", "organizations"

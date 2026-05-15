@@ -31,6 +31,7 @@ class SlackOauthController < ApplicationController
     channels:history
     groups:write
     groups:history
+    commands
     im:history
     im:read
     im:write

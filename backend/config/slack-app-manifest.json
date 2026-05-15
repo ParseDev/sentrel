@@ -13,7 +13,16 @@
       "home_tab_enabled": true,
       "messages_tab_enabled": true,
       "messages_tab_read_only_enabled": false
-    }
+    },
+    "slash_commands": [
+      {
+        "command": "/alchemy",
+        "url": "https://alchemy.scribemd.ai/webhooks/slack/commands",
+        "description": "Send a message to one of your Alchemy agents",
+        "usage_hint": "<agent-slug> <message>   (or just <message> for the default agent)",
+        "should_escape": false
+      }
+    ]
   },
   "oauth_config": {
     "redirect_urls": [
@@ -29,6 +38,7 @@
         "channels:history",
         "groups:write",
         "groups:history",
+        "commands",
         "im:history",
         "im:read",
         "im:write",
@@ -47,6 +57,10 @@
         "message.groups",
         "app_home_opened"
       ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://alchemy.scribemd.ai/webhooks/slack/interactivity"
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": false,

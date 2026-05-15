@@ -62,6 +62,8 @@ Rails.application.routes.draw do
     post :email_bounces, to: "webhooks#email_bounces"
     post :email_complaints, to: "webhooks#email_complaints"
     post :slack, to: "webhooks#slack"
+    post "slack/commands",      to: "webhooks#slack_command"
+    post "slack/interactivity", to: "webhooks#slack_interactivity"
     post :whatsapp, to: "webhooks#whatsapp"
     post :sms, to: "webhooks#sms"
     post "telegram/:bot_token", to: "webhooks#telegram", as: :telegram_webhook
