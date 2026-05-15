@@ -4,7 +4,7 @@ class DashboardController < ApplicationController
   def index
     render inertia: "dashboard/index", props: {
       agents: current_tenant.agents.includes(:ai_config, :instance).map { |a|
-        a.as_json(only: [:id, :name, :slug, :role, :status]).merge(
+        a.as_json(only: [ :id, :name, :slug, :role, :status ]).merge(
           llm_model: a.ai_config&.model_id,
           instance_status: a.instance&.status
         )

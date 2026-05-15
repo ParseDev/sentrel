@@ -42,8 +42,8 @@ class TaskCommentsController < ApplicationController
       id: message.to_param,
       content: message.content,
       created_at: message.created_at,
-      author: current_user.as_json(only: [:id, :name]),
-      author_type: "user",
+      author: current_user.as_json(only: [ :id, :name ]),
+      author_type: "user"
     })
   rescue => e
     Rails.logger.warn "TaskChannel broadcast failed: #{e.message}"
@@ -75,7 +75,7 @@ class TaskCommentsController < ApplicationController
       job_id: "task-comment-#{message.id}",
       payload: {
         taskId: task.id,
-        instruction: instruction,
+        instruction: instruction
       },
     )
   end

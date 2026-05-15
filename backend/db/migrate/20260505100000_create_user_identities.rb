@@ -17,9 +17,9 @@ class CreateUserIdentities < ActiveRecord::Migration[8.0]
     # different orgs by different users. Telegram chat_ids are bot-scoped
     # so no real collision risk there either, but the constraint is the
     # same shape regardless of channel — keeps the resolver simple.
-    add_index :user_identities, [:organization_id, :channel, :external_id], unique: true,
+    add_index :user_identities, [ :organization_id, :channel, :external_id ], unique: true,
               name: "index_user_identities_on_org_channel_external"
-    add_index :user_identities, [:user_id, :channel]
+    add_index :user_identities, [ :user_id, :channel ]
 
     # Backfill: every existing user gets a "web" identity row keyed to their
     # own user_id, so the resolver always finds them on the web channel

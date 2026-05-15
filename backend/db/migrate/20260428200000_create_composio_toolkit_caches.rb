@@ -12,8 +12,8 @@ class CreateComposioToolkitCaches < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :composio_toolkit_caches, [:organization_id, :slug], unique: true,
+    add_index :composio_toolkit_caches, [ :organization_id, :slug ], unique: true,
               name: "idx_composio_toolkit_caches_org_slug"
-    add_index :composio_toolkit_caches, [:organization_id, :available]
+    add_index :composio_toolkit_caches, [ :organization_id, :available ]
   end
 end

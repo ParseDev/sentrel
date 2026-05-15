@@ -19,7 +19,7 @@ require "json"
 # Env required:
 #   SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET
 class SlackOauthController < ApplicationController
-  before_action :authenticate_user!, except: [:callback]
+  before_action :authenticate_user!, except: [ :callback ]
 
   REDIRECT_URI_PATH = "/slack/oauth/callback".freeze
   SCOPES = %w[
@@ -179,7 +179,7 @@ class SlackOauthController < ApplicationController
         )
         # Pull humans in: bot user + the installing user (so they actually see
         # the new channel in their sidebar instead of having to dig for it).
-        invitees = [source_install_cc.config["bot_user_id"], invite_user_id].compact.uniq
+        invitees = [ source_install_cc.config["bot_user_id"], invite_user_id ].compact.uniq
         if invitees.any?
           Slack::Api.invite_to_channel(token: bot_token, channel: channel_id, user: invitees.join(","))
         end

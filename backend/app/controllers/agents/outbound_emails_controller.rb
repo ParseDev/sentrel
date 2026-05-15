@@ -47,7 +47,7 @@ class Agents::OutboundEmailsController < ApplicationController
       # The crucial bit: outbound_sender consults this for the persisted
       # Message.sender_user_id + AuditLog.acting_user_id. The audit row makes
       # "who actually clicked send" durable for compliance review.
-      acting_user_id: current_user.id,
+      acting_user_id: current_user.id
     }
 
     SendEmailJob.perform_later(payload)
@@ -56,7 +56,7 @@ class Agents::OutboundEmailsController < ApplicationController
       status: "queued",
       from: address,
       to: to,
-      subject: subject,
+      subject: subject
     }
   end
 

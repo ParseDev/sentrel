@@ -10,7 +10,7 @@ class UserIdentity < ApplicationRecord
 
   validates :channel, presence: true, inclusion: { in: CHANNELS }
   validates :external_id, presence: true
-  validates :external_id, uniqueness: { scope: [:organization_id, :channel] }
+  validates :external_id, uniqueness: { scope: [ :organization_id, :channel ] }
 
   # Find the user within an org matching a channel+external_id pair. Returns
   # nil when no identity has been claimed yet — caller decides whether to

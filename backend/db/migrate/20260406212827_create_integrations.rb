@@ -10,6 +10,6 @@ class CreateIntegrations < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :integrations, [:organization_id, :service_name]
+    add_index :integrations, [ :organization_id, :service_name ]
   end
 end

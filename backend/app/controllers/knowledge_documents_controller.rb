@@ -11,8 +11,8 @@ class KnowledgeDocumentsController < ApplicationController
     org = (engine_get("/rag/documents?org_id=#{current_tenant.id}")&.dig("documents") || [])
       .map { |d| d.merge("scope" => "org") }
     render inertia: "knowledge/index", props: {
-      agent: @agent.as_json(only: [:id, :name, :slug]),
-      documents: personal + org,
+      agent: @agent.as_json(only: [ :id, :name, :slug ]),
+      documents: personal + org
     }
   end
 
@@ -27,7 +27,7 @@ class KnowledgeDocumentsController < ApplicationController
   # (shared across every agent in the org). Org scope ingests into
   # agent_data/rag/org-<org_id>.db.
   def create
-    files = params[:files] || (params[:file] ? [params[:file]] : [])
+    files = params[:files] || (params[:file] ? [ params[:file] ] : [])
     url   = params[:url].presence
     text  = params[:text].presence
     title = params[:title].presence
@@ -91,7 +91,7 @@ class KnowledgeDocumentsController < ApplicationController
     result = engine_post_json("/rag/promote", {
       agent_id: @agent.id,
       org_id: current_tenant.id,
-      document_id: params[:id].to_i,
+      document_id: params[:id].to_i
     })
     if result.nil?
       redirect_to agent_knowledge_documents_path(@agent), alert: "Promote failed — engine did not respond"
@@ -139,7 +139,7 @@ class KnowledgeDocumentsController < ApplicationController
     uri = URI.parse("#{engine_base}#{path}")
     req = Net::HTTP::Post.new(uri, {
       "Content-Type" => "application/json",
-      "X-Engine-Secret" => engine_secret,
+      "X-Engine-Secret" => engine_secret
     })
     req.body = body.to_json
     res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", read_timeout: 600) { |http| http.request(req) }
@@ -167,7 +167,7 @@ class KnowledgeDocumentsController < ApplicationController
 
     parts = []
     # Scope field — engine branches on agent_id vs org_id.
-    scope_field, scope_value = scope == "org" ? ["org_id", current_tenant.id] : ["agent_id", @agent.id]
+    scope_field, scope_value = scope == "org" ? [ "org_id", current_tenant.id ] : [ "agent_id", @agent.id ]
     parts << "--#{boundary}".b << crlf
     parts << %(Content-Disposition: form-data; name="#{scope_field}").b << crlf << crlf
     parts << scope_value.to_s.b << crlf

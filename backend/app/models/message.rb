@@ -32,7 +32,7 @@ class Message < ApplicationRecord
     {
       name:  name,
       email: email,
-      kind:  sender_kind,
+      kind:  sender_kind
     }
   end
 

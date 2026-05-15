@@ -37,7 +37,7 @@ class EmployeeHealthCheckJob < ApplicationJob
     attrs = {
       status: "running",
       health_checked_at: last_seen_at,
-      updated_at: Time.current,
+      updated_at: Time.current
     }
     if agent.instance.provisioning_error.to_s.start_with?("Engine heartbeat", "No engine heartbeat")
       attrs[:provisioning_error] = nil

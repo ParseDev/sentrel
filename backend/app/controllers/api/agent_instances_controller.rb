@@ -27,7 +27,7 @@ class Api::AgentInstancesController < ApplicationController
       status: "running",
       public_ip: params[:public_ip].presence || instance.public_ip,
       health_checked_at: Time.current,
-      started_at: instance.started_at || Time.current,
+      started_at: instance.started_at || Time.current
     }
     if instance.provisioning_error.to_s.start_with?("Engine heartbeat", "No engine heartbeat")
       attrs[:provisioning_error] = nil
@@ -42,6 +42,6 @@ class Api::AgentInstancesController < ApplicationController
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
     return head :unauthorized unless secret.present?
-    return head :unauthorized unless request.headers["X-Engine-Secret"] == secret
+    head :unauthorized unless request.headers["X-Engine-Secret"] == secret
   end
 end

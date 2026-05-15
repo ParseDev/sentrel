@@ -27,13 +27,13 @@ class AgentTemplate < ApplicationRecord
       "agent_name"   => vars[:agent_name]   || vars["agent_name"]   || name,
       "company_name" => vars[:company_name] || vars["company_name"] || "the company",
       "user_name"    => vars[:user_name]    || vars["user_name"]    || "the user",
-      "role"         => vars[:role]         || vars["role"]         || role,
+      "role"         => vars[:role]         || vars["role"]         || role
     }.merge(vars.transform_keys(&:to_s))
 
     {
       identity_md:     substitute(identity_md,     ctx),
       personality_md:  substitute(personality_md,  ctx),
-      instructions_md: substitute(instructions_md, ctx),
+      instructions_md: substitute(instructions_md, ctx)
     }
   end
 

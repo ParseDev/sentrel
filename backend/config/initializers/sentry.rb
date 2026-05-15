@@ -4,7 +4,7 @@ if ENV["SENTRY_DSN"].present?
     config.environment = Rails.env
     config.release = ENV.fetch("GIT_SHA", "dev")
 
-    config.breadcrumbs_logger = [:active_support_logger, :http_logger]
+    config.breadcrumbs_logger = [ :active_support_logger, :http_logger ]
     config.traces_sample_rate = ENV.fetch("SENTRY_TRACES_RATE", "0.1").to_f
     config.profiles_sample_rate = ENV.fetch("SENTRY_PROFILES_RATE", "0.1").to_f
 

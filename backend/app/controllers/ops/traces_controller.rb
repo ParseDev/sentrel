@@ -29,7 +29,7 @@ class Ops::TracesController < ApplicationController
     roots_scope = roots_scope.where(status: params[:status]) if params[:status].present?
     roots_scope = roots_scope.where("created_at >= ?", params[:since]) if params[:since].present?
 
-    limit = [params[:limit].to_i, 200].min
+    limit = [ params[:limit].to_i, 200 ].min
     limit = PAGE_SIZE if limit <= 0
 
     roots = roots_scope.includes(:agent).limit(limit).to_a
@@ -37,21 +37,21 @@ class Ops::TracesController < ApplicationController
 
     render inertia: "ops/traces/index", props: {
       traces: roots.map { |r| trace_summary(r, descendants_by_root[r.id] || []) },
-      agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [:id, :name, :slug]),
+      agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [ :id, :name, :slug ]),
       filters: {
         agent_id: params[:agent_id],
-        status: params[:status],
-      },
+        status: params[:status]
+      }
     }
   end
 
   # GET /ops/traces/:id — full tree for a single root
   def show
     root = find_by_public_id!(current_tenant.audit_logs, params[:id])
-    descendants = compute_descendants_for_roots([root], current_tenant.id)[root.id] || []
+    descendants = compute_descendants_for_roots([ root ], current_tenant.id)[root.id] || []
 
     render inertia: "ops/traces/show", props: {
-      trace: trace_detail(root, descendants),
+      trace: trace_detail(root, descendants)
     }
   end
 
@@ -136,7 +136,7 @@ class Ops::TracesController < ApplicationController
   end
 
   def trace_summary(root, descendants)
-    all_runs = [root] + descendants
+    all_runs = [ root ] + descendants
     {
       id: root.id,
       created_at: root.created_at,
@@ -146,13 +146,13 @@ class Ops::TracesController < ApplicationController
       total_cost_usd: all_runs.sum { |r| r.total_cost_usd.to_f }.round(4),
       total_duration_ms: all_runs.sum { |r| r.duration_ms.to_i },
       status: aggregate_status(all_runs),
-      task_id: root.task_id,
+      task_id: root.task_id
     }
   end
 
   def trace_detail(root, descendants)
     trace_summary(root, descendants).merge(
-      runs: ([root] + descendants).map { |r| run_row(r) },
+      runs: ([ root ] + descendants).map { |r| run_row(r) },
       tree: build_tree(root, descendants),
     )
   end
@@ -165,7 +165,7 @@ class Ops::TracesController < ApplicationController
                        .each_with_object({}) { |row, h| h[row[0]] = {
                          id: row[0], title: row[1], status: row[2], priority: row[3],
                          agent_id: row[4], parent_task_id: row[5], assigned_by_agent_id: row[6],
-                         created_at: row[7],
+                         created_at: row[7]
                        } }
     runs_by_task = descendants.group_by(&:task_id)
 
@@ -180,13 +180,13 @@ class Ops::TracesController < ApplicationController
       {
         task: task.except(:parent_task_id),
         runs: runs,
-        children: children_of.call(task[:id]).map { |c| build_node.call(c) },
+        children: children_of.call(task[:id]).map { |c| build_node.call(c) }
       }
     }
 
     {
       root_run: run_row(root),
-      top_level_tasks: children_of.call(nil).map { |t| build_node.call(t) },
+      top_level_tasks: children_of.call(nil).map { |t| build_node.call(t) }
     }
   end
 
@@ -194,7 +194,7 @@ class Ops::TracesController < ApplicationController
     {
       id: r.id,
       created_at: r.created_at,
-      agent: r.agent&.as_json(only: [:id, :name, :slug, :role]),
+      agent: r.agent&.as_json(only: [ :id, :name, :slug, :role ]),
       action: r.action,
       status: r.status,
       duration_ms: r.duration_ms,
@@ -205,7 +205,7 @@ class Ops::TracesController < ApplicationController
       task_id: r.task_id,
       job_id: r.job_id,
       tool_call_count: r.output&.dig("tool_calls")&.length || 0,
-      response_preview: r.output&.dig("response")&.to_s&.truncate(160),
+      response_preview: r.output&.dig("response")&.to_s&.truncate(160)
     }
   end
 

@@ -56,7 +56,7 @@ module Email
         {
           filename: att.filename,
           content_type: att.content_type,
-          body: att.body.decoded,
+          body: att.body.decoded
         }
       end
     rescue => e

@@ -11,6 +11,6 @@ class AddProviderColumnsToInstances < ActiveRecord::Migration[8.0]
     add_column :instances, :health_checked_at, :datetime
     add_column :instances, :provisioning_error, :text
 
-    add_index :instances, [:provider, :machine_id]
+    add_index :instances, [ :provider, :machine_id ]
   end
 end

@@ -21,7 +21,7 @@ class CreateAgentToolPolicies < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :agent_tool_policies, [:agent_id, :toolkit_slug],
+    add_index :agent_tool_policies, [ :agent_id, :toolkit_slug ],
               unique: true, name: "idx_agent_tool_policies_unique"
   end
 end

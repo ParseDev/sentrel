@@ -21,7 +21,7 @@ class CreateScheduledWork < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :scheduled_work, [:agent_id, :mode, :active]
-    add_index :scheduled_work, [:fire_at], where: "mode = 'once' AND active = true"
+    add_index :scheduled_work, [ :agent_id, :mode, :active ]
+    add_index :scheduled_work, [ :fire_at ], where: "mode = 'once' AND active = true"
   end
 end

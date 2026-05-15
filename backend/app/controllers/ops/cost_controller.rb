@@ -40,9 +40,9 @@ class Ops::CostController < ApplicationController
       per_agent: per_agent.map { |aid, cost| {
         agent_id: aid,
         agent_name: current_tenant.agents.find_by(id: aid)&.name,
-        cost: cost,
+        cost: cost
       } },
-      per_job_type: per_job_type.map { |action, cost| { action: action, cost: cost } },
+      per_job_type: per_job_type.map { |action, cost| { action: action, cost: cost } }
     }
   end
 end

@@ -15,7 +15,7 @@ class Ops::RunsController < ApplicationController
     scope = scope.where("duration_ms >= ?", params[:min_duration_ms].to_i) if params[:min_duration_ms].present?
     scope = scope.where("created_at >= ?", params[:since]) if params[:since].present?
 
-    limit = [params[:limit].to_i, 200].min
+    limit = [ params[:limit].to_i, 200 ].min
     limit = 50 if limit <= 0
     runs = scope.limit(limit)
 
@@ -26,19 +26,19 @@ class Ops::RunsController < ApplicationController
       avg_duration_ms: scope.average(:duration_ms).to_i,
       failed_count: scope.where(status: "failed").count,
       cache_read_total: scope.sum(:cache_read_input_tokens).to_i,
-      cache_create_total: scope.sum(:cache_creation_input_tokens).to_i,
+      cache_create_total: scope.sum(:cache_creation_input_tokens).to_i
     }
 
     render inertia: "ops/runs/index", props: {
       runs: runs.map { |r| run_summary(r) },
       totals: totals,
-      agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [:id, :name, :slug]),
+      agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [ :id, :name, :slug ]),
       filters: {
         agent_id: params[:agent_id],
         status: params[:status],
         job_type: params[:job_type],
-        min_duration_ms: params[:min_duration_ms],
-      },
+        min_duration_ms: params[:min_duration_ms]
+      }
     }
   end
 
@@ -47,7 +47,7 @@ class Ops::RunsController < ApplicationController
     run = find_by_public_id!(current_tenant.audit_logs, params[:id])
 
     render inertia: "ops/runs/show", props: {
-      run: run_detail(run),
+      run: run_detail(run)
     }
   end
 
@@ -58,7 +58,7 @@ class Ops::RunsController < ApplicationController
     {
       id: r.id,
       created_at: r.created_at,
-      agent: r.agent&.as_json(only: [:id, :name, :slug]),
+      agent: r.agent&.as_json(only: [ :id, :name, :slug ]),
       action: r.action,
       status: r.status,
       duration_ms: r.duration_ms,
@@ -72,7 +72,7 @@ class Ops::RunsController < ApplicationController
       task_id: r.task_id,
       job_id: r.job_id,
       model_id: r.model_id,
-      tool_call_count: r.output&.dig("tool_calls")&.length || 0,
+      tool_call_count: r.output&.dig("tool_calls")&.length || 0
     }
   end
 

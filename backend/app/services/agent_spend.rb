@@ -12,7 +12,7 @@ module AgentSpend
     {
       today:      summarize(base.where(created_at: 1.day.ago..)),
       seven_day:  summarize(base.where(created_at: 7.days.ago..)),
-      thirty_day: summarize(base.where(created_at: 30.days.ago..)),
+      thirty_day: summarize(base.where(created_at: 30.days.ago..))
     }
   end
 
@@ -21,7 +21,7 @@ module AgentSpend
     {
       today:      summarize(base.where(created_at: 1.day.ago..)),
       seven_day:  summarize(base.where(created_at: 7.days.ago..)),
-      thirty_day: summarize(base.where(created_at: 30.days.ago..)),
+      thirty_day: summarize(base.where(created_at: 30.days.ago..))
     }
   end
 
@@ -33,7 +33,7 @@ module AgentSpend
       Arel.sql("COALESCE(SUM(cache_read_input_tokens), 0)"),
       Arel.sql("COALESCE(SUM(cache_creation_input_tokens), 0)"),
       Arel.sql("COALESCE(SUM(total_cost_usd), 0)"),
-    ) || [0, 0, 0, 0, 0, 0.0]
+    ) || [ 0, 0, 0, 0, 0, 0.0 ]
 
     top_models = relation
       .group(:model_id)
@@ -49,7 +49,7 @@ module AgentSpend
       cache_read:     agg[3],
       cache_written:  agg[4],
       cost_usd:       agg[5].to_f.round(4),
-      top_models:     top_models,
+      top_models:     top_models
     }
   end
 end

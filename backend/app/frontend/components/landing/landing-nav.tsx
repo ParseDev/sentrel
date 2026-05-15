@@ -8,9 +8,9 @@ import type { SharedProps } from "@/types"
 
 const LINKS: { label: string; href: string; menu?: boolean }[] = [
   { label: "Platform", href: "#platform", menu: true },
+  { label: "Use cases", href: "/use-cases" },
   { label: "Agents", href: "#demo", menu: true },
   { label: "Toolkits", href: "#integrations" },
-  { label: "Blog", href: "#blog" },
   { label: "Docs", href: "#docs" },
 ]
 

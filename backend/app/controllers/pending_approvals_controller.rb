@@ -38,7 +38,7 @@ class PendingApprovalsController < ApplicationController
       type: "action_approval_response",
       approvalToken: approval.approval_token,
       value: approval.decision,
-      text: approval.decision_text,
+      text: approval.decision_text
     }.to_json
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
     redis.publish("agent-#{approval.agent_id}-approvals", msg)
@@ -64,10 +64,10 @@ class PendingApprovalsController < ApplicationController
   def approval_json(approval)
     approval.as_json(only: [
       :id, :tool_name, :tool_input, :context, :status, :reviewed_at, :created_at,
-      :summary, :payload_type, :options, :risk_tier, :decision, :decision_text,
+      :summary, :payload_type, :options, :risk_tier, :decision, :decision_text
     ]).merge(
-      agent: approval.agent.as_json(only: [:id, :name, :slug]),
-      reviewed_by: approval.reviewed_by&.as_json(only: [:id, :name]),
+      agent: approval.agent.as_json(only: [ :id, :name, :slug ]),
+      reviewed_by: approval.reviewed_by&.as_json(only: [ :id, :name ]),
       attachments: resolve_attachments(approval.tool_input),
     )
   end
@@ -86,7 +86,7 @@ class PendingApprovalsController < ApplicationController
         filename: blob.filename.to_s,
         content_type: blob.content_type,
         byte_size: blob.byte_size,
-        url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true),
+        url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true)
       }
     rescue => e
       Rails.logger.warn "resolve_attachments: failed for #{sid}: #{e.message}"

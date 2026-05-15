@@ -39,7 +39,7 @@ class Agents::OpsController < ApplicationController
     render json: {
       ok: false,
       message: e.message,
-      error_class: e.class.name,
+      error_class: e.class.name
     }, status: :internal_server_error
   end
 

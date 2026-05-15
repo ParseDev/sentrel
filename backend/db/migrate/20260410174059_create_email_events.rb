@@ -12,6 +12,6 @@ class CreateEmailEvents < ActiveRecord::Migration[8.1]
 
       t.timestamps
     end
-    add_index :email_events, [:recipient, :event_type]
+    add_index :email_events, [ :recipient, :event_type ]
   end
 end

@@ -26,7 +26,7 @@ module Email
         next unless agent
 
         # Other recipients (besides this agent) become "people to keep in the loop"
-        other_recipients = destinations - [to_addr]
+        other_recipients = destinations - [ to_addr ]
         effective_cc = (cc_addresses + other_recipients).uniq.reject { |a| a == to_addr }
 
         conversation = Threading.find_or_create(
@@ -46,7 +46,7 @@ module Email
           to: to_addr,
           cc: effective_cc,
           subject: subject,
-          body: @parsed.body_text,
+          body: @parsed.body_text
         })
       end
     end
@@ -82,7 +82,7 @@ module Email
           subject: subject,
           message_id: @parsed.message_id,
           in_reply_to: @parsed.in_reply_to,
-          references: @parsed.references,
+          references: @parsed.references
         },
       )
     end

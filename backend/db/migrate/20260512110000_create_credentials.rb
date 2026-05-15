@@ -17,7 +17,7 @@ class CreateCredentials < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :credentials, [:organization_id, :provider, :name], unique: true, name: "index_credentials_uniq_per_org"
+    add_index :credentials, [ :organization_id, :provider, :name ], unique: true, name: "index_credentials_uniq_per_org"
     add_index :credentials, :kind
   end
 end

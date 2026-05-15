@@ -86,7 +86,7 @@ module Slack
       blocks = [
         {
           type: "header",
-          text: { type: "plain_text", text: "Approval needed · #{approval.agent.name}" },
+          text: { type: "plain_text", text: "Approval needed · #{approval.agent.name}" }
         },
         { type: "section", text: { type: "mrkdwn", text: "*#{summary}*" } }
       ]
@@ -97,7 +97,7 @@ module Slack
 
       if decision_line.present?
         # Decision already landed — replace the actions block with a status line.
-        blocks << { type: "context", elements: [{ type: "mrkdwn", text: decision_line }] }
+        blocks << { type: "context", elements: [ { type: "mrkdwn", text: decision_line } ] }
       else
         blocks << {
           type: "actions",
@@ -112,17 +112,17 @@ module Slack
                 title: { type: "plain_text", text: "Approve this action?" },
                 text: { type: "plain_text", text: "The agent will run this immediately." },
                 confirm: { type: "plain_text", text: "Approve" },
-                deny: { type: "plain_text", text: "Cancel" },
-              },
+                deny: { type: "plain_text", text: "Cancel" }
+              }
             },
             {
               type: "button",
               style: "danger",
               text: { type: "plain_text", text: "Reject" },
               value: approval.id.to_s,
-              action_id: "approval:reject:#{approval.id}",
+              action_id: "approval:reject:#{approval.id}"
             }
-          ],
+          ]
         }
       end
 

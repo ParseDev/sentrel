@@ -111,7 +111,7 @@ class SettingsController < ApplicationController
       max_send_rate: quota.max_send_rate,
       sent_last_24h: quota.sent_last_24_hours,
       sandbox: quota.max_24_hour_send.to_i <= 200,
-      inbound_supported: %w[us-east-1 us-west-2 eu-west-1].include?(region),
+      inbound_supported: %w[us-east-1 us-west-2 eu-west-1].include?(region)
     }
   rescue Aws::SES::Errors::ServiceError => e
     render json: { region: region, error: e.message, code: e.class.name.demodulize }, status: :unprocessable_entity
@@ -135,27 +135,27 @@ class SettingsController < ApplicationController
     slack_agents = current_tenant.agents.joins(:channel_configs)
       .where(channel_configs: { channel_type: "slack", enabled: true })
       .distinct.order(:name)
-      .as_json(only: [:id, :name, :role])
+      .as_json(only: [ :id, :name, :role ])
 
     render inertia: "settings/show", props: {
       organization: current_tenant.as_json(only: [
         :id, :name, :slug, :email_domain, :email_domain_verified, :context_md,
-        :default_slack_agent_id,
+        :default_slack_agent_id
       ]),
-      members: current_tenant.users.order(:name).as_json(only: [:id, :name, :email, :role, :created_at]),
+      members: current_tenant.users.order(:name).as_json(only: [ :id, :name, :email, :role, :created_at ]),
       anthropic_account: {
         provider: "anthropic",
         connected: anthropic_cred.present?,
         account_email: anthropic_cred&.account_email,
         expires_at: anthropic_cred&.expires_at,
-        last_refreshed_at: anthropic_cred&.last_refreshed_at,
+        last_refreshed_at: anthropic_cred&.last_refreshed_at
       },
       managed_dns: {
         zones: Email::DnsAutoConfigurator.available_zones,
         suggested_subdomain: Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug),
-        auto_connect: params[:connect] == "1",
+        auto_connect: params[:connect] == "1"
       },
-      slack_agents: slack_agents,
+      slack_agents: slack_agents
     }
   end
 
@@ -199,7 +199,7 @@ class SettingsController < ApplicationController
     end
 
     # Read live verification + DKIM status so the UI shows the right state.
-    status = ses.get_identity_verification_attributes(identities: [domain]).verification_attributes[domain]
+    status = ses.get_identity_verification_attributes(identities: [ domain ]).verification_attributes[domain]
     if status&.verification_status == "Success" && !current_tenant.email_domain_verified?
       current_tenant.update!(email_domain_verified: true)
     end
@@ -211,7 +211,7 @@ class SettingsController < ApplicationController
       records: records,
       verification_status: status&.verification_status || "Pending",
       auto_dns: auto_dns,
-      managed_zone: Email::DnsAutoConfigurator.managed_zone_for(domain),
+      managed_zone: Email::DnsAutoConfigurator.managed_zone_for(domain)
     }
   rescue Aws::SES::Errors::ServiceError => e
     Rails.logger.error "SES verify_domain failed (#{domain}): #{e.class}: #{e.message}"
@@ -227,7 +227,7 @@ class SettingsController < ApplicationController
     return render json: { verified: false, status: "no_domain" } unless domain.present?
 
     ses = SesClient.for(current_tenant)
-    result = ses.get_identity_verification_attributes(identities: [domain])
+    result = ses.get_identity_verification_attributes(identities: [ domain ])
     attrs = result.verification_attributes[domain]
 
     if attrs.nil?
@@ -276,7 +276,7 @@ class SettingsController < ApplicationController
   def build_dns_records(domain, verification_token, dkim_tokens)
     region = current_tenant.email_aws_region.presence || ENV.fetch("AWS_REGION", "us-east-1")
     records = [
-      { type: "TXT", name: "_amazonses.#{domain}", value: verification_token, purpose: "Domain verification" },
+      { type: "TXT", name: "_amazonses.#{domain}", value: verification_token, purpose: "Domain verification" }
     ]
     dkim_tokens.each do |token|
       records << { type: "CNAME", name: "#{token}._domainkey.#{domain}", value: "#{token}.dkim.amazonses.com", purpose: "DKIM signing" }

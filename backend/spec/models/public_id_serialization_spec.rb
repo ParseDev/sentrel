@@ -7,14 +7,14 @@ RSpec.describe PublicIdSerialization do
   describe "as_json" do
     it "swaps User#id for to_param (prefix_id) in the output" do
       user = create_user(org)
-      hash = user.as_json(only: [:id, :name])
+      hash = user.as_json(only: [ :id, :name ])
       expect(hash["id"]).to eq(user.to_param)
       expect(hash["id"]).to start_with("usr_")
       expect(hash["name"]).to eq(user.name)
     end
 
     it "swaps Agent#id for to_param" do
-      hash = agent.as_json(only: [:id, :name, :slug])
+      hash = agent.as_json(only: [ :id, :name, :slug ])
       expect(hash["id"]).to eq(agent.to_param)
       expect(hash["id"]).to start_with("agt_")
     end
@@ -24,14 +24,14 @@ RSpec.describe PublicIdSerialization do
       task = with_tenant(org) do
         Task.create!(organization: org, agent: agent, assigned_by_user: user, title: "t", status: "todo", priority: "normal")
       end
-      hash = task.as_json(only: [:id, :title])
+      hash = task.as_json(only: [ :id, :title ])
       expect(hash["id"]).to eq(task.to_param)
       expect(hash["id"]).to start_with("tsk_")
     end
 
     it "is a no-op when id is not in the selected columns" do
-      hash = agent.as_json(only: [:name, :slug])
-      expect(hash.keys).to match_array(["name", "slug"])
+      hash = agent.as_json(only: [ :name, :slug ])
+      expect(hash.keys).to match_array([ "name", "slug" ])
     end
 
     it "preserves round-trip — find(to_param) resolves back to the same record" do

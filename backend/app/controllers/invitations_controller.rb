@@ -1,6 +1,6 @@
 class InvitationsController < ApplicationController
-  before_action :authenticate_user!, except: [:show, :accept]
-  before_action :require_admin!, only: [:index, :create, :destroy]
+  before_action :authenticate_user!, except: [ :show, :accept ]
+  before_action :require_admin!, only: [ :index, :create, :destroy ]
 
   # GET /invitations
   def index
@@ -9,7 +9,7 @@ class InvitationsController < ApplicationController
     render inertia: "invitations/index", props: {
       invitations: invitations.map { |i| invite_json(i) },
       members: members.map { |u| user_json(u) },
-      current_role: current_user.role,
+      current_role: current_user.role
     }
   end
 
@@ -48,9 +48,9 @@ class InvitationsController < ApplicationController
         email: @invitation.email,
         role: @invitation.role,
         organization: @invitation.organization.name,
-        token: @invitation.token,
+        token: @invitation.token
       },
-      signed_in: user_signed_in?,
+      signed_in: user_signed_in?
     }
   rescue ActiveRecord::RecordNotFound
     redirect_to root_path, alert: "Invitation not found"
@@ -89,7 +89,7 @@ class InvitationsController < ApplicationController
       accepted_at: inv.accepted_at,
       expires_at: inv.expires_at,
       invited_by: inv.invited_by&.email,
-      created_at: inv.created_at,
+      created_at: inv.created_at
     }
   end
 

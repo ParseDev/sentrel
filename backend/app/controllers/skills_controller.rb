@@ -1,6 +1,6 @@
 class SkillsController < ApplicationController
   before_action :authenticate_user!
-  before_action :load_skill, only: [:show, :edit, :update, :destroy, :publish, :unpublish, :fork]
+  before_action :load_skill, only: [ :show, :edit, :update, :destroy, :publish, :unpublish, :fork ]
 
   # GET /skills — browse (own org + published marketplace seeds + a system tab)
   def index
@@ -16,14 +16,14 @@ class SkillsController < ApplicationController
     render inertia: "skills/index", props: {
       skills: skills,
       categories: SkillDefinition.visible_to(current_tenant).distinct.pluck(:category).compact.sort,
-      filters: { category: params[:category], q: params[:q], visibility: params[:visibility] },
+      filters: { category: params[:category], q: params[:q], visibility: params[:visibility] }
     }
   end
 
   # GET /skills/new — wizard step that lands the user into the editor
   def new
     render inertia: "skills/new", props: {
-      categories: %w[common sales support marketing engineering finance content writing ops generic],
+      categories: %w[common sales support marketing engineering finance content writing ops generic]
     }
   end
 
@@ -63,7 +63,7 @@ class SkillsController < ApplicationController
     files = @skill.skill_files.ordered.map { |f| { id: f.id, path: f.path, content: f.content, file_type: f.file_type } }
     render inertia: "skills/show", props: {
       skill: skill_full_json(@skill).merge(files: files),
-      can_edit: @skill.editable_by?(current_user),
+      can_edit: @skill.editable_by?(current_user)
     }
   end
 
@@ -72,7 +72,7 @@ class SkillsController < ApplicationController
     forbid_unless_editor!
     files = @skill.skill_files.ordered.map { |f| { id: f.id, path: f.path, content: f.content, file_type: f.file_type, position: f.position } }
     render inertia: "skills/edit", props: {
-      skill: skill_full_json(@skill).merge(files: files),
+      skill: skill_full_json(@skill).merge(files: files)
     }
   end
 
@@ -163,7 +163,7 @@ class SkillsController < ApplicationController
       attrs = {
         path: change["path"].to_s.strip,
         content: change["content"].to_s,
-        position: change["position"] || idx,
+        position: change["position"] || idx
       }
       if id.present?
         rec = skill.skill_files.find(id)
@@ -192,7 +192,7 @@ class SkillsController < ApplicationController
       organization_id: s.organization_id,
       owned_by_me: s.organization_id == current_tenant&.id,
       created_by: s.created_by_user&.name,
-      updated_at: s.updated_at,
+      updated_at: s.updated_at
     }
   end
 

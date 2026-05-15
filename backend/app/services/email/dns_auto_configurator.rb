@@ -63,10 +63,10 @@ module Email
 
       zone, provider = entry
       result = case provider
-               when "cloudflare" then CloudflareProvider.apply!(zone, records)
-               when "route53"    then Route53Provider.apply!(zone, records)
-               else raise "Unknown DNS provider #{provider} for zone #{zone}"
-               end
+      when "cloudflare" then CloudflareProvider.apply!(zone, records)
+      when "route53"    then Route53Provider.apply!(zone, records)
+      else raise "Unknown DNS provider #{provider} for zone #{zone}"
+      end
 
       result.merge(zone: zone, provider: provider)
     end
@@ -82,7 +82,7 @@ module Email
     # original one-string format). When the env is empty, we default to
     # route53:double.md — our primary managed zone — so a fresh deploy has
     # auto-DNS working without any extra configuration.
-    DEFAULT_MANAGED_ZONES = [["double.md", "route53"]].freeze
+    DEFAULT_MANAGED_ZONES = [ [ "double.md", "route53" ] ].freeze
 
     def parsed_managed_zones
       raw_env = ENV.fetch("MANAGED_DNS_ZONES", "")
@@ -93,9 +93,9 @@ module Email
         next if entry.empty?
         if entry.include?(":")
           provider, zone = entry.split(":", 2).map(&:strip)
-          [zone, provider.downcase] if provider.present? && zone.present?
+          [ zone, provider.downcase ] if provider.present? && zone.present?
         else
-          [entry, "cloudflare"]
+          [ entry, "cloudflare" ]
         end
       end
     end
@@ -220,15 +220,15 @@ module Email
             client.change_resource_record_sets(
               hosted_zone_id: hosted_zone_id,
               change_batch: {
-                changes: [{
+                changes: [ {
                   action: "UPSERT",
                   resource_record_set: {
                     name: fqdn,
                     type: type,
                     ttl: 300,
-                    resource_records: [{ value: rr_value }],
-                  },
-                }],
+                    resource_records: [ { value: rr_value } ]
+                  }
+                } ]
               },
             )
             applied << { type:, name:, purpose: }

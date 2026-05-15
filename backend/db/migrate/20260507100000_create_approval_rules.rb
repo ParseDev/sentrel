@@ -29,6 +29,6 @@ class CreateApprovalRules < ActiveRecord::Migration[8.1]
       t.boolean :enabled, null: false, default: true
       t.timestamps
     end
-    add_index :approval_rules, [:organization_id, :enabled, :payload_type], name: "idx_approval_rules_lookup"
+    add_index :approval_rules, [ :organization_id, :enabled, :payload_type ], name: "idx_approval_rules_lookup"
   end
 end

@@ -10,7 +10,7 @@ class AddUnifiedConversationToConversations < ActiveRecord::Migration[8.0]
   def change
     add_reference :conversations, :unified_conversation, null: true,
                   foreign_key: { to_table: :conversations }
-    add_index :conversations, [:unified_conversation_id, :updated_at],
+    add_index :conversations, [ :unified_conversation_id, :updated_at ],
               name: "index_conversations_on_unified_and_updated"
   end
 end

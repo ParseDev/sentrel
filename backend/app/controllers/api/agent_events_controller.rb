@@ -43,6 +43,6 @@ class Api::AgentEventsController < ActionController::API
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
     return head :unauthorized unless secret.present?
-    return head :unauthorized unless request.headers["X-Engine-Secret"] == secret
+    head :unauthorized unless request.headers["X-Engine-Secret"] == secret
   end
 end

@@ -23,7 +23,7 @@ class Api::CommandApprovalsController < ApplicationController
     if level == "always" && params[:command].present?
       pattern = params[:command].to_s.split(/\s+/).first.to_s
       if pattern.present?
-        list = Array(agent.command_allowlist) + [pattern]
+        list = Array(agent.command_allowlist) + [ pattern ]
         agent.update!(command_allowlist: list.uniq)
       end
     end
@@ -32,7 +32,7 @@ class Api::CommandApprovalsController < ApplicationController
       type: "command_approval_response",
       approvalId: params[:approval_id],
       command: params[:command].to_s,
-      level: level,
+      level: level
     }
     receivers = redis.publish("agent-#{agent.id}-approvals", payload.to_json)
     Rails.logger.info "CommandApproval: agent=#{agent.id} approval_id=#{params[:approval_id]} level=#{level} → #{receivers} subscribers"

@@ -16,7 +16,7 @@ class CreateSkillFiles < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :skill_files, [:skill_definition_id, :path], unique: true, name: "index_skill_files_unique_path"
+    add_index :skill_files, [ :skill_definition_id, :path ], unique: true, name: "index_skill_files_unique_path"
 
     # Backfill: every existing skill_definition.skill_md becomes a SKILL.md
     # row so the editor / engine sync treats every skill as a file collection.

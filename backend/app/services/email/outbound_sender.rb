@@ -16,7 +16,7 @@ module Email
     # Errors that should be retried by the job
     TRANSIENT_SES_ERRORS = [
       Aws::SES::Errors::Throttling,
-      Aws::SES::Errors::ServiceUnavailable,
+      Aws::SES::Errors::ServiceUnavailable
     ].freeze
 
     def initialize(payload)
@@ -108,7 +108,7 @@ module Email
 
       in_reply_to = last_inbound&.metadata&.dig("message_id")
       prev_references = last_inbound&.metadata&.dig("references")
-      references = [prev_references, in_reply_to].compact.join(" ").strip.presence
+      references = [ prev_references, in_reply_to ].compact.join(" ").strip.presence
       new_message_id = "<#{SecureRandom.uuid}@#{@from_domain}>"
 
       { in_reply_to: in_reply_to, references: references, new_message_id: new_message_id }
@@ -207,7 +207,7 @@ module Email
           in_reply_to: threading_headers[:in_reply_to],
           references: threading_headers[:references],
           ses_message_id: ses_message_id,
-          sent_via_agent_by_user: acting_user_id,
+          sent_via_agent_by_user: acting_user_id
         }.compact,
       )
     end

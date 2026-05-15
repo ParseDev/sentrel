@@ -62,7 +62,7 @@ class Api::SecretsController < ApplicationController
       name:      cred.name,
       base_url:  cred.meta && cred.meta["base_url"].presence,
       usage_md:  cred.meta && cred.meta["usage_md"].presence,
-      requires_approval: requires_approval?(cred),
+      requires_approval: requires_approval?(cred)
     }
   rescue ActiveRecord::RecordNotFound
     render json: { error: "agent not found" }, status: :not_found

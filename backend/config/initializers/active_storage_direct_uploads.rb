@@ -7,7 +7,7 @@ Rails.application.config.to_prepare do
   ActiveStorage::DirectUploadsController.class_eval do
     before_action :authenticate_user!
     skip_before_action :verify_authenticity_token
-    before_action :validate_blob_params, only: [:create]
+    before_action :validate_blob_params, only: [ :create ]
 
     private
 
@@ -26,7 +26,7 @@ Rails.application.config.to_prepare do
       ext = File.extname(filename).delete(".").downcase
       if blocked_exts.include?(ext)
         render json: { error: "File type .#{ext} is not allowed" }, status: :unprocessable_entity
-        return
+        nil
       end
     end
   end

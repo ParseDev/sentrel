@@ -7,6 +7,6 @@ class CreateEmailSuppressions < ActiveRecord::Migration[8.1]
 
       t.timestamps
     end
-    add_index :email_suppressions, [:organization_id, :email_address], unique: true
+    add_index :email_suppressions, [ :organization_id, :email_address ], unique: true
   end
 end

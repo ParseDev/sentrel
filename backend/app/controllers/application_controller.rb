@@ -14,8 +14,8 @@ class ApplicationController < ActionController::Base
   inertia_share do
     {
       auth: {
-        user: current_user&.as_json(only: [:id, :name, :email, :role]),
-        organization: current_tenant&.as_json(only: [:id, :name, :slug, :onboarding_completed_at])
+        user: current_user&.as_json(only: [ :id, :name, :email, :role ]),
+        organization: current_tenant&.as_json(only: [ :id, :name, :slug, :onboarding_completed_at ])
       },
       flash: {
         success: flash[:notice],
@@ -76,7 +76,7 @@ class ApplicationController < ActionController::Base
   end
 
   def configure_permitted_parameters
-    devise_parameter_sanitizer.permit(:sign_up, keys: [:name])
-    devise_parameter_sanitizer.permit(:account_update, keys: [:name])
+    devise_parameter_sanitizer.permit(:sign_up, keys: [ :name ])
+    devise_parameter_sanitizer.permit(:account_update, keys: [ :name ])
   end
 end

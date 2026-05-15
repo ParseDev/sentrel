@@ -20,21 +20,21 @@ class AuditsController < ApplicationController
     scope = scope.where("created_at >= ?", parse_time(params[:since])) if params[:since].present?
     scope = scope.where("created_at <= ?", parse_time(params[:until])) if params[:until].present?
 
-    rows = scope.limit([params[:limit].to_i, 1000].min.then { |n| n <= 0 ? PAGE_SIZE : n }).to_a
+    rows = scope.limit([ params[:limit].to_i, 1000 ].min.then { |n| n <= 0 ? PAGE_SIZE : n }).to_a
 
     respond_to do |format|
       format.html do
         render inertia: "audits/approvals", props: {
           approvals: rows.map { |a| serialize(a) },
-          agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [:id, :name, :slug]),
+          agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [ :id, :name, :slug ]),
           filters: {
             agent_id: params[:agent_id],
             decision: params[:decision],
             status: params[:status],
             payload_type: params[:payload_type],
             since: params[:since],
-            until: params[:until],
-          },
+            until: params[:until]
+          }
         }
       end
       format.csv do
@@ -53,7 +53,7 @@ class AuditsController < ApplicationController
       id: a.to_param,
       created_at: a.created_at,
       reviewed_at: a.reviewed_at,
-      agent: a.agent&.as_json(only: [:id, :name, :slug, :role]),
+      agent: a.agent&.as_json(only: [ :id, :name, :slug, :role ]),
       tool_name: a.tool_name,
       payload_type: a.payload_type,
       summary: a.summary,
@@ -61,8 +61,8 @@ class AuditsController < ApplicationController
       status: a.status,
       decision: a.decision,
       decision_text: a.decision_text,
-      reviewed_by: a.reviewed_by&.as_json(only: [:id, :name, :email]),
-      auto_rule_id: a.tool_input&.dig("_matched_rule_id"),
+      reviewed_by: a.reviewed_by&.as_json(only: [ :id, :name, :email ]),
+      auto_rule_id: a.tool_input&.dig("_matched_rule_id")
     }
   end
 
@@ -84,7 +84,7 @@ class AuditsController < ApplicationController
           a.decision,
           a.decision_text,
           a.reviewed_by&.email,
-          a.tool_input&.dig("_matched_rule_id"),
+          a.tool_input&.dig("_matched_rule_id")
         ]
       end
     end

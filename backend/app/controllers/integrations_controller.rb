@@ -65,7 +65,7 @@ class IntegrationsController < ApplicationController
 
     render inertia: "integrations/index", props: {
       integrations: visible_scope.as_json(
-        only: [:id, :service_name, :status, :composio_connection_id, :created_at, :scope, :owner_user_id]
+        only: [ :id, :service_name, :status, :composio_connection_id, :created_at, :scope, :owner_user_id ]
       ).map { |i|
         i.merge("is_mine" => i["scope"] == "user" && i["owner_user_id"] == current_user.id)
       },
@@ -81,13 +81,13 @@ class IntegrationsController < ApplicationController
           connected: cred.present?,
           account_email: cred&.account_email,
           expires_at: cred&.expires_at,
-          last_refreshed_at: cred&.last_refreshed_at,
+          last_refreshed_at: cred&.last_refreshed_at
         }
       },
       oauth_configured: {
         "anthropic" => ENV["WEBHOOK_BASE_URL"].present?,
-        "openai"    => ENV["OPENAI_OAUTH_CLIENT_ID"].present?,
-      },
+        "openai"    => ENV["OPENAI_OAUTH_CLIENT_ID"].present?
+      }
     }
   end
 
@@ -127,7 +127,7 @@ class IntegrationsController < ApplicationController
       owner_user_id = scope == "user" ? current_user.id : nil
       locally_connected = current_tenant.integrations
         .where(service_name: service, scope: scope, owner_user_id: owner_user_id, status: "connected")
-        .where.not(composio_connection_id: [nil, ""])
+        .where.not(composio_connection_id: [ nil, "" ])
         .exists?
 
       unless locally_connected
@@ -146,7 +146,7 @@ class IntegrationsController < ApplicationController
       response = composio_post("/api/v3/connected_accounts/link", api_key, {
         auth_config_id: auth_config_id,
         user_id: user_id,
-        callback_url: callback_url,
+        callback_url: callback_url
       })
 
       data = JSON.parse(response.body)
@@ -161,7 +161,7 @@ class IntegrationsController < ApplicationController
         session[:composio_pending] = {
           service: service,
           connected_account_id: connected_account_id,
-          scope: scope,
+          scope: scope
         }
 
         render json: { redirect_url: url }
@@ -380,7 +380,7 @@ class IntegrationsController < ApplicationController
     cursor = nil
 
     loop do
-      params = { user_ids: [user_id], toolkit_slugs: [service], limit: 100 }
+      params = { user_ids: [ user_id ], toolkit_slugs: [ service ], limit: 100 }
       params[:cursor] = cursor if cursor.present?
       query = composio_query(params)
       res = composio_get("/api/v3/connected_accounts?#{query}", ENV["COMPOSIO_API_KEY"])
@@ -466,7 +466,7 @@ class IntegrationsController < ApplicationController
   end
 
   def composio_active_for(api_key, composio_user_id)
-    query = composio_query(user_ids: [composio_user_id], statuses: ["ACTIVE"])
+    query = composio_query(user_ids: [ composio_user_id ], statuses: [ "ACTIVE" ])
     res = composio_get("/api/v3/connected_accounts?#{query}", api_key)
     data = JSON.parse(res.body) rescue {}
     items = data["items"] || []

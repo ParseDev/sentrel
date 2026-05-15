@@ -27,7 +27,7 @@ class AgentToolPolicy < ApplicationRecord
     return false if denied_tools.include?(tool_name)
     return true  if preset == "full"
     return allowed_tools.include?(tool_name) if preset == "custom"
-    return allowed_tools.include?(tool_name) || matches_preset?(tool_name)
+    allowed_tools.include?(tool_name) || matches_preset?(tool_name)
   end
 
   def matches_preset?(tool_name)

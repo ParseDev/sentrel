@@ -22,7 +22,7 @@ class Api::ApprovalRulesController < ApplicationController
     render json: {
       auto_decision: rule.auto_decision,
       rule_id: rule.to_param,
-      label: rule.label,
+      label: rule.label
     }
   rescue StandardError => e
     Rails.logger.error("approval_rules#match failed: #{e.class}: #{e.message}")

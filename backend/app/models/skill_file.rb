@@ -20,7 +20,7 @@ class SkillFile < ApplicationRecord
     "bash" => "sh",
     "rb"   => "rb",
     "txt"  => "text",
-    "csv"  => "text",
+    "csv"  => "text"
   }.freeze
 
   PATH_REGEX = %r{\A[a-zA-Z0-9_][a-zA-Z0-9_./-]*\z}

@@ -13,6 +13,10 @@ export interface ApprovalResult {
   to: string;
   subject: string;
   body_text: string;
+  // True when this draft surfaced even though the agent has no email
+  // channel — agent-runner uses this to append a 'connect email' hint to
+  // the user-facing reply so the warning isn't only inside the preview.
+  email_not_configured?: boolean;
 }
 
 // Processes the email outbox after an agent run.
@@ -151,6 +155,7 @@ async function processOneEmail(
       to: content.to,
       subject: content.subject || "(no subject)",
       body_text: content.body_text || "",
+      email_not_configured: emailConfig == null,
     };
   }
 

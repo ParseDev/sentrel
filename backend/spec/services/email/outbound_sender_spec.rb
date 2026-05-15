@@ -10,9 +10,9 @@ RSpec.describe Email::OutboundSender do
       agent_id: agent.id,
       from_address: "sarah@acme.com",
       from_name: "Sarah",
-      to: ["bob@example.com"],
+      to: [ "bob@example.com" ],
       subject: "Q4 Proposal",
-      body_text: "Here is the proposal for Q4.",
+      body_text: "Here is the proposal for Q4."
     }
   end
 
@@ -59,8 +59,8 @@ RSpec.describe Email::OutboundSender do
       it "passes BCC in destinations array to SES" do
         with_tenant(org) do
           payload = base_payload.merge(
-            cc: ["carol@example.com"],
-            bcc: ["dave@example.com", "eve@example.com"]
+            cc: [ "carol@example.com" ],
+            bcc: [ "dave@example.com", "eve@example.com" ]
           )
 
           described_class.new(payload).call
@@ -79,15 +79,15 @@ RSpec.describe Email::OutboundSender do
       it "deduplicates recipients in destinations" do
         with_tenant(org) do
           payload = base_payload.merge(
-            cc: ["bob@example.com"],  # same as to
-            bcc: ["bob@example.com"]   # same as to
+            cc: [ "bob@example.com" ],  # same as to
+            bcc: [ "bob@example.com" ]   # same as to
           )
 
           described_class.new(payload).call
 
           expect(ses_client).to have_received(:send_raw_email) do |args|
             expect(args[:destinations].size).to eq(1)
-            expect(args[:destinations]).to eq(["bob@example.com"])
+            expect(args[:destinations]).to eq([ "bob@example.com" ])
           end
         end
       end

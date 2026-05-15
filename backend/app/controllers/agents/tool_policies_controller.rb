@@ -41,9 +41,9 @@ class Agents::ToolPoliciesController < ApplicationController
           preset: p&.preset || "read_write",
           allowed_tools: p&.allowed_tools || [],
           denied_tools: p&.denied_tools || [],
-          has_policy: p.present?,
+          has_policy: p.present?
         }
-      },
+      }
     }
   end
 

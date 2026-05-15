@@ -1,7 +1,7 @@
 class Api::BlobsController < ApplicationController
   skip_before_action :verify_authenticity_token
   skip_before_action :set_tenant
-  before_action :authenticate_engine!, only: [:create]
+  before_action :authenticate_engine!, only: [ :create ]
 
   # Sprint 5 — upload safety
   MAX_UPLOAD_BYTES = (ENV.fetch("MAX_UPLOAD_MB", "25").to_i * 1024 * 1024)
@@ -13,7 +13,7 @@ class Api::BlobsController < ApplicationController
     %r{^application/(pdf|json|zip|gzip)$},
     %r{^application/vnd\.openxmlformats-officedocument},
     %r{^application/(msword|vnd\.ms-excel|vnd\.ms-powerpoint)$},
-    %r{^text/},
+    %r{^text/}
   ].freeze
 
   BLOCKED_EXTENSIONS = %w[exe bat scr cmd com pif vbs js ps1 sh msi dll sys].freeze
@@ -49,7 +49,7 @@ class Api::BlobsController < ApplicationController
       signed_id: blob.signed_id,
       filename: blob.filename.to_s,
       content_type: blob.content_type,
-      byte_size: blob.byte_size,
+      byte_size: blob.byte_size
     }
   end
 
@@ -71,6 +71,6 @@ class Api::BlobsController < ApplicationController
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
     return head :unauthorized unless secret.present?
-    return head :unauthorized unless request.headers["X-Engine-Secret"] == secret
+    head :unauthorized unless request.headers["X-Engine-Secret"] == secret
   end
 end

@@ -2,7 +2,7 @@ namespace :backfill do
   desc "Step 4 — create a Conversation for every existing Task and mirror its comments as Messages."
   task task_conversations: :environment do
     ActsAsTenant.without_tenant do
-      scope = Task.where(conversation_id: nil).includes(:agent, :organization, comments: [:user, :agent])
+      scope = Task.where(conversation_id: nil).includes(:agent, :organization, comments: [ :user, :agent ])
       total = scope.count
       puts "Backfilling #{total} task(s)..."
 
@@ -21,7 +21,7 @@ namespace :backfill do
           )
 
           # Seed with the original task instruction as the first user message.
-          seed = ["Task: #{task.title}", task.description, task.instruction].compact_blank.join("\n\n")
+          seed = [ "Task: #{task.title}", task.description, task.instruction ].compact_blank.join("\n\n")
           conv.messages.create!(
             role: "user",
             content: seed,
@@ -44,7 +44,7 @@ namespace :backfill do
               metadata: {
                 task_id: task.id,
                 task_comment_id: c.id,
-                source: "backfill_task_comment",
+                source: "backfill_task_comment"
               },
             )
           end

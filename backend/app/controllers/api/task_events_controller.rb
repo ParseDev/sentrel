@@ -20,7 +20,7 @@ class Api::TaskEventsController < ApplicationController
         content: message.content,
         created_at: message.created_at,
         author: { id: nil, name: task.agent&.name || "Agent" },
-        author_type: message.role == "assistant" ? "agent" : "user",
+        author_type: message.role == "assistant" ? "agent" : "user"
       }
     else
       # Fallback: broadcast the event even if message not found (yet).
@@ -31,7 +31,7 @@ class Api::TaskEventsController < ApplicationController
         content: params[:content] || "",
         created_at: Time.current,
         author: { id: nil, name: "Agent" },
-        author_type: "agent",
+        author_type: "agent"
       }
     end
 
@@ -44,6 +44,6 @@ class Api::TaskEventsController < ApplicationController
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
     return head :unauthorized unless secret.present?
-    return head :unauthorized unless request.headers["X-Engine-Secret"] == secret
+    head :unauthorized unless request.headers["X-Engine-Secret"] == secret
   end
 end

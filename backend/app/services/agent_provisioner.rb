@@ -101,17 +101,17 @@ module AgentProvisioner
         config: {
           image: ENV.fetch("ENGINE_IMAGE", "ghcr.io/parsedev/alchemy-engine:latest"),
           env: env_for(agent),
-          services: [{
-            ports: [{ port: 443, handlers: ["tls", "http"] },
-                    { port: 80,  handlers: ["http"] }],
+          services: [ {
+            ports: [ { port: 443, handlers: [ "tls", "http" ] },
+                    { port: 80,  handlers: [ "http" ] } ],
             protocol: "tcp",
             internal_port: 3300,
             auto_stop_machines: "stop",
-            auto_start_machines: true,
-          }],
-          mounts: [{ volume: volume_id, path: "/data" }],
-          guest: { cpus: 1, memory_mb: 2048, cpu_kind: "shared" },
-        },
+            auto_start_machines: true
+          } ],
+          mounts: [ { volume: volume_id, path: "/data" } ],
+          guest: { cpus: 1, memory_mb: 2048, cpu_kind: "shared" }
+        }
       }
       res = fly_api(:post, "/apps/#{app_name}/machines", body)
       machine_id = res["id"] || raise("Fly create returned no id: #{res.inspect}")
@@ -182,7 +182,7 @@ module AgentProvisioner
         # Extended-thinking budget — engine maps low/medium/high to
         # 2000/4000/8000 tokens, "none" disables. Toggled per-agent via
         # ai_config.thinking_level in the edit UI.
-        "ENGINE_THINKING_LEVEL" => agent.ai_config&.thinking_level.to_s.presence || "none",
+        "ENGINE_THINKING_LEVEL" => agent.ai_config&.thinking_level.to_s.presence || "none"
       }
 
       case provider
@@ -279,7 +279,7 @@ module AgentProvisioner
       created = fly_api(:post, "/apps/#{app_name}/volumes", {
         name: "alchemy_data",
         region: region,
-        size_gb: 10,
+        size_gb: 10
       })
       created["id"] || raise("Fly volume create returned no id: #{created.inspect}")
     end
@@ -324,7 +324,7 @@ module AgentProvisioner
         image: "debian-12",
         location: location,
         user_data: user_data,
-        labels: { "agent_id" => agent.id.to_s },
+        labels: { "agent_id" => agent.id.to_s }
       }
 
       res = hetzner_api(:post, "/servers", body, token)
@@ -355,7 +355,7 @@ module AgentProvisioner
         "${ENGINE_API_SECRET}" => ENV["ENGINE_API_SECRET"].to_s,
         "${RAILS_INTERNAL_URL}"=> ENV["RAILS_INTERNAL_URL"].to_s,
         "${COMPOSIO_API_KEY:-}"=> ENV["COMPOSIO_API_KEY"].to_s,
-        "${OPENAI_API_KEY:-}"  => ENV["OPENAI_API_KEY"].to_s,
+        "${OPENAI_API_KEY:-}"  => ENV["OPENAI_API_KEY"].to_s
       }
       subs.each { |k, v| template = template.gsub(k, v) }
       template

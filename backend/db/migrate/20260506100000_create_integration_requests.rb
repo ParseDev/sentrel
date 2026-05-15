@@ -13,8 +13,8 @@ class CreateIntegrationRequests < ActiveRecord::Migration[8.0]
       t.datetime :resolved_at
       t.timestamps
     end
-    add_index :integration_requests, [:organization_id, :service_name]
-    add_index :integration_requests, [:user_id, :service_name], unique: true,
+    add_index :integration_requests, [ :organization_id, :service_name ]
+    add_index :integration_requests, [ :user_id, :service_name ], unique: true,
               name: "index_integration_requests_on_user_service"
   end
 end

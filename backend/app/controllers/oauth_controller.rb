@@ -18,7 +18,7 @@ require "digest"
 class OauthController < ApplicationController
   # client metadata + callback are public (Anthropic's authorize redirect can't
   # carry our session). connect/disconnect remain user-gated.
-  before_action :authenticate_user!, except: [:anthropic_client_metadata, :openai_client_metadata, :callback]
+  before_action :authenticate_user!, except: [ :anthropic_client_metadata, :openai_client_metadata, :callback ]
 
   # OAuth client metadata documents. The URL of each is the client_id we use
   # in the OAuth authorize call — the self-identifying-client pattern.
@@ -28,10 +28,10 @@ class OauthController < ApplicationController
       client_id: "#{base}/oauth/anthropic/client-metadata",
       client_name: "Alchemy",
       client_uri: base,
-      redirect_uris: ["#{base}/oauth/anthropic/callback"],
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: "none",
+      redirect_uris: [ "#{base}/oauth/anthropic/callback" ],
+      grant_types: [ "authorization_code", "refresh_token" ],
+      response_types: [ "code" ],
+      token_endpoint_auth_method: "none"
     }
   end
 
@@ -41,10 +41,10 @@ class OauthController < ApplicationController
       client_id: "#{base}/oauth/openai/client-metadata",
       client_name: "Alchemy",
       client_uri: base,
-      redirect_uris: ["#{base}/oauth/openai/callback"],
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: "none",
+      redirect_uris: [ "#{base}/oauth/openai/callback" ],
+      grant_types: [ "authorization_code", "refresh_token" ],
+      response_types: [ "code" ],
+      token_endpoint_auth_method: "none"
     }
   end
 
@@ -116,7 +116,7 @@ class OauthController < ApplicationController
       "provider"      => provider,
       "state"         => state,
       "code_verifier" => code_verifier,
-      "org_id"        => current_user.organization_id,
+      "org_id"        => current_user.organization_id
     }
 
     redirect_to authorize_url(provider, state: state, code_challenge: code_challenge), allow_other_host: true
@@ -200,7 +200,7 @@ class OauthController < ApplicationController
         scope: "org:create_api_key user:profile user:inference",
         code_challenge: code_challenge,
         code_challenge_method: "S256",
-        state: state,
+        state: state
       }
       "https://claude.ai/oauth/authorize?#{params.to_query}"
     when "openai"
@@ -216,7 +216,7 @@ class OauthController < ApplicationController
         scope: "openid profile email offline_access",
         code_challenge: code_challenge,
         code_challenge_method: "S256",
-        state: state,
+        state: state
       }
       "https://auth.openai.com/oauth/authorize?#{params.to_query}"
     end
@@ -242,7 +242,7 @@ class OauthController < ApplicationController
         code: code,
         client_id: client_metadata_url("anthropic"),
         redirect_uri: callback_url("anthropic"),
-        code_verifier: code_verifier,
+        code_verifier: code_verifier
       })
     when "openai"
       post_json("https://auth.openai.com/oauth/token", {
@@ -250,7 +250,7 @@ class OauthController < ApplicationController
         code: code,
         client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
         redirect_uri: callback_url("openai"),
-        code_verifier: code_verifier,
+        code_verifier: code_verifier
       })
     end
   end

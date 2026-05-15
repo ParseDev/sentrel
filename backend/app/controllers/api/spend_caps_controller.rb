@@ -46,7 +46,7 @@ class Api::SpendCapsController < ApplicationController
       spend_month_usd: month.round(4),
       over_daily: over_daily,
       over_monthly: over_monthly,
-      should_notify: crossing_threshold && !notified_today,
+      should_notify: crossing_threshold && !notified_today
     }
   end
 

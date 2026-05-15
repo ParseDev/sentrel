@@ -112,7 +112,7 @@ module AgentMachineOps
         timestamp: attrs["timestamp"],
         level: attrs["level"],
         message: attrs["message"].to_s,
-        instance: attrs["instance"],
+        instance: attrs["instance"]
       }
     end
     { ok: true, message: "ok", logs: entries }
@@ -152,14 +152,14 @@ module AgentMachineOps
       {
         ok: true,
         operation: operation.to_s,
-        message: "Fly machine record was stale; recreated machine #{recreated.machine_id}",
+        message: "Fly machine record was stale; recreated machine #{recreated.machine_id}"
       }
     else
       error = agent.reload.instance&.provisioning_error.presence || "unknown provisioning failure"
       {
         ok: false,
         operation: operation.to_s,
-        message: "Fly machine record was stale, but recreation failed: #{error}",
+        message: "Fly machine record was stale, but recreation failed: #{error}"
       }
     end
   rescue => e
@@ -172,7 +172,7 @@ module AgentMachineOps
       ok: false,
       operation: operation.to_s,
       message: message,
-      error_class: error_class,
+      error_class: error_class
     }.compact
   end
 

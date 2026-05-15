@@ -41,7 +41,7 @@ class Rack::Attack
     [
       429,
       { "Content-Type" => "application/json" },
-      [{ error: "Throttled. Try again later." }.to_json],
+      [ { error: "Throttled. Try again later." }.to_json ]
     ]
   end
 end

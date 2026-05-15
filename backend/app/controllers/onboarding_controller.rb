@@ -14,8 +14,8 @@ class OnboardingController < ApplicationController
       # subdomain on one of our zones instead of bringing their own.
       managed_dns: {
         zones: Email::DnsAutoConfigurator.available_zones,
-        suggested_subdomain: Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug),
-      },
+        suggested_subdomain: Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug)
+      }
     }
   end
 
@@ -75,7 +75,7 @@ class OnboardingController < ApplicationController
     return render json: { verified: false, status: "no_domain" } if domain.blank?
 
     ses = SesClient.for(current_tenant)
-    result = ses.get_identity_verification_attributes(identities: [domain])
+    result = ses.get_identity_verification_attributes(identities: [ domain ])
     attrs = result.verification_attributes[domain]
     verified = attrs&.verification_status == "Success"
     current_tenant.update!(email_domain_verified: true) if verified

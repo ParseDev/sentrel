@@ -43,7 +43,7 @@ class AgentDrafter
       provider: r.provider,
       model_id: r.model_id,
       name_suggestion: r.name_suggestion,
-      reasoning: r.reasoning,
+      reasoning: r.reasoning
     }
   end
 
@@ -62,7 +62,7 @@ class AgentDrafter
     request["x-api-key"] = api_key
     request["anthropic-version"] = "2023-06-01"
     request.body = { model: MODEL, max_tokens: MAX_TOKENS,
-                     messages: [{ role: "user", content: prompt }] }.to_json
+                     messages: [ { role: "user", content: prompt } ] }.to_json
 
     response = http.request(request)
     body = JSON.parse(response.body)
@@ -174,7 +174,7 @@ class AgentDrafter
     scored = @templates.map { |t|
       hay = "#{t.name} #{t.role} #{t.description}".downcase
       score = hay.scan(/\w+/).count { |w| w.length > 3 && text.include?(w) }
-      [t, score]
+      [ t, score ]
     }.sort_by { |_, s| -s }
     best = scored.first&.last.to_i.positive? ? scored.first.first : nil
     {
@@ -185,7 +185,7 @@ class AgentDrafter
       "provider" => best&.suggested_provider || "anthropic",
       "model_id" => best&.suggested_model || "claude-sonnet-4-6",
       "name_suggestion" => nil,
-      "reasoning" => best ? "Closest template by keyword match." : "No clear template match.",
+      "reasoning" => best ? "Closest template by keyword match." : "No clear template match."
     }
   end
 end

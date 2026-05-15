@@ -15,7 +15,7 @@ class AgentScreensController < ApplicationController
   def show
     instance = @agent.instance
     render inertia: "agents/screen", props: {
-      agent: @agent.as_json(only: [:id, :name, :slug, :role]),
+      agent: @agent.as_json(only: [ :id, :name, :slug, :role ]),
       instance: instance && {
         status: instance.status,
         provider: instance.provider,
@@ -25,8 +25,8 @@ class AgentScreensController < ApplicationController
         # noVNC WebSocket URL — the display-stack sidecar exposes :6080 on
         # the machine. Over TLS this needs a reverse proxy; dev/local can
         # use http directly via browser warnings.
-        vnc_url: instance.public_ip && "ws://#{instance.public_ip}:6080/websockify",
-      },
+        vnc_url: instance.public_ip && "ws://#{instance.public_ip}:6080/websockify"
+      }
     }
   end
 

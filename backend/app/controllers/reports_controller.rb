@@ -19,7 +19,7 @@ class ReportsController < ApplicationController
         approvals: rows.sum(&:approvals_approved) + rows.sum(&:approvals_rejected),
         tasks: rows.sum(&:tasks_completed),
         errors: rows.sum(&:errors_count),
-        conversations: rows.sum(&:conversations_started),
+        conversations: rows.sum(&:conversations_started)
       }
     end
 
@@ -31,7 +31,7 @@ class ReportsController < ApplicationController
         emails: rows.sum(&:emails_sent),
         approvals_approved: rows.sum(&:approvals_approved),
         approvals_rejected: rows.sum(&:approvals_rejected),
-        errors: rows.sum(&:errors_count),
+        errors: rows.sum(&:errors_count)
       }
     end
 
@@ -51,7 +51,7 @@ class ReportsController < ApplicationController
       .map { |(action, status), count| { action: action, status: status, count: count } }
       .sort_by { |r| -r[:count] }
 
-    agents = current_tenant.agents.as_json(only: [:id, :name, :slug, :role, :status])
+    agents = current_tenant.agents.as_json(only: [ :id, :name, :slug, :role, :status ])
 
     render inertia: "reports/index", props: {
       agents: agents,
@@ -61,7 +61,7 @@ class ReportsController < ApplicationController
       audit_rollups: audit_rollups,
       days: days,
       start_date: start_date.iso8601,
-      end_date: end_date.iso8601,
+      end_date: end_date.iso8601
     }
   end
 end

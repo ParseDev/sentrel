@@ -4,12 +4,12 @@ class ChannelConfigsController < ApplicationController
 
   def index
     render inertia: "channels/index", props: {
-      agent: @agent.as_json(only: [:id, :name, :slug]),
-      channels: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :config, :status]),
+      agent: @agent.as_json(only: [ :id, :name, :slug ]),
+      channels: @agent.channel_configs.as_json(only: [ :id, :channel_type, :enabled, :config, :status ]),
       available_channels: YAML.load_file(Rails.root.join("config/channels.yml")),
       twilio_configured: ENV["TWILIO_ACCOUNT_SID"].present?,
       org_email_domain: current_tenant.email_domain,
-      org_email_domain_verified: current_tenant.email_domain_verified?,
+      org_email_domain_verified: current_tenant.email_domain_verified?
     }
   end
 
@@ -143,7 +143,7 @@ class ChannelConfigsController < ApplicationController
         phone_number: n.phone_number,
         friendly_name: n.friendly_name,
         capabilities: { sms: n.capabilities["sms"], voice: n.capabilities["voice"], mms: n.capabilities["mms"] },
-        assigned: assigned.include?(n.phone_number),
+        assigned: assigned.include?(n.phone_number)
       }
     }
   end
@@ -164,7 +164,7 @@ class ChannelConfigsController < ApplicationController
           friendly_name: n.friendly_name,
           locality: n.locality,
           region: n.region,
-          capabilities: { sms: n.capabilities["sms"], voice: n.capabilities["voice"], mms: n.capabilities["mms"] },
+          capabilities: { sms: n.capabilities["sms"], voice: n.capabilities["voice"], mms: n.capabilities["mms"] }
         }
       }
     rescue Twilio::REST::RestError => e
@@ -282,16 +282,16 @@ class ChannelConfigsController < ApplicationController
         rule: {
           name: rule_name,
           enabled: true,
-          recipients: [address],
+          recipients: [ address ],
           actions: [
             {
               sns_action: {
                 topic_arn: topic_arn,
-                encoding: "UTF-8",
-              },
-            },
+                encoding: "UTF-8"
+              }
+            }
           ],
-          scan_enabled: true,
+          scan_enabled: true
         }
       )
     rescue Aws::SES::Errors::AlreadyExists

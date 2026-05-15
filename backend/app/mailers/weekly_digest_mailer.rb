@@ -8,7 +8,7 @@ class WeeklyDigestMailer < ApplicationMailer
 
     @totals = {
       messages: 0, emails: 0, approvals: 0,
-      tasks: 0, errors: 0, conversations: 0,
+      tasks: 0, errors: 0, conversations: 0
     }
 
     @per_agent = @agent_summaries.group_by(&:agent).map do |agent, rows|
@@ -19,7 +19,7 @@ class WeeklyDigestMailer < ApplicationMailer
         approvals: rows.sum(&:approvals_approved) + rows.sum(&:approvals_rejected),
         tasks: rows.sum(&:tasks_completed),
         errors: rows.sum(&:errors_count),
-        conversations: rows.sum(&:conversations_started),
+        conversations: rows.sum(&:conversations_started)
       }
       @totals.each_key { |k| @totals[k] += stats[k] }
       stats

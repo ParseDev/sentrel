@@ -31,7 +31,7 @@ RSpec.describe "Api::Blobs", type: :request do
     it "rejects files over size limit" do
       # Create a file that's > MAX_UPLOAD_BYTES
       large_content = "x" * (26 * 1024 * 1024)
-      file = Tempfile.new(["large", ".txt"])
+      file = Tempfile.new([ "large", ".txt" ])
       file.write(large_content)
       file.rewind
 
@@ -47,7 +47,7 @@ RSpec.describe "Api::Blobs", type: :request do
     end
 
     it "rejects blocked extensions" do
-      file = Tempfile.new(["malware", ".exe"])
+      file = Tempfile.new([ "malware", ".exe" ])
       file.write("MZ")
       file.rewind
 
@@ -63,7 +63,7 @@ RSpec.describe "Api::Blobs", type: :request do
     end
 
     it "rejects disallowed content types" do
-      file = Tempfile.new(["script", ".rb"])
+      file = Tempfile.new([ "script", ".rb" ])
       file.write("puts 'hello'")
       file.rewind
 
@@ -90,7 +90,7 @@ RSpec.describe "Api::Blobs", type: :request do
 
     Api::BlobsController::BLOCKED_EXTENSIONS.each do |ext|
       it "blocks .#{ext} files" do
-        file = Tempfile.new(["bad", ".#{ext}"])
+        file = Tempfile.new([ "bad", ".#{ext}" ])
         file.write("x")
         file.rewind
 

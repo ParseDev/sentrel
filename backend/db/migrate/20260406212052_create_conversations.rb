@@ -15,7 +15,7 @@ class CreateConversations < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :conversations, [:agent_id, :contact_identifier]
-    add_index :conversations, [:agent_id, :kind]
+    add_index :conversations, [ :agent_id, :contact_identifier ]
+    add_index :conversations, [ :agent_id, :kind ]
   end
 end

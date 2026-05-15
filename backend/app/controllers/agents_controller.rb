@@ -1,6 +1,6 @@
 class AgentsController < ApplicationController
   before_action :authenticate_user!
-  before_action :set_agent, only: [:show, :edit, :update, :destroy]
+  before_action :set_agent, only: [ :show, :edit, :update, :destroy ]
 
   def index
     render inertia: "agents/index", props: {
@@ -26,7 +26,7 @@ class AgentsController < ApplicationController
         role: agent.role,
         status: agent.status,
         model_id: agent.ai_config&.model_id,
-        reports: (by_manager[agent.id] || []).map { |child| build.call(child) },
+        reports: (by_manager[agent.id] || []).map { |child| build.call(child) }
       }
     }
 
@@ -48,7 +48,7 @@ class AgentsController < ApplicationController
     # render the same attachment chip we use during composition.
     chat_messages = if chat_conversation
       chat_conversation.messages.includes(attachments_attachments: :blob).order(id: :asc).map do |m|
-        base = m.as_json(only: [:id, :role, :content, :channel, :metadata, :created_at, :sender_name, :sender_email, :sender_user_id])
+        base = m.as_json(only: [ :id, :role, :content, :channel, :metadata, :created_at, :sender_name, :sender_email, :sender_user_id ])
         base["sender"] = m.display_sender
         base["attachments"] = m.attachments.map do |att|
           blob = att.blob
@@ -56,7 +56,7 @@ class AgentsController < ApplicationController
             filename: blob.filename.to_s,
             content_type: blob.content_type,
             byte_size: blob.byte_size,
-            url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true),
+            url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true)
           }
         end
         base
@@ -86,7 +86,7 @@ class AgentsController < ApplicationController
         unless has_reply
           agent_thinking = {
             since: last_user_msg["created_at"],
-            after: last_user_msg["created_at"],
+            after: last_user_msg["created_at"]
           }
         end
       end
@@ -98,7 +98,7 @@ class AgentsController < ApplicationController
       .where("created_at > ?", 7.days.ago)
       .group_by(&:message_id)
       .transform_values { |approvals|
-        approvals.map { |a| a.as_json(only: [:id, :tool_name, :tool_input, :status, :created_at]) }
+        approvals.map { |a| a.as_json(only: [ :id, :tool_name, :tool_input, :status, :created_at ]) }
       }
 
     # Item 4 — pending generic action approvals (request_approval) so the
@@ -119,11 +119,11 @@ class AgentsController < ApplicationController
           payload: a.tool_input,
           options: a.options.presence || [
             { label: "Approve", value: "approve" },
-            { label: "Reject", value: "reject" },
+            { label: "Reject", value: "reject" }
           ],
           risk_tier: a.risk_tier,
           allow_amendment: a.tool_input.is_a?(Hash) && a.tool_input["_allow_amendment"] == true,
-          created_at: a.created_at,
+          created_at: a.created_at
         }
       }
 
@@ -147,7 +147,7 @@ class AgentsController < ApplicationController
       spend: AgentSpend.for_agent(@agent),
       conversations: @agent.conversations.where(kind: "external").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
         last_msg = c.messages.order(created_at: :desc).first
-        c.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at]).merge(
+        c.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at ]).merge(
           channel: last_msg&.channel,
           message_count: c.messages.count,
           last_message_preview: last_msg&.content&.truncate(80),
@@ -161,7 +161,7 @@ class AgentsController < ApplicationController
         .order(created_at: :desc)
         .limit(50)
         .map { |m|
-          m.as_json(only: [:id, :role, :content, :direction, :channel, :created_at, :sender_name, :sender_email, :sender_user_id]).merge(
+          m.as_json(only: [ :id, :role, :content, :direction, :channel, :created_at, :sender_name, :sender_email, :sender_user_id ]).merge(
             subject: m.metadata&.dig("subject"),
             to: m.metadata&.dig("to"),
             from: m.direction == "inbound" ? m.conversation.contact_email : @agent.channel_configs.find_by(channel_type: "email")&.config&.dig("address"),
@@ -175,9 +175,9 @@ class AgentsController < ApplicationController
       approvals_by_message: approvals_by_message,
       pending_action_approvals: pending_action_approvals,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
-        only: [:id, :title, :status, :priority, :due_at, :completed_at]
+        only: [ :id, :title, :status, :priority, :due_at, :completed_at ]
       ),
-      channel_configs: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :status]),
+      channel_configs: @agent.channel_configs.as_json(only: [ :id, :channel_type, :enabled, :status ]),
       scheduled_tasks: @agent.scheduled_work.order(created_at: :desc).map { |sw|
         recent_logs = AuditLog.where(agent_id: @agent.id, action: "scheduled_task")
           .where("input->>'taskId' = ?", sw.id.to_s)
@@ -188,7 +188,7 @@ class AgentsController < ApplicationController
             output: l.output&.dig("response"),
             duration_ms: l.output&.dig("duration_ms"),
             tool_calls: l.output&.dig("tool_calls") || [],
-            created_at: l.created_at,
+            created_at: l.created_at
           } }
 
         {
@@ -202,7 +202,7 @@ class AgentsController < ApplicationController
           mode: sw.mode,
           fire_at: sw.fire_at,
           interval_seconds: sw.interval_seconds,
-          recent_runs: recent_logs,
+          recent_runs: recent_logs
         }
       },
       knowledge_documents: fetch_knowledge_documents(@agent),
@@ -210,7 +210,7 @@ class AgentsController < ApplicationController
       installed_skills: @agent.agent_skills.includes(:skill_definition).filter_map { |as|
         sd = as.skill_definition
         next nil unless sd # orphaned grant — skip silently, surfaced for cleanup elsewhere
-        sd.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
+        sd.as_json(only: [ :id, :slug, :name, :description, :category, :icon, :requires_connections ])
           .merge(enabled: as.enabled, agent_skill_id: as.id)
       },
       # Available skills = anything the org can see (own skills + system seeds
@@ -221,10 +221,10 @@ class AgentsController < ApplicationController
         .where.not(id: @agent.agent_skills.select(:skill_definition_id))
         .order(:category, :name)
         .map { |s|
-          s.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections, :source, :visibility, :install_count]).merge(
+          s.as_json(only: [ :id, :slug, :name, :description, :category, :icon, :requires_connections, :source, :visibility, :install_count ]).merge(
             owned_by_me: s.organization_id == current_tenant&.id,
           )
-        },
+        }
     }
   end
 
@@ -234,7 +234,7 @@ class AgentsController < ApplicationController
       agents: current_tenant.agents.select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
-      org_email_domain: current_tenant.try(:email_domain).presence,
+      org_email_domain: current_tenant.try(:email_domain).presence
     }
   end
 
@@ -322,7 +322,7 @@ class AgentsController < ApplicationController
       org_credentials: current_tenant.credentials
         .order(kind: :asc, provider: :asc, name: :asc)
         .map { |c| { id: c.id, kind: c.kind, provider: c.provider, name: c.name } },
-      granted_credential_ids: @agent.credentials.pluck(:id),
+      granted_credential_ids: @agent.credentials.pluck(:id)
     }
   end
 
@@ -366,12 +366,12 @@ class AgentsController < ApplicationController
   end
 
   CAPABILITY_KEYS = {
-    knowledge_base: [:enabled, :always_retrieve, :threshold, :top_k],
-    scheduling:   [:enabled],
-    tasks:        [:enabled],
-    integrations: [:enabled],
-    recall:       [:enabled],
-    send_media:   [:enabled]
+    knowledge_base: [ :enabled, :always_retrieve, :threshold, :top_k ],
+    scheduling:   [ :enabled ],
+    tasks:        [ :enabled ],
+    integrations: [ :enabled ],
+    recall:       [ :enabled ],
+    send_media:   [ :enabled ]
   }.freeze
 
   def agent_params
@@ -413,7 +413,7 @@ class AgentsController < ApplicationController
       suggested_manager_role: t.suggested_manager_role,
       suggested_provider: t.suggested_provider,
       suggested_model: t.suggested_model,
-      variables: t.variables,
+      variables: t.variables
     }
   end
 
@@ -492,9 +492,9 @@ class AgentsController < ApplicationController
       :created_at, :updated_at
     ]).merge(
       capabilities: agent.effective_capabilities,
-      ai_config: agent.ai_config&.as_json(only: [:provider, :model_id, :temperature, :max_tokens, :thinking_level]),
-      instance: agent.instance&.as_json(only: [:status, :instance_type, :region, :aws_ip_address, :provider, :machine_id, :public_ip, :health_checked_at, :started_at, :provisioning_error]),
-      manager: agent.manager&.as_json(only: [:id, :name, :slug])
+      ai_config: agent.ai_config&.as_json(only: [ :provider, :model_id, :temperature, :max_tokens, :thinking_level ]),
+      instance: agent.instance&.as_json(only: [ :status, :instance_type, :region, :aws_ip_address, :provider, :machine_id, :public_ip, :health_checked_at, :started_at, :provisioning_error ]),
+      manager: agent.manager&.as_json(only: [ :id, :name, :slug ])
     )
   end
 end

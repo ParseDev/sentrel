@@ -7,11 +7,11 @@ class ConversationsController < ApplicationController
     conversations = conversations.where(kind: params[:kind]) if params[:kind].present?
 
     render inertia: "conversations/index", props: {
-      agent: @agent.as_json(only: [:id, :name, :slug, :role]),
+      agent: @agent.as_json(only: [ :id, :name, :slug, :role ]),
       conversations: conversations.map { |c|
-        c.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at]).merge(
+        c.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at ]).merge(
           message_count: c.messages.count,
-          last_message: c.messages.order(created_at: :desc).first&.as_json(only: [:content, :role, :channel, :created_at])
+          last_message: c.messages.order(created_at: :desc).first&.as_json(only: [ :content, :role, :channel, :created_at ])
         )
       }
     }
@@ -28,15 +28,15 @@ class ConversationsController < ApplicationController
     respond_to do |format|
       format.json do
         render json: {
-          conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
-          messages: payload_messages,
+          conversation: conversation.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status ]),
+          messages: payload_messages
         }
       end
       format.html do
         render inertia: "conversations/show", props: {
-          agent: @agent.as_json(only: [:id, :name, :slug, :role]),
-          conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
-          messages: payload_messages,
+          agent: @agent.as_json(only: [ :id, :name, :slug, :role ]),
+          conversation: conversation.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status ]),
+          messages: payload_messages
         }
       end
     end
@@ -47,7 +47,7 @@ class ConversationsController < ApplicationController
   # Sprint 1d — include attachments (filename, size, content_type, download URL)
   # so the conversation UI can render download chips on inbound messages.
   def serialize_message(m)
-    base = m.as_json(only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at])
+    base = m.as_json(only: [ :id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at ])
     base.merge(
       attachments: m.attachments.map do |att|
         {
@@ -55,7 +55,7 @@ class ConversationsController < ApplicationController
           filename: att.filename.to_s,
           content_type: att.content_type,
           byte_size: att.byte_size,
-          url: Rails.application.routes.url_helpers.rails_blob_path(att, only_path: true),
+          url: Rails.application.routes.url_helpers.rails_blob_path(att, only_path: true)
         }
       end
     )

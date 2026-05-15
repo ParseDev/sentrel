@@ -19,7 +19,7 @@ Sidekiq.configure_server do |config|
       # so a delayed BullMQ job in a sleeping machine never fires on its own.
       # This sweep finds scheduled_work due within 90s and pokes the machine
       # via the Fly API. See WakeSweepJob + docs in scheduled work flow.
-      "WakeSweepJob"                     => { "cron" => "* * * * *",   "class" => "WakeSweepJob" },                     # every minute
+      "WakeSweepJob"                     => { "cron" => "* * * * *",   "class" => "WakeSweepJob" }                     # every minute
     }
     Sidekiq::Cron::Job.load_from_hash!(schedule)
   end

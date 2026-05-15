@@ -14,16 +14,16 @@ Rails.application.routes.draw do
 
   # API for engine→Rails (blob uploads, etc.)
   namespace :api do
-    resources :blobs, only: [:create, :show], param: :signed_id
-    resource :send_email, only: [:create]
+    resources :blobs, only: [ :create, :show ], param: :signed_id
+    resource :send_email, only: [ :create ]
     # Engine -> Rails for Slack outbound. Same auth pattern as send_email;
     # gated by send_slack_message permission on the agent.
-    resource :send_slack_message, only: [:create], controller: "slack_messages"
-    resources :task_events, only: [:create]
+    resource :send_slack_message, only: [ :create ], controller: "slack_messages"
+    resources :task_events, only: [ :create ]
     # Engine relays every broadcast() event here; Rails re-emits over
     # AgentChatChannel so the browser sees live tool calls, progress, and
     # approval prompts without a direct WS into the engine.
-    resources :agent_events, only: [:create]
+    resources :agent_events, only: [ :create ]
     # Engine consults this from the request_approval tool before pausing,
     # to honor standing rules ("auto-approve LinkedIn < 3/day", etc.).
     post "approval_rules/match", to: "approval_rules#match"
@@ -33,7 +33,7 @@ Rails.application.routes.draw do
     post "spend_caps/mark_notified", to: "spend_caps#mark_notified"
     # User clicks Allow/Deny on a dangerous-command approval in the UI →
     # Rails relays the decision to the engine via Redis pub/sub.
-    resources :command_approvals, only: [:create]
+    resources :command_approvals, only: [ :create ]
     # Item 4 — frontend looks up an action approval by the engine-generated
     # approval_token to PATCH /pending_approvals/:id with the user's decision.
     get "action_approvals/by_token", to: "action_approvals#by_token"
@@ -49,7 +49,7 @@ Rails.application.routes.draw do
     # Skill self-authoring — agents create + install skills via the engine's
     # skills.create / skills.install_on_me MCP tools. Both require the
     # engine secret; org scoping flows from agent_id → agent.organization_id.
-    resources :skills, only: [:create] do
+    resources :skills, only: [ :create ] do
       collection do
         post :install_on_agent
       end
@@ -86,8 +86,8 @@ Rails.application.routes.draw do
     post "agents/draft", to: "agents#draft", as: :agents_draft
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
-      resources :conversations, only: [:index, :show]
-      resources :channel_configs, only: [:index, :create, :update, :destroy] do
+      resources :conversations, only: [ :index, :show ]
+      resources :channel_configs, only: [ :index, :create, :update, :destroy ] do
         member do
           post :resync_inbound
         end
@@ -97,8 +97,8 @@ Rails.application.routes.draw do
           post :buy_number
         end
       end
-      resources :agent_skills, only: [:create, :update, :destroy]
-      resources :scheduled_tasks, only: [:index, :create, :update, :destroy]
+      resources :agent_skills, only: [ :create, :update, :destroy ]
+      resources :scheduled_tasks, only: [ :index, :create, :update, :destroy ]
       get "chat/stream", to: "chat_streams#show"
       get "chat/poll", to: "chat_polls#show"
       # Day-2 ops on the agent's Fly Machine — one-click restart / reload
@@ -109,10 +109,10 @@ Rails.application.routes.draw do
       post "ops/reprovision", to: "agents/ops#reprovision", as: :agent_ops_reprovision
       get  "ops/logs",        to: "agents/ops#logs",        as: :agent_ops_logs
       # Quick model switch from the agent page top bar (AgentModelPicker).
-      resource :ai_config, only: [:update], module: :agents, controller: :ai_configs
+      resource :ai_config, only: [ :update ], module: :agents, controller: :ai_configs
       # Per-agent ACL on third-party tool calls. The Permissions tab on the
       # agent edit page reads + writes these.
-      resources :tool_policies, only: [:index, :update], module: :agents do
+      resources :tool_policies, only: [ :index, :update ], module: :agents do
         collection do
           get "tools/:toolkit_slug", action: :tools, as: :tools
         end
@@ -120,11 +120,11 @@ Rails.application.routes.draw do
       # Human user composes / replies to an email AS the agent (uses the
       # agent's SES identity but persists Message.sender_user_id +
       # AuditLog.acting_user_id so the trail attributes it to the human).
-      resources :outbound_emails, only: [:create], module: :agents
+      resources :outbound_emails, only: [ :create ], module: :agents
     end
 
     resources :tasks do
-      resources :comments, controller: "task_comments", only: [:create, :destroy]
+      resources :comments, controller: "task_comments", only: [ :create, :destroy ]
       member do
         post :cancel
       end
@@ -132,7 +132,7 @@ Rails.application.routes.draw do
 
     # Knowledge base (RAG) — per-agent document upload + index management
     resources :agents, only: [] do
-      resources :knowledge_documents, only: [:index, :create, :destroy] do
+      resources :knowledge_documents, only: [ :index, :create, :destroy ] do
         member do
           post :promote
         end
@@ -142,7 +142,7 @@ Rails.application.routes.draw do
     # system_template = true) are visible to every org; org-owned templates
     # (created via "Save as template" on the agent edit page) stay private
     # to the org unless published = true.
-    resources :agent_templates, only: [:index, :show, :create, :update, :destroy]
+    resources :agent_templates, only: [ :index, :show, :create, :update, :destroy ]
 
     # Skills editor + marketplace. Org-owned skills (organization_id is set)
     # are editable by anyone in that org; marketplace-published skills
@@ -150,7 +150,7 @@ Rails.application.routes.draw do
     # but only editable by the owning org. Forking copies a marketplace skill
     # into the current org so users can customize without affecting the
     # original. Slug is the URL identifier (param: :id below).
-    resources :skills, only: [:index, :show, :new, :create, :edit, :update, :destroy], param: :id do
+    resources :skills, only: [ :index, :show, :new, :create, :edit, :update, :destroy ], param: :id do
       member do
         post :publish
         post :unpublish
@@ -162,11 +162,11 @@ Rails.application.routes.draw do
     post "ops/roll_engine", to: "ops#roll_engine", as: :ops_roll_engine
 
     # Team management — invite teammates, manage roles.
-    resources :invitations, only: [:index, :create, :destroy]
+    resources :invitations, only: [ :index, :create, :destroy ]
     get  "invite/:token",        to: "invitations#show",   as: :invitation_link
     post "invite/:token/accept", to: "invitations#accept", as: :accept_invitation
-    resources :reports, only: [:index]
-    resources :integrations, only: [:index, :destroy] do
+    resources :reports, only: [ :index ]
+    resources :integrations, only: [ :index, :destroy ] do
       collection do
         post ":service_name/connect", action: :connect, as: :connect
         get :callback
@@ -212,9 +212,8 @@ Rails.application.routes.draw do
 
   # Authenticated routes (close the block reopened above).
   authenticate :user do
-
-    resources :pending_approvals, only: [:index, :update]
-    resources :audit_logs, only: [:index]
+    resources :pending_approvals, only: [ :index, :update ]
+    resources :audit_logs, only: [ :index ]
     # Filterable audit trail of every approval decision (manual + auto-rule),
     # with CSV export for compliance reviews.
     get "audits/approvals", to: "audits#approvals", as: :audits_approvals
@@ -225,17 +224,17 @@ Rails.application.routes.draw do
 
     # Observability — run timings, costs, tool call trees, error tracking
     namespace :ops do
-      resources :runs, only: [:index, :show]
+      resources :runs, only: [ :index, :show ]
       get "cost", to: "cost#index"
       # Item 7 — delegation tree view: one row per top-level user request,
       # expandable to show every spawned task across agents. The `by_job`
       # route lets the chat UI deep-link to a trace when it only knows the
       # engine's job_id (carried on the assistant Message's metadata).
       get "traces/by_job/:job_id", to: "traces#by_job", as: :traces_by_job
-      resources :traces, only: [:index, :show]
+      resources :traces, only: [ :index, :show ]
     end
 
-    resource :settings, only: [:show, :update] do
+    resource :settings, only: [ :show, :update ] do
       post :verify_domain
       post :check_domain_verification
       post :claim_managed_subdomain
@@ -250,9 +249,16 @@ Rails.application.routes.draw do
     # AgentProvisioner. Cloud + generic creds expose via the secrets.get
     # MCP tool. Per-agent ACL: agent_credential_grants restricts which
     # creds a given agent may use (empty = use org defaults).
-    resources :credentials, only: [:index, :create, :update, :destroy], path: "settings/credentials"
+    resources :credentials, only: [ :index, :create, :update, :destroy ], path: "settings/credentials"
   end
 
   # Root always renders the public landing page (auth-aware actions inside).
   root "home#index"
+
+  # Public-facing catalog of 100+ ready-to-hire agent roles. Each card has
+  # the role, what it does, suggested skills + integrations, and a deep
+  # link to /agents/new pre-filled with the template. Aspirational right
+  # now — not every role has a seeded AgentTemplate yet, the page is the
+  # spec we build templates against.
+  get "use-cases", to: "home#use_cases"
 end

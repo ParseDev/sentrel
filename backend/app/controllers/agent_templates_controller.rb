@@ -18,7 +18,7 @@ class AgentTemplatesController < ApplicationController
         ) }
         render inertia: "templates/index", props: {
           templates: templates,
-          categories: AgentTemplate::CATEGORIES,
+          categories: AgentTemplate::CATEGORIES
         }
       end
     end
@@ -46,7 +46,7 @@ class AgentTemplatesController < ApplicationController
             system_template: template.system_template,
             author_name: author_name_for(template),
             owned_by_me: template.created_by_user_id == current_user.id,
-          ),
+          )
         }
       }
     end
@@ -121,7 +121,7 @@ class AgentTemplatesController < ApplicationController
       suggested_manager_role: t.suggested_manager_role,
       suggested_provider: t.suggested_provider,
       suggested_model: t.suggested_model,
-      variables: t.variables,
+      variables: t.variables
     }
   end
 end

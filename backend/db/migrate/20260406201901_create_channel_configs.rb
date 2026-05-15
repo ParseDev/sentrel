@@ -10,6 +10,6 @@ class CreateChannelConfigs < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :channel_configs, [:agent_id, :channel_type], unique: true
+    add_index :channel_configs, [ :agent_id, :channel_type ], unique: true
   end
 end

@@ -13,6 +13,6 @@ class CreatePendingApprovals < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :pending_approvals, [:organization_id, :status]
+    add_index :pending_approvals, [ :organization_id, :status ]
   end
 end

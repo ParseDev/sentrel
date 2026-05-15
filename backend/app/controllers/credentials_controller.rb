@@ -16,7 +16,7 @@ class CredentialsController < ApplicationController
           created_at: c.created_at,
           display_suffix: c.display_suffix,
           field_names: c.fields.keys,
-          agent_grants_count: AgentCredentialGrant.where(credential_id: c.id).count,
+          agent_grants_count: AgentCredentialGrant.where(credential_id: c.id).count
         }
       end
 
@@ -26,13 +26,13 @@ class CredentialsController < ApplicationController
       providers: {
         llm_api_key:    Credential::LLM_PROVIDERS,
         cloud_provider: Credential::CLOUD_PROVIDERS,
-        generic:        Credential::GENERIC_HINTS,
+        generic:        Credential::GENERIC_HINTS
       },
       # Per-(kind, provider) field schema so the Add/Edit modal renders the
       # right form (Access Key ID + Secret for AWS, Account SID + Auth Token
       # for Twilio, single value for the rest). The frontend posts back a
       # `fields` hash whose keys match the schema entries.
-      field_schemas: build_field_schemas,
+      field_schemas: build_field_schemas
     }
   end
 

@@ -29,9 +29,9 @@ RSpec.describe IntegrationsController, type: :controller do
 
       allow(controller).to receive(:composio_connection_ids_for)
         .with("org_123", "apollo")
-        .and_return(["listed-connection", "stored-connection"])
+        .and_return([ "listed-connection", "stored-connection" ])
       allow(controller).to receive(:composio_delete) do |path, api_key|
-        deleted_paths << [path, api_key]
+        deleted_paths << [ path, api_key ]
         ok
       end
 
@@ -39,8 +39,8 @@ RSpec.describe IntegrationsController, type: :controller do
 
       expect(result).to eq(ok: true, message: "disconnected 2 remote account(s)")
       expect(deleted_paths).to eq([
-        ["/api/v3/connected_accounts/stored-connection", "test-composio-key"],
-        ["/api/v3/connected_accounts/listed-connection", "test-composio-key"],
+        [ "/api/v3/connected_accounts/stored-connection", "test-composio-key" ],
+        [ "/api/v3/connected_accounts/listed-connection", "test-composio-key" ]
       ])
     end
 
@@ -64,30 +64,30 @@ RSpec.describe IntegrationsController, type: :controller do
       first_page = response_for(Net::HTTPOK, "200", "OK", body: {
         items: [
           { id: "ca_apollo_1", toolkit: { slug: "apollo" } },
-          { id: "ca_gmail_1", toolkit: { slug: "gmail" } },
+          { id: "ca_gmail_1", toolkit: { slug: "gmail" } }
         ],
-        next_cursor: "page-two",
+        next_cursor: "page-two"
       }.to_json)
       second_page = response_for(Net::HTTPOK, "200", "OK", body: {
         items: [
-          { id: "ca_apollo_2", toolkit: { slug: "apollo" } },
+          { id: "ca_apollo_2", toolkit: { slug: "apollo" } }
         ],
-        next_cursor: nil,
+        next_cursor: nil
       }.to_json)
 
       allow(controller).to receive(:composio_get) do |path, api_key|
-        calls << [path, api_key]
+        calls << [ path, api_key ]
         calls.length == 1 ? first_page : second_page
       end
 
       ids = controller.send(:composio_connection_ids_for, "org_123", "apollo")
 
-      first_query = URI.encode_www_form(user_ids: ["org_123"].to_json, toolkit_slugs: ["apollo"].to_json, limit: 100)
-      second_query = URI.encode_www_form(user_ids: ["org_123"].to_json, toolkit_slugs: ["apollo"].to_json, limit: 100, cursor: "page-two")
-      expect(ids).to eq(["ca_apollo_1", "ca_apollo_2"])
+      first_query = URI.encode_www_form(user_ids: [ "org_123" ].to_json, toolkit_slugs: [ "apollo" ].to_json, limit: 100)
+      second_query = URI.encode_www_form(user_ids: [ "org_123" ].to_json, toolkit_slugs: [ "apollo" ].to_json, limit: 100, cursor: "page-two")
+      expect(ids).to eq([ "ca_apollo_1", "ca_apollo_2" ])
       expect(calls).to eq([
-        ["/api/v3/connected_accounts?#{first_query}", "test-composio-key"],
-        ["/api/v3/connected_accounts?#{second_query}", "test-composio-key"],
+        [ "/api/v3/connected_accounts?#{first_query}", "test-composio-key" ],
+        [ "/api/v3/connected_accounts?#{second_query}", "test-composio-key" ]
       ])
     end
   end

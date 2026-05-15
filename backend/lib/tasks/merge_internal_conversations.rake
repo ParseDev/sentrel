@@ -1,6 +1,6 @@
 namespace :merge do
   desc "Merge duplicate kind=internal conversations per (agent, user) into the most recently active one. Pass [dry] or DRY=1 to preview."
-  task :internal_conversations, [:mode] => :environment do |_, args|
+  task :internal_conversations, [ :mode ] => :environment do |_, args|
     dry = args[:mode].to_s.downcase == "dry" || ENV["DRY"] == "1"
     puts dry ? "DRY RUN — no writes" : "LIVE RUN — mutating database"
     puts ""
@@ -31,7 +31,7 @@ namespace :merge do
         losers = convs[1..] || []
         loser_ids = losers.map(&:id)
 
-        msg_count_by_conv = Message.where(conversation_id: [winner.id, *loser_ids]).group(:conversation_id).count
+        msg_count_by_conv = Message.where(conversation_id: [ winner.id, *loser_ids ]).group(:conversation_id).count
         loser_msg_count = loser_ids.sum { |id| msg_count_by_conv[id] || 0 }
         task_count = Task.where(conversation_id: loser_ids).count
 

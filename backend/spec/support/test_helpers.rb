@@ -4,7 +4,7 @@ module TestHelpers
       name: "Test Org",
       slug: "test-org-#{SecureRandom.hex(4)}",
       email_domain: "test.com",
-      email_domain_verified: true,
+      email_domain_verified: true
     }.merge(attrs))
   end
 
@@ -14,7 +14,7 @@ module TestHelpers
       name: "Test User",
       email: "user-#{SecureRandom.hex(4)}@test.com",
       password: "password123",
-      role: "owner",
+      role: "owner"
     }.merge(attrs))
   end
 
@@ -24,7 +24,7 @@ module TestHelpers
       name: "Test Agent",
       slug: "test-agent-#{SecureRandom.hex(4)}",
       role: "SDR",
-      status: "running",
+      status: "running"
     }.merge(attrs))
   end
 
@@ -34,7 +34,7 @@ module TestHelpers
       agent: agent,
       kind: "external",
       contact_identifier: "contact-#{SecureRandom.hex(4)}@test.com",
-      status: "active",
+      status: "active"
     }.merge(attrs))
   end
 
@@ -44,7 +44,7 @@ module TestHelpers
       role: "user",
       content: "Test message",
       direction: "inbound",
-      channel: "web",
+      channel: "web"
     }.merge(attrs))
   end
 

@@ -44,7 +44,7 @@ RSpec.describe "merge:internal_conversations" do
 
     expect { run_task }.to output(/Merged 1\/1 group/).to_stdout
 
-    expect(Conversation.where(id: [loser1.id, loser2.id]).count).to eq(0)
+    expect(Conversation.where(id: [ loser1.id, loser2.id ]).count).to eq(0)
     expect(Conversation.find(winner.id).messages.count).to eq(10)
   end
 

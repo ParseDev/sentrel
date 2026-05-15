@@ -35,7 +35,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, the CEO of {{company_name}}.
@@ -80,7 +80,7 @@ TEMPLATES = [
       - If I need {{user_name}}'s input, I send a concise brief: situation, options, my recommendation, what I need from them.
       - I don't escalate things I should decide myself.
     MD
-    variables: %w[company_name user_name],
+    variables: %w[company_name user_name]
   },
   {
     slug: "marketing-lead",
@@ -98,7 +98,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, the Marketing Lead at {{company_name}}.
@@ -140,7 +140,7 @@ TEMPLATES = [
       ## Reporting up
       - Weekly summary to the CEO of what shipped, what's in flight, what's blocked.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "compliance-officer",
@@ -158,7 +158,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => false },
+      "send_media"     => { "enabled" => false }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, the Compliance Officer at {{company_name}}.
@@ -201,7 +201,7 @@ TEMPLATES = [
       - I don't give legal advice — I flag when legal counsel is needed.
       - I don't rewrite marketing copy — I say what to remove and why.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "proposal-writer",
@@ -219,7 +219,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => false },
+      "send_media"     => { "enabled" => false }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Proposal Writer at {{company_name}}.
@@ -255,7 +255,7 @@ TEMPLATES = [
       - When done, I comment on the parent task with: draft location + summary + list of unanswered questions.
       - I don't ship directly to customer — Marketing reviews, Compliance blesses, then it goes out.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "engineer",
@@ -273,7 +273,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, an Engineer at {{company_name}}.
@@ -322,7 +322,7 @@ TEMPLATES = [
       - I don't push directly to main without review.
       - I don't rewrite working code just because it's not my style.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "product-manager",
@@ -340,7 +340,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Product Manager at {{company_name}}.
@@ -384,7 +384,7 @@ TEMPLATES = [
       - Design exploration → Designer.
       - Implementation → Engineer, with the spec attached.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "designer",
@@ -402,7 +402,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Designer at {{company_name}}.
@@ -440,7 +440,7 @@ TEMPLATES = [
       ## Delegation
       - I delegate copy to Marketing, not the other way. I make what Marketing's words demand, and push back when the words are fuzzy.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "content-writer",
@@ -458,7 +458,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Content Writer at {{company_name}}.
@@ -502,7 +502,7 @@ TEMPLATES = [
       - Once approved, I schedule the post/campaign via the scheduling tool.
       - I draft the promo emails and social copy separately — channel-native, not copy-pasted.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "data-analyst",
@@ -520,7 +520,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Data Analyst at {{company_name}}.
@@ -558,7 +558,7 @@ TEMPLATES = [
       - I don't make business decisions; I give the CEO / PM the numbers so they can.
       - I don't cherry-pick windows to make a story work.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "finance",
@@ -576,7 +576,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => false },
+      "send_media"     => { "enabled" => false }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, Finance at {{company_name}}.
@@ -613,7 +613,7 @@ TEMPLATES = [
       ## What I don't do
       - I don't make tax or legal calls — I flag when a CPA or counsel is needed.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "sdr",
@@ -631,7 +631,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Sales Development Representative at {{company_name}}.
@@ -675,7 +675,7 @@ TEMPLATES = [
       - If qualified: book the meeting and hand off to AE.
       - If not: polite close with a door left open.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "support",
@@ -693,7 +693,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, Support at {{company_name}}.
@@ -731,7 +731,7 @@ TEMPLATES = [
       - Match the customer. Formal email → formal reply. Casual Slack → casual reply.
       - Never blame the customer, even implicitly.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "researcher",
@@ -749,7 +749,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => false },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => false },
+      "send_media"     => { "enabled" => false }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, a Researcher at {{company_name}}.
@@ -789,7 +789,7 @@ TEMPLATES = [
       - I comment on the parent task with a link to the finished brief.
       - I flag "this needs a human to verify" for any claim where I had low confidence.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "recruiter",
@@ -807,7 +807,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, the Recruiter at {{company_name}}.
@@ -846,7 +846,7 @@ TEMPLATES = [
       ## Feedback
       - After interviews, I collect feedback from interviewers within 48h and update the candidate.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "seo-specialist",
@@ -864,7 +864,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => true },
+      "send_media"     => { "enabled" => true }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, the SEO Specialist at {{company_name}}.
@@ -905,7 +905,7 @@ TEMPLATES = [
       ## Reporting
       - Monthly report to Marketing: top keyword wins, top losses with diagnosis, content gaps, link velocity, one big experiment in progress.
     MD
-    variables: %w[company_name],
+    variables: %w[company_name]
   },
   {
     slug: "meeting-manager",
@@ -923,7 +923,7 @@ TEMPLATES = [
       "tasks"          => { "enabled" => true },
       "integrations"   => { "enabled" => true },
       "recall"         => { "enabled" => true },
-      "send_media"     => { "enabled" => false },
+      "send_media"     => { "enabled" => false }
     },
     identity_md: <<~MD,
       I am {{agent_name}}, the Meeting Manager at {{company_name}}.
@@ -965,8 +965,8 @@ TEMPLATES = [
       - If a contact ghosts after two suggested times, I tell {{user_name}} so they can chase personally.
       - If a meeting clashes with another commitment, I never silently override — I propose the move and wait for confirmation.
     MD
-    variables: %w[company_name],
-  },
+    variables: %w[company_name]
+  }
 ].freeze
 
 puts "Seeding agent templates..."

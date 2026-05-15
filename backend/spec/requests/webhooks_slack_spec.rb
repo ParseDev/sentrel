@@ -31,7 +31,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       "Content-Type" => "application/json",
       "X-Slack-Request-Timestamp" => ts.to_s,
       "X-Slack-Signature" => sig,
-      "User-Agent" => SLACK_UA,
+      "User-Agent" => SLACK_UA
     }
   end
 
@@ -71,7 +71,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       type: "event_callback",
       event_id: "Ev_#{SecureRandom.hex(4)}",
       event: { type: "message", text: "hello", user: "U1", channel: "C1", ts: "1.1" },
-      team_id: "T_X",
+      team_id: "T_X"
     }.to_json
 
     expect_any_instance_of(WebhooksController).to receive(:enqueue).with(
@@ -89,7 +89,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       type: "event_callback",
       event_id: "Ev_#{SecureRandom.hex(4)}",
       event: { type: "message", text: "echo", user: "U_BOT", bot_id: "B1", channel: "C1", ts: "1.2" },
-      team_id: "T_X",
+      team_id: "T_X"
     }.to_json
     expect_any_instance_of(WebhooksController).not_to receive(:enqueue)
     post "/webhooks/slack", params: body, headers: slack_headers(body)
@@ -106,7 +106,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       type: "event_callback",
       event_id: "Ev_unmapped",
       event: { type: "message", text: "hi", user: "U1", channel: "C_OTHER", ts: "1.1" },
-      team_id: "T_X",
+      team_id: "T_X"
     }.to_json
     expect_any_instance_of(WebhooksController).not_to receive(:enqueue)
     post "/webhooks/slack", params: body, headers: slack_headers(body)
@@ -126,7 +126,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
       type: "event_callback",
       event_id: "Ev_DUPE",
       event: { type: "message", text: "hello", user: "U1", channel: "C1", ts: "1.1" },
-      team_id: "T_X",
+      team_id: "T_X"
     }.to_json
     # First delivery — work happens.
     expect_any_instance_of(WebhooksController).to receive(:enqueue).once

@@ -12,7 +12,7 @@ class CreateAuditLogs < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :audit_logs, [:organization_id, :created_at]
-    add_index :audit_logs, [:agent_id, :created_at]
+    add_index :audit_logs, [ :organization_id, :created_at ]
+    add_index :audit_logs, [ :agent_id, :created_at ]
   end
 end

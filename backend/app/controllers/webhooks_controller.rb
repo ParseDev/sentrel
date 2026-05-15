@@ -119,8 +119,8 @@ class WebhooksController < ApplicationController
         ts: event["ts"],
         event_type: event["type"],
         team_id: team_id,
-        is_dm: is_dm,
-      },
+        is_dm: is_dm
+      }
     })
     head :ok
   end
@@ -167,15 +167,15 @@ class WebhooksController < ApplicationController
         ts: nil,
         event_type: "slash_command",
         team_id: team_id,
-        is_dm: channel_id.to_s.start_with?("D"),
-      },
+        is_dm: channel_id.to_s.start_with?("D")
+      }
     })
 
     # 200 with an ephemeral ack so Slack doesn't show "/alchemy failed" while
     # the agent thinks. The actual reply lands separately via deliverSlackReply.
     render json: {
       response_type: "ephemeral",
-      text: "✓ #{agent.name} is on it.",
+      text: "✓ #{agent.name} is on it."
     }
   end
 
@@ -277,7 +277,7 @@ class WebhooksController < ApplicationController
             type: "button",
             text: { type: "plain_text", text: a.name },
             value: a.id.to_s,
-            action_id: "dm_pick_agent:#{a.id}",
+            action_id: "dm_pick_agent:#{a.id}"
           }
         } }
     ]
@@ -382,7 +382,7 @@ class WebhooksController < ApplicationController
       type: "action_approval_response",
       approvalToken: approval.approval_token,
       value: approval.decision,
-      text: approval.decision_text,
+      text: approval.decision_text
     }.to_json
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
     redis.publish("agent-#{approval.agent_id}-approvals", msg)
@@ -428,7 +428,7 @@ class WebhooksController < ApplicationController
       from: from,
       body: params[:Body],
       attachment_ids: attachment_signed_ids,
-      metadata: { message_sid: params[:MessageSid], num_media: params[:NumMedia] },
+      metadata: { message_sid: params[:MessageSid], num_media: params[:NumMedia] }
     })
     head :ok
   end
@@ -443,7 +443,7 @@ class WebhooksController < ApplicationController
     enqueue(agent, "sms", {
       from: params[:From],
       body: params[:Body],
-      metadata: { message_sid: params[:MessageSid] },
+      metadata: { message_sid: params[:MessageSid] }
     })
     head :ok
   end
@@ -491,7 +491,7 @@ class WebhooksController < ApplicationController
       body: message[:text],
       conversationId: conversation.id,
       user_id: user_id,
-      metadata: { chat_id: chat_id, message_id: message[:message_id] },
+      metadata: { chat_id: chat_id, message_id: message[:message_id] }
     })
     head :ok
   end
@@ -561,7 +561,7 @@ class WebhooksController < ApplicationController
         url: blob.url(expires_in: 1.hour, disposition: "attachment"),
         filename: blob.filename.to_s,
         content_type: blob.content_type,
-        byte_size: blob.byte_size,
+        byte_size: blob.byte_size
       }
     end
 
@@ -572,7 +572,7 @@ class WebhooksController < ApplicationController
       attachment_ids: attachment_signed_ids,
       attachments: attachments_payload,
       conversationId: conversation.id,
-      user_id: current_user.id,
+      user_id: current_user.id
     })
     if cold_start
       render json: { status: "starting", agent_status: agent.status }, status: :accepted
@@ -643,7 +643,7 @@ class WebhooksController < ApplicationController
       from: params[:from],
       from_name: params[:from_name],
       subject: params[:subject],
-      body: params[:text] || params[:body] || params[:html],
+      body: params[:text] || params[:body] || params[:html]
     })
     head :ok
   end
@@ -869,7 +869,7 @@ class WebhooksController < ApplicationController
                   { from: meta[:from], to: meta[:to] }.compact
                 else
                   {}
-                end,
+                end
     }
     AgentEventBus.publish(
       type: "inbound_message",

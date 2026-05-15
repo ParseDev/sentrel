@@ -48,7 +48,7 @@ module AgentEventBus
       channel: channel,
       conversationId: conversation_id,
       origin: origin,
-      payload: enriched_payload,
+      payload: enriched_payload
     }.to_json)
     job_id
   rescue => e

@@ -1,12 +1,12 @@
 class TasksController < ApplicationController
   before_action :authenticate_user!
-  before_action :set_task, only: [:show, :update, :destroy]
+  before_action :set_task, only: [ :show, :update, :destroy ]
 
   def index
     render inertia: "tasks/index", props: {
       tasks: current_tenant.tasks.includes(:agent, :assigned_by_user, :assigned_by_agent)
         .order(created_at: :desc).map { |t| task_json(t) },
-      agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [:id, :name, :slug])
+      agents: current_tenant.agents.select(:id, :name, :slug).as_json(only: [ :id, :name, :slug ])
     }
   end
 
@@ -21,8 +21,8 @@ class TasksController < ApplicationController
           id: m.to_param,
           content: m.content,
           created_at: m.created_at,
-          author: m.role == "assistant" ? @task.agent.as_json(only: [:id, :name]) : @task.assigned_by_user&.as_json(only: [:id, :name]),
-          author_type: m.role == "assistant" ? "agent" : "user",
+          author: m.role == "assistant" ? @task.agent.as_json(only: [ :id, :name ]) : @task.assigned_by_user&.as_json(only: [ :id, :name ]),
+          author_type: m.role == "assistant" ? "agent" : "user"
         }
       end
     else
@@ -101,9 +101,9 @@ class TasksController < ApplicationController
     # ping all affected engines below — an in-flight run that started before
     # the cancel needs the heads-up so it can short-circuit instead of
     # finishing the now-irrelevant work.
-    cancelled_task_ids = [@task.id]
-    affected_agent_ids = Set.new([@task.agent_id])
-    frontier = [@task.id]
+    cancelled_task_ids = [ @task.id ]
+    affected_agent_ids = Set.new([ @task.agent_id ])
+    frontier = [ @task.id ]
     while frontier.any?
       children = current_tenant.tasks
                                 .where(parent_task_id: frontier)
@@ -169,7 +169,7 @@ class TasksController < ApplicationController
       subject: task.title,
       status: "active",
     )
-    seed = ["Task: #{task.title}", task.description, task.instruction].compact_blank.join("\n\n")
+    seed = [ "Task: #{task.title}", task.description, task.instruction ].compact_blank.join("\n\n")
     conv.messages.create!(
       role: "user",
       content: seed,
@@ -230,7 +230,7 @@ class TasksController < ApplicationController
       payload: {
         taskId: task.id,
         instruction: instruction,
-        skipAutoComplete: true,
+        skipAutoComplete: true
       },
     )
   end
@@ -243,7 +243,7 @@ class TasksController < ApplicationController
       job_id: "task-assign-#{task.id}",
       payload: {
         taskId: task.id,
-        instruction: "Task: #{task.title}\n\n#{task.description}\n\n#{task.instruction}".strip,
+        instruction: "Task: #{task.title}\n\n#{task.description}\n\n#{task.instruction}".strip
       },
     )
   end
@@ -253,11 +253,11 @@ class TasksController < ApplicationController
     # Comment count = total conversation messages minus the seed message.
     full_result = task.conversation&.messages&.where(role: "assistant")&.order(id: :desc)&.first&.content ||
                   task.result&.dig("response")
-    comments_count = task.conversation ? [task.conversation.messages.count - 1, 0].max : 0
+    comments_count = task.conversation ? [ task.conversation.messages.count - 1, 0 ].max : 0
 
-    task.as_json(only: [:id, :title, :description, :instruction, :status, :priority, :due_at, :started_at, :completed_at, :created_at]).merge(
-      agent: task.agent.as_json(only: [:id, :name, :slug]),
-      assigned_by: task.assigned_by_user&.as_json(only: [:id, :name]) || task.assigned_by_agent&.as_json(only: [:id, :name]),
+    task.as_json(only: [ :id, :title, :description, :instruction, :status, :priority, :due_at, :started_at, :completed_at, :created_at ]).merge(
+      agent: task.agent.as_json(only: [ :id, :name, :slug ]),
+      assigned_by: task.assigned_by_user&.as_json(only: [ :id, :name ]) || task.assigned_by_agent&.as_json(only: [ :id, :name ]),
       comments_count: comments_count,
       result: full_result,
     )

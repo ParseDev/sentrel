@@ -43,7 +43,7 @@ class Api::SlackMessagesController < ApplicationController
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
     return head :unauthorized unless secret.present?
-    return head :unauthorized unless request.headers["X-Engine-Secret"] == secret
+    head :unauthorized unless request.headers["X-Engine-Secret"] == secret
   end
 
   def approval_required?(agent)
@@ -63,7 +63,7 @@ class Api::SlackMessagesController < ApplicationController
       tool_input: {
         channel: params[:channel],
         text: text,
-        thread_ts: params[:thread_ts],
+        thread_ts: params[:thread_ts]
       },
       risk_tier: "low",
       status: "pending",

@@ -63,7 +63,7 @@ class WebsiteAnalysisJob < ApplicationJob
     "yandex.net" => "Yandex Mail",
     "mail.ru" => "Mail.ru",
     "mimecast.com" => "Mimecast",
-    "pphosted.com" => "Proofpoint",
+    "pphosted.com" => "Proofpoint"
   }.freeze
 
   def detect_email_provider(url)
@@ -143,7 +143,7 @@ class WebsiteAnalysisJob < ApplicationJob
       pages << { url: "TECH_SIGNALS", text: hints } if hints.present?
     end
 
-    pages.presence || [{ url: root_url, text: "(crawl returned no content)" }]
+    pages.presence || [ { url: root_url, text: "(crawl returned no content)" } ]
   end
 
   def cf_start_crawl(base, api_key, url)
@@ -159,9 +159,9 @@ class WebsiteAnalysisJob < ApplicationJob
       url: url,
       limit: 10,
       depth: 2,
-      formats: ["markdown", "html"],
+      formats: [ "markdown", "html" ],
       render: true,
-      rejectResourceTypes: ["image", "font", "media"]
+      rejectResourceTypes: [ "image", "font", "media" ]
     }.to_json
 
     response = http.request(request)
@@ -225,7 +225,7 @@ class WebsiteAnalysisJob < ApplicationJob
     pages = []
 
     homepage_html = fetch_page(root_url)
-    return [{ url: root_url, text: "(could not fetch website)" }] if homepage_html.blank?
+    return [ { url: root_url, text: "(could not fetch website)" } ] if homepage_html.blank?
 
     homepage_text = extract_text(homepage_html)
     tech_hints = detect_tech_hints(homepage_html)
@@ -317,8 +317,8 @@ class WebsiteAnalysisJob < ApplicationJob
     end.uniq
   end
 
-  PRIORITY_PATTERNS = [/\/about/i, /\/company/i, /\/product/i, /\/service/i, /\/solution/i,
-    /\/platform/i, /\/pricing/i, /\/team/i, /\/features/i, /\/how-it-works/i].freeze
+  PRIORITY_PATTERNS = [ /\/about/i, /\/company/i, /\/product/i, /\/service/i, /\/solution/i,
+    /\/platform/i, /\/pricing/i, /\/team/i, /\/features/i, /\/how-it-works/i ].freeze
 
   def prioritize_links(links)
     scored = links.filter_map do |link|
@@ -328,7 +328,7 @@ class WebsiteAnalysisJob < ApplicationJob
       next if path.count("/") > 3
       score = PRIORITY_PATTERNS.count { |pat| path.match?(pat) }
       score += 1 if path.count("/") <= 2
-      [link, score]
+      [ link, score ]
     end
     scored.sort_by { |_, s| -s }.map(&:first)
   end
@@ -393,7 +393,7 @@ class WebsiteAnalysisJob < ApplicationJob
     request.body = {
       model: OPENROUTER_MODEL,
       max_tokens: 1200,
-      messages: [{
+      messages: [ {
         role: "user",
         content: <<~PROMPT
           You just crawled a company's website (homepage and key subpages). Analyze all the content and return a JSON object with the following structure. Return ONLY valid JSON, no markdown fences, no extra text.
@@ -419,7 +419,7 @@ class WebsiteAnalysisJob < ApplicationJob
           #{content_block}
           === END ===
         PROMPT
-      }]
+      } ]
     }.to_json
 
     Rails.logger.info("[WebsiteAnalysisJob] Calling OpenRouter API with key=#{api_key[0..12]}... model=#{OPENROUTER_MODEL}")

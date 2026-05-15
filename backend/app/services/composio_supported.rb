@@ -80,7 +80,7 @@ class ComposioSupported
     "instagram"       => "Content",
     "wordpress"       => "Content",
     "webflow"         => "Content",
-    "framer"          => "Content",
+    "framer"          => "Content"
   }.freeze
 
   # Toolkits Composio publishes that we don't want surfaced even if available.
@@ -110,10 +110,10 @@ class ComposioSupported
           category:    r.category || "Other",
           description: r.description,
           logo:        r.logo,
-          available:   r.available,
+          available:   r.available
         }
       }
-      .sort_by { |r| [r[:available] ? 0 : 1, r[:label].to_s.downcase] }
+      .sort_by { |r| [ r[:available] ? 0 : 1, r[:label].to_s.downcase ] }
   end
 
   # Slim list for the engine — only services with a working auth_config.
@@ -177,7 +177,7 @@ class ComposioSupported
             label: t["name"] || slug.titleize,
             description: t["description"] || t["meta"]&.dig("description"),
             logo: t["logo"] || t.dig("meta", "logo"),
-            categories: extract_categories(t),
+            categories: extract_categories(t)
           }
         end
         cursor = data["next_cursor"] || data.dig("pagination", "next_cursor")
@@ -239,7 +239,7 @@ class ComposioSupported
       {
         slug: slug,
         name: t["display_name"] || t["name"] || slug,
-        description: t["description"],
+        description: t["description"]
       }
     end
   rescue => e
@@ -257,7 +257,7 @@ class ComposioSupported
       { slug: "linkedin",       label: "LinkedIn",        description: "Professional network",      logo: nil },
       { slug: "hubspot",        label: "HubSpot",         description: "CRM, marketing, sales",     logo: nil },
       { slug: "slack",          label: "Slack",           description: "Team messaging",            logo: nil },
-      { slug: "notion",         label: "Notion",          description: "Docs and wiki",             logo: nil },
+      { slug: "notion",         label: "Notion",          description: "Docs and wiki",             logo: nil }
     ]
   end
 
@@ -278,7 +278,7 @@ class ComposioSupported
     "wordpress"      => "WordPress",
     "digital_ocean"  => "DigitalOcean",
     "x"              => "X (Twitter)",
-    "twitter"        => "Twitter / X",
+    "twitter"        => "Twitter / X"
   }.freeze
 
   def self.prettify_label(name)
@@ -303,7 +303,7 @@ class ComposioSupported
     when String
       raw.split(",")
     when Hash
-      [raw["name"] || raw["label"] || raw["slug"]]
+      [ raw["name"] || raw["label"] || raw["slug"] ]
     else
       []
     end
@@ -324,7 +324,7 @@ class ComposioSupported
   CATEGORY_SYNONYMS = {
     "E Commerce" => "Ecommerce",
     "Developer Tools & DevOps" => "Developer Tools",
-    "Productivity & Project Management" => "Project Management",
+    "Productivity & Project Management" => "Project Management"
   }.freeze
 
   # Supergroups — every Composio category lands in exactly one of these so
@@ -435,7 +435,7 @@ class ComposioSupported
     "Online Courses"                   => "Other",
     "Gaming"                           => "Other",
     "Fitness"                          => "Other",
-    "Other"                            => "Other",
+    "Other"                            => "Other"
   }.freeze
 
   # Normalise category strings so "ai-tools" / "AI Tools" / "ai_tools" all

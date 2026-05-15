@@ -94,7 +94,7 @@ RSpec.describe "Api::Secrets", type: :request do
           fields: {
             "access_key_id" => "AKIATEST123",
             "secret_access_key" => "wJalrTEST/secret",
-            "region" => "us-east-1",
+            "region" => "us-east-1"
           },
         )
       }

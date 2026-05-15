@@ -550,6 +550,19 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
     // Telegram: inline keyboard buttons (tap to approve/reject)
     // WhatsApp: text with "Reply YES/NO" (no button support in sandbox)
     let finalResponse = result.responseContent;
+
+    // If the agent drafted an email but has no email channel connected,
+    // append a one-liner to the reply so the human reads it inline. The
+    // approval card preview also flags this but a top-line nudge in the
+    // chat reply is hard to miss vs. having to open the card.
+    if (approvalResults.length > 0 && job.channel === "slack") {
+      const missingEmail = approvalResults.some((a) =>
+        typeof a === "object" && a !== null && "email_not_configured" in a && (a as { email_not_configured?: boolean }).email_not_configured === true,
+      );
+      if (missingEmail) {
+        finalResponse += `\n\n_Heads up — I don't have an email channel set up yet, so I can only show you a preview. Connect one at /agents/${agent.slug || agent.id}/channels to actually send._`;
+      }
+    }
     if (approvalResults.length > 0 && job.channel && job.channel !== "web") {
       if (job.channel === "telegram" && job.payload?.metadata?.bot_token && job.payload?.metadata?.chat_id) {
         // Telegram: send separate messages with inline buttons for each approval

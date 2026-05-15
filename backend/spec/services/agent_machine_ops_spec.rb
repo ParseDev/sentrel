@@ -9,7 +9,7 @@ RSpec.describe AgentMachineOps do
       status: "running",
       provider: "fly",
       machine_id: "old-mid",
-      machine_type: "shared-cpu-1x",
+      machine_type: "shared-cpu-1x"
     }.merge(attrs))
   end
 

@@ -24,7 +24,7 @@ class ChatPollsController < ApplicationController
           id: latest.id,
           content: latest.content,
           metadata: latest.metadata,
-          created_at: latest.created_at.iso8601,
+          created_at: latest.created_at.iso8601
         }
         return
       end

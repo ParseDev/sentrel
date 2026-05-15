@@ -181,17 +181,15 @@ function Hero() {
         <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-12">
           {/* ── Left: copy + CTAs ─────────────────────────── */}
           <div className="lg:col-span-6">
-            <a
-              href="https://github.com/your-org/alchemy"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/use-cases"
               className="group mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--cyan-border)] bg-[var(--cyan-surface)] px-3.5 py-1.5 text-xs font-medium backdrop-blur transition-all hover:border-[var(--cyan)]"
             >
-              <Overline accent dot>Open source</Overline>
+              <Overline accent dot>Early access</Overline>
               <span className="h-3 w-px bg-[var(--cyan-border)]" />
-              <span>MIT licensed · Star on GitHub</span>
+              <span>100+ ready-to-hire roles · No credit card</span>
               <ArrowUpRight className="size-3 opacity-70 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-            </a>
+            </Link>
 
             <h1 className="text-hero text-foreground">
               Meet your{" "}
@@ -214,9 +212,9 @@ function Hero() {
             </h1>
 
             <p className="mt-7 max-w-lg text-[17px] leading-relaxed text-muted-foreground">
-              Hire a CEO agent. It delegates to Marketing, Sales, Engineering,
-              and Ops — each reachable on email, Slack, WhatsApp, and Telegram.
-              Free, open source, and forever yours to self-host.
+              Hire specialists — sales, support, ops, engineering. Each one
+              lives inside Slack, Gmail, your CRM, and 250+ other tools your
+              team already uses. They draft, you approve, the work ships.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -240,22 +238,7 @@ function Hero() {
                 variant="outline"
                 className="h-12 gap-1.5 bg-card/60 px-6 text-sm backdrop-blur"
               >
-                <a
-                  href="https://github.com/your-org/alchemy"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11.05 11.05 0 0 1 5.8 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.18 1.84 1.18 3.1 0 4.43-2.7 5.41-5.27 5.69.41.36.78 1.07.78 2.16v3.2c0 .31.21.68.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z" />
-                  </svg>
-                  See on GitHub
-                </a>
+                <Link href="/use-cases">Browse 100+ roles</Link>
               </Button>
             </div>
 
@@ -267,7 +250,7 @@ function Hero() {
               <span className="opacity-40">·</span>
               <span>no credit card</span>
               <span className="opacity-40">·</span>
-              <span>self-host available</span>
+              <span>Slack · Gmail · 250+ apps</span>
             </div>
           </div>
 
@@ -980,10 +963,10 @@ function SdkSplits() {
    ═════════════════════════════════════════════════════════════ */
 function Metrics() {
   const stats = [
-    { v: "10k+", l: "agents running" },
-    { v: "40+", l: "integrations" },
-    { v: "99.9%", l: "uptime · last 90d" },
-    { v: "< 2s", l: "p95 tool latency" },
+    { v: "250+", l: "integrations" },
+    { v: "1:1", l: "VM per agent" },
+    { v: "100+", l: "role templates" },
+    { v: "5", l: "min to first hire" },
   ]
 
   return (
@@ -1014,9 +997,9 @@ function Metrics() {
    ═════════════════════════════════════════════════════════════ */
 function Security() {
   const items = [
-    { icon: Lock, title: "SOC 2 in progress", body: "Type II audit underway. DPA + BAA on request." },
-    { icon: ShieldCheck, title: "Scoped tool access", body: "Per-agent OAuth scopes. Revoke in one click." },
-    { icon: Database, title: "Your data, your region", body: "Pin tenants to US, EU, or self-host." },
+    { icon: Lock, title: "Encrypted by default", body: "Every credential — bot tokens, API keys, cloud creds — round-trips through Rails AR encryption. Engine never holds raw secrets." },
+    { icon: ShieldCheck, title: "Per-agent isolation", body: "Each agent runs in its own VM with its own /data volume. One agent's token compromise doesn't touch the rest." },
+    { icon: Database, title: "Every action audited", body: "Tool call, secret fetch, approval decision — all logged with the acting human's identity. CFO + compliance ready out of the box." },
   ]
 
   return (
@@ -1030,9 +1013,9 @@ function Security() {
         }}
       />
       <div className="relative mx-auto w-full max-w-7xl px-6 text-center">
-        <Overline>Safety</Overline>
+        <Overline>Trust</Overline>
         <h2 className="text-section mx-auto mt-3 max-w-3xl text-foreground">
-          Built for teams that have lawyers.
+          Built for teams that have to answer for it later.
         </h2>
         <div className="mt-14 grid gap-3 md:grid-cols-3">
           {items.map((i) => (

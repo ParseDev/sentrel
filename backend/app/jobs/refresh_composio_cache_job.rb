@@ -48,7 +48,7 @@ class RefreshComposioCacheJob < ApplicationJob
         available: available_set.include?(slug),
         refreshed_at: Time.current,
         created_at: Time.current,
-        updated_at: Time.current,
+        updated_at: Time.current
       }
     end
 
@@ -68,7 +68,7 @@ class RefreshComposioCacheJob < ApplicationJob
         available: true,
         refreshed_at: Time.current,
         created_at: Time.current,
-        updated_at: Time.current,
+        updated_at: Time.current
       }
     end
 

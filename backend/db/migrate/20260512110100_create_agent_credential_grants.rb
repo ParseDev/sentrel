@@ -6,6 +6,6 @@ class CreateAgentCredentialGrants < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :agent_credential_grants, [:agent_id, :credential_id], unique: true, name: "index_agent_credential_grants_uniq"
+    add_index :agent_credential_grants, [ :agent_id, :credential_id ], unique: true, name: "index_agent_credential_grants_uniq"
   end
 end
