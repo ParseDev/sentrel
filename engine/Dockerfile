@@ -45,12 +45,31 @@ FROM oven/bun:1.1.38-slim AS runtime
 #   - ffmpeg              — media conversion for voice notes
 #   - ca-certificates + curl — TLS + healthcheck
 #   - tini                — PID 1 zombie reaper
+#   - gnupg               — required to add the NodeSource apt key below
+#   - chromium runtime libs — for headless Chrome (Puppeteer, video-render
+#     pipelines like HyperFrames). We DON'T install chromium itself —
+#     Puppeteer downloads its own browser to PUPPETEER_CACHE_DIR (set
+#     below to /data so it persists across machine restarts). We only
+#     need the OS-level shared libs Chrome's binary links against.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       poppler-utils tesseract-ocr \
       ffmpeg \
-      ca-certificates curl \
+      ca-certificates curl gnupg \
       tini \
+      fonts-liberation libnss3 libatk-bridge2.0-0 libatk1.0-0 \
+      libcups2 libdrm2 libgbm1 libgtk-3-0 libpango-1.0-0 \
+      libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxshmfence1 \
+      libasound2 libxkbcommon0 xdg-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 — lives alongside Bun. Bun stays the engine's runtime; Node
+# is here for the small set of agent tools that explicitly require it
+# (HyperFrames + other Puppeteer-driven renderers, MCP servers shipped
+# as Node-only npm packages). `npx` and `node --version` both work.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version && npm --version
 
 # Non-root user. Everything persistent lives in /data, which the provisioner
 # mounts as a volume. Agent state survives restarts because /data does.
@@ -98,7 +117,11 @@ ENV DATA_DIR=/data
 ENV HF_HOME=/data/hf-cache
 ENV TRANSFORMERS_CACHE=/data/hf-cache
 ENV XDG_CACHE_HOME=/data/hf-cache
-RUN mkdir -p /data/memories /data/skills /data/workspace /data/rag /data/camofox /data/hf-cache \
+# Puppeteer downloads Chrome on first run (~280 MB). Point it at /data
+# so it lives on the persistent volume — one download per agent, kept
+# across restarts. Without this, every cold-boot would re-download.
+ENV PUPPETEER_CACHE_DIR=/data/.puppeteer-cache
+RUN mkdir -p /data/memories /data/skills /data/workspace /data/rag /data/camofox /data/hf-cache /data/.puppeteer-cache \
     && chown -R engine:engine /data
 VOLUME ["/data"]
 
