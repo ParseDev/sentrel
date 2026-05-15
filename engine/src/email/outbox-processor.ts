@@ -29,15 +29,26 @@ export async function processOutbox(
   const channels = await host.getChannelConfigs(String(agent.id));
   const emailConfig = channels.find((c) => c.channel_type === "email");
 
+  const emailsToProcess = collectEmails(capturedEmails);
+  if (emailsToProcess.length === 0) return results;
+
+  // When the agent has no email channel configured but drafted email(s),
+  // we still create PendingApproval rows so the human can preview what the
+  // agent wanted to send. Otherwise the agent's work gets silently dropped
+  // — and the user reads 'Drafted email for review' in Slack with no card
+  // to actually review. Approvals on this path force permLevel = 'draft'.
   if (!emailConfig) {
-    if (capturedEmails && capturedEmails.length > 0) {
-      logger.warn("No email channel configured, skipping captured emails");
+    logger.warn(`No email channel configured — surfacing ${emailsToProcess.length} captured email(s) as draft approval(s) anyway`);
+    for (const content of emailsToProcess) {
+      try {
+        const result = await processOneEmail(content, agent, null, messageId);
+        if (result) results.push(result);
+      } catch (err) {
+        logger.error(`Failed to surface captured email to ${content.to}`, { error: (err as Error).message });
+      }
     }
     return results;
   }
-
-  const emailsToProcess = collectEmails(capturedEmails);
-  if (emailsToProcess.length === 0) return results;
 
   for (const content of emailsToProcess) {
     try {
@@ -86,7 +97,7 @@ function collectEmails(capturedEmails?: CapturedEmail[]): CapturedEmail[] {
 async function processOneEmail(
   content: CapturedEmail,
   agent: Agent,
-  emailConfig: { config: Record<string, unknown> },
+  emailConfig: { config: Record<string, unknown> } | null,
   messageId?: number | null,
 ): Promise<ApprovalResult | null> {
   // Upload attachments if specified
@@ -108,12 +119,16 @@ async function processOneEmail(
     subject: content.subject || "(no subject)",
     body_text: content.body_text || "",
     body_html: content.body_html || content.body_text || "",
-    from_address: emailConfig.config.address as string,
+    from_address: (emailConfig?.config.address as string | undefined) || "(email not configured)",
     from_name: agent.name,
     attachment_ids: attachmentIds,
+    email_not_configured: emailConfig == null,
   };
 
-  const permLevel = agent.permissions?.["send_email"] || "auto";
+  // Force draft mode when email isn't connected — the message can't be sent
+  // anyway, but the user gets to preview what the agent wrote and either
+  // connect email + approve, or copy/paste it elsewhere.
+  const permLevel = emailConfig == null ? "draft" : (agent.permissions?.["send_email"] || "auto");
 
   if (permLevel === "never") {
     logger.info(`Email blocked by permissions: ${content.to}`);
