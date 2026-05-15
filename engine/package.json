@@ -1,0 +1,39 @@
+{
+  "name": "alchemy_engine",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/main.ts",
+    "start": "bun run src/main.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/pg": "^8.20.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.2.118",
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": "0.2.118",
+    "@anthropic-ai/claude-agent-sdk-linux-x64": "0.2.118",
+    "@composio/claude-agent-sdk": "^0.8.0",
+    "@composio/core": "^0.8.0",
+    "@huggingface/transformers": "^4.1.0",
+    "@libsql/client": "^0.17.2",
+    "@logtail/node": "^0.5.8",
+    "@logtail/winston": "^0.5.8",
+    "@sentry/node": "^10.48.0",
+    "bullmq": "^5.73.0",
+    "cron-parser": "^5.5.0",
+    "dotenv": "^17.4.1",
+    "ioredis": "^5.10.1",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.20.0",
+    "winston": "^3.19.0",
+    "ws": "^8.20.0",
+    "zod": "^4.3.6"
+  }
+}
