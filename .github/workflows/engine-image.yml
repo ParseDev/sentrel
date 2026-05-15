@@ -56,14 +56,14 @@ jobs:
       - name: Stamp .git-sha
         run: echo "${{ github.sha }}" > engine/.git-sha
 
-      - name: Build + push (linux/amd64)
-        # Engine deploys to Fly Machines in lax region (x86_64). ARM64 builds
-        # via qemu emulation triple build time and frequently timeout the
-        # runner — re-enable here if we ever deploy ARM Fly hosts.
+      - name: Build + push (multi-arch)
+        # amd64 + arm64 — Fly lax is x86 today but other regions / future
+        # hosts may be arm. timeout-minutes + concurrency guard above keep
+        # this from wedging if qemu emulation stalls.
         uses: docker/build-push-action@v5
         with:
           context: ./engine
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           cache-from: type=gha
           cache-to:   type=gha,mode=max
