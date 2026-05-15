@@ -19,18 +19,26 @@ RSpec.describe "POST /webhooks/slack", type: :request do
     allow(fake_redis).to receive(:publish)               # for EngineSync
   end
 
+  # Real Slack UA. Rack::Attack blocks webhook requests with empty
+  # User-Agent (the 'missing user-agent on webhooks' rule). Tests don't
+  # send one by default; pin a realistic value so the request reaches
+  # WebhooksController.
+  SLACK_UA = "Slackbot 1.0 (+https://api.slack.com/robots)".freeze
+
   def slack_headers(body, ts: Time.now.to_i)
     sig = "v0=" + OpenSSL::HMAC.hexdigest("SHA256", signing_secret, "v0:#{ts}:#{body}")
     {
       "Content-Type" => "application/json",
       "X-Slack-Request-Timestamp" => ts.to_s,
       "X-Slack-Signature" => sig,
+      "User-Agent" => SLACK_UA,
     }
   end
 
   it "handles url_verification without a signature" do
     body = { type: "url_verification", challenge: "c-123" }.to_json
-    post "/webhooks/slack", params: body, headers: { "Content-Type" => "application/json" }
+    post "/webhooks/slack", params: body,
+      headers: { "Content-Type" => "application/json", "User-Agent" => SLACK_UA }
     expect(response).to have_http_status(:ok)
     expect(JSON.parse(response.body)).to include("challenge" => "c-123")
   end
@@ -39,6 +47,7 @@ RSpec.describe "POST /webhooks/slack", type: :request do
     body = { type: "event_callback", event: { type: "message", text: "hi", user: "U1", channel: "C1", ts: "1.1" }, team_id: "T_X" }.to_json
     post "/webhooks/slack", params: body,
       headers: { "Content-Type" => "application/json",
+                 "User-Agent" => SLACK_UA,
                  "X-Slack-Request-Timestamp" => Time.now.to_i.to_s,
                  "X-Slack-Signature" => "v0=deadbeef" }
     expect(response).to have_http_status(:unauthorized)
@@ -105,9 +114,11 @@ RSpec.describe "POST /webhooks/slack", type: :request do
   end
 
   it "dedups by event_id — second delivery is a no-op" do
+    # Bind agent to the same channel the inbound event targets (C1) — the
+    # routing requires an exact (team_id, slack_channel_id) match.
     agent.channel_configs.create!(
       channel_type: "slack", enabled: true, status: "connected",
-      config: { "team_id" => "T_X" },
+      config: { "team_id" => "T_X", "slack_channel_id" => "C1" },
     )
     fake_redis = Redis.new
     allow(fake_redis).to receive(:set).and_return("OK", nil)  # first write OK, second returns nil

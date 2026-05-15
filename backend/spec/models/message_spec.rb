@@ -9,7 +9,10 @@ RSpec.describe Message, type: :model do
     msg = Message.new(conversation: conversation)
     expect(msg).not_to be_valid
     expect(msg.errors[:role]).to be_present
-    expect(msg.errors[:content]).to include("can't be blank")
+    # Message uses a custom validator (content_or_attachments_present) that
+    # adds the error to :base instead of :content, since either content OR
+    # attachments OR metadata.attachment_ids satisfies the requirement.
+    expect(msg.errors[:base]).to include(/content or an attachment/)
   end
 
   it "validates role inclusion" do

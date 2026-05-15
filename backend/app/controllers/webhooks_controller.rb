@@ -2,6 +2,9 @@ require "mini_mime"
 require "net/http"
 
 class WebhooksController < ApplicationController
+  # Skip CSRF + tenant resolution — webhooks are unauthenticated entrypoints
+  # gated by per-provider signature verification (HMAC for Slack, AWS SNS
+  # confirmation for SES, Twilio signature, etc.).
   skip_before_action :verify_authenticity_token
   skip_before_action :set_tenant
 

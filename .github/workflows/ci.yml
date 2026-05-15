@@ -3,46 +3,66 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ main ]
+    branches: [main]
+
+# Rails lives under backend/ post-monorepo move. Every Ruby step runs from
+# there so Gemfile, bin/ scripts, and rubocop config all resolve correctly.
+defaults:
+  run:
+    working-directory: backend
 
 jobs:
   scan_ruby:
+    name: Security scan (Brakeman + bundler-audit)
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
+          ruby-version-file: backend/.ruby-version
           bundler-cache: true
+          working-directory: backend
 
-      - name: Scan for common Rails security vulnerabilities using static analysis
-        run: bin/brakeman --no-pager
-      
-      - name: Scan for known security vulnerabilities in gems used
+      - name: Scan for common Rails security vulnerabilities (Brakeman)
+        # config/brakeman.ignore documents three known false positives —
+        # see notes inside the file for the rationale on each. Any NEW
+        # warning still fails the build.
+        run: bin/brakeman --no-pager -i config/brakeman.ignore
+
+      - name: Scan for known security vulnerabilities in gems (bundler-audit)
         run: bin/bundler-audit
-      
+
   lint:
+    name: Lint (RuboCop)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     env:
       RUBOCOP_CACHE_ROOT: tmp/rubocop
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
+          ruby-version-file: backend/.ruby-version
           bundler-cache: true
+          working-directory: backend
 
       - name: Prepare RuboCop cache
         uses: actions/cache@v4
         env:
-          DEPENDENCIES_HASH: ${{ hashFiles('.ruby-version', '**/.rubocop.yml', '**/.rubocop_todo.yml', 'Gemfile.lock') }}
+          DEPENDENCIES_HASH: ${{ hashFiles('backend/.ruby-version', 'backend/**/.rubocop.yml', 'backend/**/.rubocop_todo.yml', 'backend/Gemfile.lock') }}
         with:
-          path: ${{ env.RUBOCOP_CACHE_ROOT }}
+          path: backend/${{ env.RUBOCOP_CACHE_ROOT }}
           key: rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || 'default' }}
           restore-keys: |
             rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
@@ -50,3 +70,67 @@ jobs:
       - name: Lint code for consistent style
         run: bin/rubocop -f github
 
+  test:
+    name: RSpec
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: alchemy_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/alchemy_test
+      REDIS_URL: redis://localhost:6379/0
+      # Dummy keys so AR encryption doesn't blow up in tests. Tests don't
+      # exercise real key material — see spec/support/active_record_encryption.rb.
+      ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY: test_primary_key_xxxxxxxxxxxxxxxx
+      ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY: test_deterministic_xxxxxxxxxxxx
+      ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: test_salt_xxxxxxxxxxxxxxxxxxxxx
+      PREFIXED_IDS_SALT: test_prefix_salt
+      ENGINE_API_SECRET: test_engine_secret
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: backend/.ruby-version
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Set up Node (for asset precompile during db:prepare, if needed)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Prepare database
+        run: bin/rails db:test:prepare
+
+      - name: Run RSpec
+        run: bundle exec rspec --format progress

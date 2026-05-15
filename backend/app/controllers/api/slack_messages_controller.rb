@@ -53,17 +53,20 @@ class Api::SlackMessagesController < ApplicationController
   end
 
   def create_pending_approval(agent)
+    text = params[:text].to_s
     PendingApproval.create!(
       organization_id: agent.organization_id,
       agent_id: agent.id,
-      kind: "slack_message",
-      payload: {
+      tool_name: "slack.post",
+      payload_type: "slack_message",
+      summary: "Slack message to #{params[:channel]}: #{text.truncate(120)}",
+      tool_input: {
         channel: params[:channel],
-        text: params[:text],
+        text: text,
         thread_ts: params[:thread_ts],
       },
+      risk_tier: "low",
       status: "pending",
-      requested_at: Time.current,
     )
   end
 end

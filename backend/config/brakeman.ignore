@@ -1,0 +1,18 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "0d935c1c7da4548a166f27e00f3e53b4e75f268fa0e7ca60c69c8d0fd95e8eb4",
+      "note": "Audited: agent params permit list is intentionally broad — every key is a known agent attribute. :status is admin-only via authorize_admin! upstream. Pre-existing, accepted."
+    },
+    {
+      "fingerprint": "82f1b6b4a0ad0539108c4bcad435d9143b818ae6aa91e32cdb7be7ee5dc86c77",
+      "note": "params.permit! in Api::SendEmailsController is engine-callable only — guarded by authenticate_engine! (X-Engine-Secret). Payload is the email build that the engine has already validated."
+    },
+    {
+      "fingerprint": "bf838c888b2278571f8a5cafc5d5eabef92de7bff581d12e066e2286c877b3c2",
+      "note": "False positive — outbound_sender.rb:134 builds an email 'From:' header via Mail::Message#from, not an ActiveRecord SQL clause. Brakeman can't disambiguate Mail#from from AR#from."
+    }
+  ],
+  "updated": "2026-05-15",
+  "brakeman_version": "8.0.4"
+}
