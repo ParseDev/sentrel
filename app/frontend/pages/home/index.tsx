@@ -722,9 +722,9 @@ function ControlTiers() {
       visual: (
         <div className="space-y-2">
           {[
-            { name: "Sarah · Sales SDR", desc: "books demos", tone: "indigo" as const },
-            { name: "Casper · Chief of Staff", desc: "runs your week", tone: "cyan" as const },
-            { name: "Jamie · Customer support", desc: "handles tickets", tone: "indigo" as const },
+            { initial: "S", name: "Sarah · Sales SDR", desc: "books demos", tone: "indigo" as const },
+            { initial: "C", name: "Casper · Chief of Staff", desc: "runs your week", tone: "cyan" as const },
+            { initial: "J", name: "Jamie · Customer support", desc: "handles tickets", tone: "indigo" as const },
           ].map((a) => (
             <div
               key={a.name}
@@ -732,14 +732,18 @@ function ControlTiers() {
             >
               <span className="flex items-center gap-2.5">
                 <span
-                  className="size-7 shrink-0 rounded-md border"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-md border font-display text-[12px] font-semibold"
                   style={{
                     borderColor:
                       a.tone === "cyan" ? "var(--cyan-border)" : "var(--indigo-border)",
                     background:
                       a.tone === "cyan" ? "var(--cyan-surface)" : "var(--indigo-surface)",
+                    color:
+                      a.tone === "cyan" ? "var(--cyan)" : "var(--color-indigo)",
                   }}
-                />
+                >
+                  {a.initial}
+                </span>
                 <span className="flex flex-col">
                   <span className="text-[13px] font-medium leading-tight">{a.name}</span>
                   <span className="text-[11px] text-muted-foreground leading-tight">{a.desc}</span>
