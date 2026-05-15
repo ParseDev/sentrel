@@ -95,7 +95,18 @@ jobs:
 
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/deploy.pem
-          ssh-keyscan -H 52.2.137.107 >> ~/.ssh/known_hosts
+
+          # Net::SSH (kamal's SSH client) reads known_hosts and can mismatch
+          # against hashed entries. Use unhashed keys + StrictHostKeyChecking
+          # accept-new so the runner trusts the first connection to a fresh
+          # known_hosts (ephemeral per run) and verifies subsequent ones.
+          ssh-keyscan 52.2.137.107 >> ~/.ssh/known_hosts 2>/dev/null
+          cat >> ~/.ssh/config <<'EOF'
+          Host 52.2.137.107
+            StrictHostKeyChecking accept-new
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+          chmod 600 ~/.ssh/config
 
       # Write .kamal/secrets from repo secrets. The committed .kamal/secrets
       # is git-ignored; CI rebuilds it from GitHub Secrets each run.
