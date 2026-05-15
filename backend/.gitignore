@@ -1,0 +1,48 @@
+# Rails-specific ignores. Run from the backend/ subtree.
+
+# Ignore bundler config.
+/.bundle
+
+# Ignore environment files (Rails reads from here).
+/.env*
+!/.env.example
+
+# Logs and tempfiles.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+/tmp/pids/*
+!/tmp/pids/
+!/tmp/pids/.keep
+
+# Storage (uploaded files + dev sqlite).
+/storage/*
+!/storage/.keep
+/tmp/storage/*
+!/tmp/storage/
+!/tmp/storage/.keep
+
+/public/assets
+
+# Decryption keys for Rails credentials etc.
+/config/*.key
+
+# Vite Ruby build artifacts.
+/public/vite*
+
+# WireGuard configs (contain private keys) + bridge systemd units.
+/alchemy-bridge.conf
+/*-wg.conf
+/socat-*.service
+
+node_modules
+.vite/
+*.local
+.DS_Store
+
+# Kamal secrets — contains raw prod credentials, NEVER commit.
+/.kamal/secrets
+/.kamal/secrets.*
+!/.kamal/secrets.example
