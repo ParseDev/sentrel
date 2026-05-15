@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
-
-@plugin "@tailwindcss/typography";
-
 /* ==========================================================
    Fonts — General Sans (headings) + DM Sans (body)
            + JetBrains Mono (code) + Instrument Serif (accents)
+   ----------------------------------------------------------
+   PostCSS requires @import rules to precede ALL other statements
+   (besides @charset / empty @layer), so the font @imports MUST
+   sit here, BEFORE @custom-variant and @plugin below.
    ========================================================== */
 @import url("https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
+
+@custom-variant dark (&:is(.dark *));
+
+@plugin "@tailwindcss/typography";
 
 /* ==========================================================
    Alchemy Design Tokens — Genesis-core + cyan signal
