@@ -23,8 +23,12 @@ class Api::AgentEventsController < ActionController::API
     # Catch it here and post a Block Kit card to Slack — the AR
     # after_commit doesn't fire for direct inserts. ApprovalCard.post is
     # idempotent (it bails when tool_input.slack_card_ts is already set).
+    #
+    # The engine sends camelCase keys (approvalId) per gateway.ts's emitApproval.
+    # We accept both camel- and snake-case so future engine changes don't
+    # silently break the integration.
     if event["type"] == "pending_approval"
-      approval_id = event.dig("approval", "id") || event["approval_id"]
+      approval_id = event["approvalId"] || event["approval_id"] || event.dig("approval", "id")
       if approval_id.present?
         approval = PendingApproval.find_by(id: approval_id)
         Slack::ApprovalCard.post(approval) if approval

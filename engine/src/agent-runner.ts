@@ -571,8 +571,11 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
             ]],
           );
         }
-      } else {
-        // Other channels: text-based YES/NO
+      } else if (job.channel !== "slack") {
+        // Other channels: text-based YES/NO appended to the reply. Skip for
+        // Slack — Rails now posts a Block Kit card via Slack::ApprovalCard
+        // (triggered by the pending_approval AgentEvents broadcast), so
+        // appending text would show two previews for the same approval.
         finalResponse += formatChannelApprovalPreview(approvalResults);
       }
     }
