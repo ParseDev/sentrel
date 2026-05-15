@@ -70,43 +70,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
 
-      # kamal SSH's into the host to run docker; uses an agent-loaded key.
-      # ~/.ssh paths are HOME-relative so the working-directory: backend
-      # default doesn't apply here — the keys live at the runner's $HOME.
-      - name: Configure SSH
-        working-directory: .
-        env:
-          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          # printf preserves the multi-line key without `echo`'s portability
-          # quirks. Trailing newline is appended explicitly — OpenSSH refuses
-          # keys whose body doesn't end with one.
-          printf '%s\n' "$SSH_DEPLOY_KEY" > ~/.ssh/deploy.pem
-          chmod 600 ~/.ssh/deploy.pem
-
-          # Fast-fail with a clear error if the secret is malformed (missing
-          # BEGIN/END headers usually means it was pasted as a single line).
-          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/deploy.pem; then
-            echo "::error::SSH_DEPLOY_KEY secret looks malformed — no BEGIN PRIVATE KEY header. Re-paste the file contents in full."
-            exit 1
-          fi
-
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/deploy.pem
-
-          # Net::SSH (kamal's SSH client) reads known_hosts and can mismatch
-          # against hashed entries. Use unhashed keys + StrictHostKeyChecking
-          # accept-new so the runner trusts the first connection to a fresh
-          # known_hosts (ephemeral per run) and verifies subsequent ones.
-          ssh-keyscan 52.2.137.107 >> ~/.ssh/known_hosts 2>/dev/null
-          cat >> ~/.ssh/config <<'EOF'
-          Host 52.2.137.107
-            StrictHostKeyChecking accept-new
-            UserKnownHostsFile ~/.ssh/known_hosts
-          EOF
-          chmod 600 ~/.ssh/config
+      # kamal SSH's into the host to run docker. webfactory/ssh-agent handles
+      # the private-key paste-formatting gauntlet (CRLF, missing trailing
+      # newline, libcrypto errors) for us and loads the key into an
+      # ssh-agent. We deliberately DO NOT pre-populate known_hosts — Net::SSH
+      # (kamal's SSH client) defaults to verify_host_key: :always, which
+      # means 'add new hosts automatically, only error on mismatch with an
+      # existing entry'. Pre-populating gave us mismatches; skipping it lets
+      # the first connect just work.
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
 
       # Write .kamal/secrets from repo secrets. The committed .kamal/secrets
       # is git-ignored; CI rebuilds it from GitHub Secrets each run.
@@ -187,20 +161,12 @@ jobs:
       - name: kamal deploy
         env:
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
-          SSH_AUTH_SOCK: /tmp/ssh-auth.sock
-        run: |
-          eval "$(ssh-agent -a $SSH_AUTH_SOCK)" > /dev/null
-          ssh-add ~/.ssh/deploy.pem
-          bundle exec kamal deploy
+        run: bundle exec kamal deploy
 
       - name: Run pending migrations
         env:
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
-          SSH_AUTH_SOCK: /tmp/ssh-auth.sock
-        run: |
-          eval "$(ssh-agent -a $SSH_AUTH_SOCK)" > /dev/null
-          ssh-add ~/.ssh/deploy.pem
-          bundle exec kamal app exec 'bin/rails db:migrate'
+        run: bundle exec kamal app exec 'bin/rails db:migrate'
 
       - name: Summary
         run: |
