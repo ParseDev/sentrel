@@ -171,12 +171,31 @@ class WebhooksController < ApplicationController
   end
 
   # POST /webhooks/slack/interactivity
-  # Stub — full Block Kit approval handling lands in Slack v2 phase 2.
-  # For now, accept + 200 so Slack doesn't show "request failed" on button
-  # clicks. Real action dispatch wired in next commit.
+  # Block Kit button clicks (Approve / Reject on an approval card, future
+  # DM picker selections) route here. Slack POSTs form-encoded with a
+  # single `payload=<json>` field. Signature verification on raw body is
+  # still required.
   def slack_interactivity
     body = request.raw_post
     return head :unauthorized unless valid_slack_signature?(body)
+
+    payload = JSON.parse(params[:payload].to_s) rescue {}
+    actions = Array(payload["actions"])
+    return head :ok if actions.empty?
+
+    action    = actions.first
+    action_id = action["action_id"].to_s
+
+    case action_id
+    when /\Aapproval:(approve|reject):(\d+)\z/
+      decision = Regexp.last_match(1)
+      approval_id = Regexp.last_match(2).to_i
+      handle_approval_decision(payload, approval_id, decision)
+    when /\Adm_pick_agent:(\d+)\z/
+      agent_id = Regexp.last_match(1).to_i
+      handle_dm_picker(payload, agent_id)
+    end
+
     head :ok
   end
 
@@ -277,6 +296,112 @@ class WebhooksController < ApplicationController
   # Slash-command ephemeral response — only the user who typed sees it.
   def render_command_ephemeral(text)
     render json: { response_type: "ephemeral", text: text }
+  end
+
+  # Interactivity handler — Approve/Reject from a Block Kit card.
+  # Match the clicking user to an org member by email (via users.info on
+  # the Slack side, cached short-term) so `reviewed_by` is populated.
+  # Falls back to nil if the Slack user has no matching email in our DB.
+  def handle_approval_decision(payload, approval_id, decision)
+    approval = PendingApproval.find_by(id: approval_id)
+    return unless approval && approval.status == "pending"
+
+    slack_user_id = payload.dig("user", "id")
+    team_id       = payload.dig("team", "id")
+    install       = find_slack_install(team_id: team_id)
+    reviewer      = resolve_org_user_from_slack(install: install, slack_user_id: slack_user_id)
+
+    new_status = decision == "approve" ? "approved" : "rejected"
+    approval.update!(
+      status: new_status,
+      decision: decision,
+      reviewed_by: reviewer,
+      reviewed_at: Time.current,
+    )
+
+    # Engine-side notification: same Redis pub/sub flow the web UI uses.
+    if approval.payload_type.present? && approval.approval_token.present?
+      publish_approval_to_engine(approval)
+    elsif new_status == "approved" && approval.tool_name == "send_email"
+      SendEmailJob.perform_later(
+        approval.tool_input.merge(
+          "agent_id" => approval.agent_id,
+          "org_id" => approval.organization_id,
+        ),
+      )
+    end
+
+    # Edit the card to show the decision + drop the buttons.
+    Slack::ApprovalCard.update_after_decision(approval)
+  end
+
+  # Match the Slack user (U…) to one of the org's Users by email so the
+  # PendingApproval gets attributed. lookupByEmail in reverse — we ask
+  # Slack for the user's email by their U-id, then look that email up
+  # in our DB. Cached in Redis for 1h to avoid hammering users.info.
+  def resolve_org_user_from_slack(install:, slack_user_id:)
+    return nil unless install && slack_user_id.present?
+
+    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0")) rescue nil
+    cache_key = "slack:user_email:#{slack_user_id}"
+    cached = redis&.get(cache_key)
+
+    email = cached.presence || begin
+      uri = URI.parse("https://slack.com/api/users.info?user=#{slack_user_id}")
+      req = Net::HTTP::Get.new(uri)
+      req["Authorization"] = "Bearer #{install.secrets['bot_token']}"
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 5) { |http| http.request(req) }
+      data = JSON.parse(res.body)
+      addr = data.dig("user", "profile", "email")
+      redis&.set(cache_key, addr.to_s, ex: 3600) if addr
+      addr
+    end
+
+    install.organization.users.find_by("LOWER(email) = ?", email.to_s.downcase) if email.present?
+  rescue StandardError => e
+    Rails.logger.warn "[Slack interactivity] resolve_org_user_from_slack failed: #{e.message}"
+    nil
+  end
+
+  # Publish the user's decision back into the engine's per-agent approval
+  # channel so the request_approval tool's await unblocks. Mirrors the
+  # publish_action_approval method on PendingApprovalsController — we
+  # don't reach into that controller's private API because cross-controller
+  # plumbing is fragile.
+  def publish_approval_to_engine(approval)
+    msg = {
+      type: "action_approval_response",
+      approvalToken: approval.approval_token,
+      value: approval.decision,
+      text: approval.decision_text,
+    }.to_json
+    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+    redis.publish("agent-#{approval.agent_id}-approvals", msg)
+  rescue StandardError => e
+    Rails.logger.error "[Slack interactivity] approval publish failed: #{e.message}"
+  end
+
+  # DM picker click — user selected an agent to talk to. Persist the
+  # binding on the agent's ChannelConfig so future DMs from the same user
+  # land on the same agent without prompting.
+  def handle_dm_picker(payload, agent_id)
+    team_id    = payload.dig("team", "id")
+    channel_id = payload.dig("channel", "id") || payload.dig("container", "channel_id")
+    agent      = Agent.find_by(id: agent_id)
+    return unless agent && channel_id.present?
+
+    cc = agent.channel_configs.find_by(channel_type: "slack")
+    return unless cc
+    cc.config = (cc.config || {}).merge("slack_dm_channel_id" => channel_id)
+    cc.save!
+
+    install = find_slack_install(team_id: team_id)
+    return unless install
+    Slack::Api.post_message(
+      token: install.secrets["bot_token"],
+      channel: channel_id,
+      text: "✓ Linked this DM to #{agent.name}. Just send a message — they'll reply right here.",
+    )
   end
 
   # POST /webhooks/whatsapp

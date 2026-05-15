@@ -6,4 +6,19 @@ class PendingApproval < ApplicationRecord
 
   validates :tool_name, presence: true
   validates :status, presence: true, inclusion: { in: %w[pending approved rejected] }
+
+  # Post a Block Kit approval card to Slack if the agent has a Slack channel
+  # connected. The service short-circuits when there's no channel — so this
+  # is safe for every PendingApproval.create! call site. Runs after_commit
+  # so Rails-side creates (slack_messages_controller, …) are covered. Engine
+  # direct-inserts use the duplicate fan-in path via Api::AgentEventsController.
+  after_commit :post_slack_approval_card, on: :create
+
+  private
+
+  def post_slack_approval_card
+    Slack::ApprovalCard.post(self)
+  rescue StandardError => e
+    Rails.logger.warn "[PendingApproval] Slack card post failed: #{e.class}: #{e.message}"
+  end
 end
