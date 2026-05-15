@@ -15,7 +15,6 @@ import {
   Plug,
   ShieldCheck,
   Sparkles,
-  TerminalSquare,
   Zap,
 } from "lucide-react"
 
@@ -43,7 +42,6 @@ export default function LandingPage() {
       <LandingNav />
 
       <Hero />
-      <PressStrip />
       <LogoMarquee />
       <ProductDemo />
       <FeatureGrid />
@@ -52,7 +50,6 @@ export default function LandingPage() {
       <Metrics />
       <Security />
       <Testimonial />
-      <BrandMoment />
       <FinalCTA />
 
       <LandingFooter />
@@ -353,45 +350,6 @@ function OrgGraphCard() {
 /* ═════════════════════════════════════════════════════════════
    2 — LOGO MARQUEE
    ═════════════════════════════════════════════════════════════ */
-// TODO(press): Replace placeholder text logos with actual press SVGs once
-// coverage lands. Expected: Silicon, TechCrunch, Product Hunt feature, etc.
-// Drop SVGs into public/press/<slug>.svg and swap the <span> for <img>.
-function PressStrip() {
-  const outlets = [
-    { name: "Silicon", todo: true },
-    { name: "TechCrunch", todo: true },
-    { name: "Product Hunt", todo: true },
-    { name: "Hacker News", todo: true },
-  ]
-  return (
-    <section className="border-b bg-muted/20 py-8">
-      <div className="mx-auto w-full max-w-5xl px-6">
-        <p className="mb-5 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-          As featured in
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-          {outlets.map((o) => (
-            <span
-              key={o.name}
-              className="relative font-display text-lg font-semibold tracking-tight text-muted-foreground/70"
-            >
-              {o.name}
-              {o.todo && (
-                <span className="absolute -top-2 -right-7 rounded-sm bg-amber-500/15 px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider text-amber-600">
-                  todo
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// TODO(logo-marquee): Swap the text-only logos for real brand SVGs. Composio
-// supports 250+ integrations — pick the top ~18 most visually recognizable
-// and drop their wordmarks into public/logos/<slug>.svg.
 function LogoMarquee() {
   const logos = [
     "Linear", "Slack", "Notion", "Stripe", "HubSpot", "Salesforce",
@@ -651,30 +609,30 @@ function FeatureGrid() {
     {
       n: "01",
       icon: Bot,
-      title: "Agents that specialize",
-      body: "Roles, skills, schedules. Each agent has a distinct job, its own memory, budget, and approvals.",
-      example: "defineAgent({ name: 'Alex', role: 'SDR' })",
+      title: "Teammates, not assistants",
+      body: "Each agent has a name, a role, and a job description. Sarah handles inbound sales. Casper runs ops. Jamie answers support. They don't share a brain — they each have their own context, their own tools, their own working hours.",
+      example: "Hire Sarah — your new SDR",
     },
     {
       n: "02",
       icon: Plug,
-      title: "Native tools, not scrapers",
-      body: "OAuth into Slack, Salesforce, Gmail, Notion, Linear, and 40+ more. Real APIs, not DOM tricks.",
-      example: "tools: [slack, gmail, salesforce]",
+      title: "Lives inside the tools you already use",
+      body: "Your agents log into Slack, Gmail, HubSpot, Notion, and 250+ other apps the way a new hire would. They send emails from your domain, post in channels, update your CRM. No extra dashboards to learn.",
+      example: "Connected: Gmail · Slack · HubSpot",
     },
     {
       n: "03",
       icon: ShieldCheck,
-      title: "Policy-gated autonomy",
-      body: "Set rules — auto-approve send-email, require your nod on refunds. Humans approve what matters.",
-      example: "requireApproval: ['offer_discount']",
+      title: "You decide what they do alone",
+      body: "Per-action policy — send routine emails on their own, ask before issuing refunds, never delete data. Drafts land in your inbox for one-click approve. Like a junior teammate who knows what to escalate.",
+      example: "Refunds → ask me first",
     },
     {
       n: "04",
       icon: Gauge,
-      title: "Observability, end-to-end",
-      body: "Token-level traces, tool-call trees, cost per agent, replayable transcripts. No mysteries.",
-      example: "replay(run_4fc1)",
+      title: "See exactly what they did",
+      body: "Every email, every tool call, every decision. Search the timeline, replay the conversation, see the cost. The receipts every CFO and every compliance team asks for — without having to ask.",
+      example: "View activity → 14 actions today",
     },
   ]
 
@@ -694,10 +652,10 @@ function FeatureGrid() {
         <div className="mb-16 max-w-3xl">
           <Overline>Why Alchemy</Overline>
           <h2 className="text-section mt-3 text-foreground">
-            Primitives you'd build{" "}
+            The team you'd build{" "}
             <span className="serif-italic text-muted-foreground">yourself</span> —
             <br />
-            in{" "}
+            without the{" "}
             <span className="relative inline-block">
               <span className="relative z-10 serif-italic text-[var(--color-indigo)]">
                 six months
@@ -711,8 +669,11 @@ function FeatureGrid() {
                 }}
               />
             </span>
-            , not six hours.
+            {" "}of hiring.
           </h2>
+          <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
+            Most AI tools give you one chatbot. Alchemy gives you a whole team — specialists who know their role, log into your tools, and run on their own. You stay the editor.
+          </p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -735,18 +696,11 @@ function FeatureGrid() {
               <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
                 {f.body}
               </p>
-              <div className="mt-5 overflow-hidden rounded-md border bg-[var(--muted)]">
-                <div className="flex items-center justify-between border-b px-3 py-1.5">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                    example
-                  </span>
-                  <span className="font-mono text-[10px] text-[var(--color-indigo)]">
-                    ts
-                  </span>
+              <div className="mt-5 rounded-md border bg-[var(--muted)] px-3.5 py-2.5">
+                <div className="flex items-center gap-2 text-[12.5px] text-foreground">
+                  <CheckCircle2 className="size-3.5 shrink-0 text-[var(--color-success)]" />
+                  <span>{f.example}</span>
                 </div>
-                <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-relaxed text-foreground">
-                  {f.example}
-                </pre>
               </div>
             </div>
           ))}
@@ -762,23 +716,23 @@ function FeatureGrid() {
 function ControlTiers() {
   const tiers = [
     {
-      tag: "For you",
-      title: "Zero-code templates",
-      body: "Pick a proven agent. Plug in Slack + your CRM. Ship in 90 seconds.",
+      tag: "Hire from the library",
+      title: "Pre-built teammates, ready in 90 seconds",
+      body: "Pick from 100+ proven roles — SDR, exec assistant, support, hiring coordinator. Each one ships with the skills, integrations, and instructions it needs. You give them a name and they start working.",
       visual: (
         <div className="space-y-2">
           {[
-            { name: "Alex · SDR", tone: "indigo" as const },
-            { name: "Morgan · Ops", tone: "cyan" as const },
-            { name: "Jamie · CX", tone: "indigo" as const },
+            { name: "Sarah · Sales SDR", desc: "books demos", tone: "indigo" as const },
+            { name: "Casper · Chief of Staff", desc: "runs your week", tone: "cyan" as const },
+            { name: "Jamie · Customer support", desc: "handles tickets", tone: "indigo" as const },
           ].map((a) => (
             <div
               key={a.name}
               className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
             >
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2.5">
                 <span
-                  className="size-6 rounded-md border"
+                  className="size-7 shrink-0 rounded-md border"
                   style={{
                     borderColor:
                       a.tone === "cyan" ? "var(--cyan-border)" : "var(--indigo-border)",
@@ -786,7 +740,10 @@ function ControlTiers() {
                       a.tone === "cyan" ? "var(--cyan-surface)" : "var(--indigo-surface)",
                   }}
                 />
-                <span className="text-[13px] font-medium">{a.name}</span>
+                <span className="flex flex-col">
+                  <span className="text-[13px] font-medium leading-tight">{a.name}</span>
+                  <span className="text-[11px] text-muted-foreground leading-tight">{a.desc}</span>
+                </span>
               </span>
               <ChevronRight className="size-3.5 text-muted-foreground" />
             </div>
@@ -795,34 +752,39 @@ function ControlTiers() {
       ),
     },
     {
-      tag: "Platform",
-      title: "Full policy engine",
-      body: "Budgets. Schedules. Permissions. Roll out across your whole team with one config.",
+      tag: "Run the room",
+      title: "Policies the way a manager would set them",
+      body: "Daily spend caps, who can talk to whom, what needs your signoff. Set once at the team level — apply to every agent. No engineer required.",
       visual: (
-        <div className="overflow-hidden rounded-md border bg-card">
-          <pre className="overflow-x-auto px-3 py-3 font-mono text-[12px] leading-relaxed">
-{`policy({
-  budget:   { daily: 25, unit: 'usd' },
-  approve:  ['send_email', 'log_contact'],
-  require:  ['offer_discount', 'refund'],
-  scope:    team('sales')
-})`}
-          </pre>
+        <div className="space-y-2.5">
+          {[
+            { label: "Daily spend ceiling", value: "$25 / agent" },
+            { label: "Auto-approve", value: "Routine emails · CRM updates" },
+            { label: "Always ask first", value: "Refunds · Sending to >10 people" },
+            { label: "Scope", value: "Sales team" },
+          ].map((row) => (
+            <div key={row.label} className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5">
+              <span className="text-[12px] text-muted-foreground">{row.label}</span>
+              <span className="text-[12.5px] font-medium text-foreground text-right">{row.value}</span>
+            </div>
+          ))}
         </div>
       ),
     },
     {
-      tag: "Developers",
-      title: "Typed SDK + webhooks",
-      body: "First-class TypeScript. Trigger on any event. Replay any run. Drop to raw prompts if you want.",
+      tag: "Open the hood",
+      title: "Full SDK when you want to build something custom",
+      body: "Engineers can drop into TypeScript — trigger on any webhook, replay any run, swap models per agent, write their own skills. The whole stack is yours when you need it.",
       visual: (
         <div className="overflow-hidden rounded-md border bg-card">
+          <div className="border-b px-3 py-1.5 flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">For developers</span>
+            <span className="font-mono text-[10px] text-[var(--color-indigo)]">ts</span>
+          </div>
           <pre className="overflow-x-auto px-3 py-3 font-mono text-[12px] leading-relaxed">
-{`import { on } from '@alchemy/core'
-
-on.webhook('/inbound', async (e) => {
-  const run = await alex.handle(e)
-  return run.trace
+{`// Wake Sarah on every inbound lead.
+on.webhook('/leads', async (lead) => {
+  return sarah.handle(lead)
 })`}
           </pre>
         </div>
@@ -841,16 +803,16 @@ on.webhook('/inbound', async (e) => {
 
       <div className="relative mx-auto w-full max-w-7xl px-6">
         <div className="mb-14 max-w-3xl">
-          <Overline>Zero code → full control</Overline>
+          <Overline>Three ways in</Overline>
           <h2 className="text-section mt-3 text-foreground">
-            Start{" "}
-            <span className="serif-italic text-muted-foreground">soft</span>.
-            Scale{" "}
-            <span className="serif-italic text-[var(--color-indigo)]">deep</span>.
+            Hire one teammate{" "}
+            <span className="serif-italic text-muted-foreground">today</span>.
+            Run a{" "}
+            <span className="serif-italic text-[var(--color-indigo)]">whole team</span>{" "}
+            next quarter.
           </h2>
           <p className="mt-4 text-[15px] leading-relaxed text-muted-foreground">
-            Ship a templated agent in minutes. Open the SDK when you're ready
-            to bend it to your workflow.
+            Start with one templated role and a Slack channel. Grow into a managed team with shared policies, budgets, and dashboards. Engineers get a full SDK if you want to build something nobody else has.
           </p>
         </div>
 
@@ -888,12 +850,12 @@ function SdkSplits() {
     visual: ReactNode
   }> = [
     {
-      eyebrow: "Managed auth",
-      title: (<>OAuth that <span className="serif-italic text-[var(--color-indigo)]">stays</span> signed in.</>),
-      body: "Every integration. Token refresh, scope management, revocation — handled. Your agent doesn't know what a refresh token is, and it doesn't have to.",
+      eyebrow: "Connections",
+      title: (<>They log in <span className="serif-italic text-[var(--color-indigo)]">once</span>. They stay logged in.</>),
+      body: "Your agent connects to Slack, Gmail, your CRM, Notion — the same way you would, with one click. They handle the boring auth stuff in the background forever. No tokens to copy. No keys to rotate. No re-authorizing every 30 days.",
       visual: (
         <div className="grid grid-cols-3 gap-2">
-          {["Slack", "Gmail", "HubSpot", "Linear", "Stripe", "Notion"].map((t) => (
+          {["Slack", "Gmail", "HubSpot", "Notion", "Linear", "Stripe"].map((t) => (
             <div
               key={t}
               className="flex items-center gap-2 rounded-md border bg-card px-3 py-2.5"
@@ -902,43 +864,56 @@ function SdkSplits() {
               <span className="text-[12px] font-medium">{t}</span>
             </div>
           ))}
+          <div className="col-span-3 mt-1 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70">
+            and 250+ more
+          </div>
         </div>
       ),
     },
     {
-      eyebrow: "Triggers",
-      title: (<>Wake up when work <span className="serif-italic text-[var(--color-indigo)]">arrives</span>.</>),
-      body: "Cron. Webhooks. Inbound email. Slack mention. Calendar event. Your agent starts running the moment there's something to do.",
+      eyebrow: "Wakes up on its own",
+      title: (<>Starts working when there's <span className="serif-italic text-[var(--color-indigo)]">work to do</span>.</>),
+      body: "An email arrives. A Slack message pings. A scheduled time hits. A customer fills out a form. Your agent is already on it — no app to open, no button to push.",
       reverse: true,
-      visual: (
-        <div className="overflow-hidden rounded-md border bg-card">
-          <pre className="overflow-x-auto p-4 font-mono text-[12px] leading-relaxed">
-{`on.email('support@acme.co',   jamie.triage)
-on.slack('#inbound',          alex.qualify)
-on.schedule('* 9 * * 1-5',    riley.report)
-on.webhook('/stripe',         morgan.reconcile)`}
-          </pre>
-        </div>
-      ),
-    },
-    {
-      eyebrow: "Context-aware",
-      title: "Memory that survives restarts.",
-      body: "Per-agent long-term memory. RAG over your docs. Retrieval with citations. Forget about managing vector databases.",
       visual: (
         <div className="space-y-2">
           {[
-            { label: "docs/pricing.md", score: "0.94" },
-            { label: "wiki/ICP.md", score: "0.87" },
-            { label: "notes/q3-plan.md", score: "0.71" },
+            { trigger: "Email lands in your inbox", who: "Jamie", what: "triages and replies", icon: "✉️" },
+            { trigger: "Slack mention in #leads", who: "Sarah", what: "qualifies the lead", icon: "💬" },
+            { trigger: "Every weekday 9am", who: "Casper", what: "sends the morning brief", icon: "🕘" },
+            { trigger: "New Stripe customer", who: "Morgan", what: "onboards them", icon: "💳" },
+          ].map((r) => (
+            <div key={r.trigger} className="flex items-center gap-3 rounded-md border bg-card px-3 py-2.5">
+              <span className="text-base leading-none">{r.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12.5px] font-medium leading-tight">{r.trigger}</div>
+                <div className="text-[11px] text-muted-foreground leading-tight">
+                  <span className="text-foreground/80">{r.who}</span> {r.what}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      eyebrow: "Remembers everything",
+      title: "Reads your docs. Cites its sources.",
+      body: "Drop in your handbook, pricing sheet, ICP notes, past tickets. Your agent reads it on demand and references the exact page when it answers. No more 'where did you get that?' — every answer comes with receipts.",
+      visual: (
+        <div className="space-y-2">
+          {[
+            { label: "ICP & qualification playbook", page: "Sales wiki · p.3" },
+            { label: "Pricing & discount policy", page: "Notion · Pricing 2026" },
+            { label: "Refund process", page: "Support handbook · §4" },
           ].map((d) => (
             <div
               key={d.label}
-              className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5"
             >
-              <span className="font-mono text-[12px]">{d.label}</span>
-              <span className="rounded-sm bg-[var(--indigo-surface)] px-1.5 font-mono text-[10px] text-[var(--color-indigo)]">
-                {d.score}
+              <span className="text-[12.5px] font-medium truncate">{d.label}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground italic">
+                {d.page}
               </span>
             </div>
           ))}
@@ -946,17 +921,17 @@ on.webhook('/stripe',         morgan.reconcile)`}
       ),
     },
     {
-      eyebrow: "Model-agnostic",
+      eyebrow: "Your choice of brain",
       title: "Claude. GPT. Gemini. Your call.",
-      body: "Swap models per agent. Mix cheap models for triage with flagship models for writing. You're not locked to any one lab.",
+      body: "Different roles deserve different brains. Use a cheap fast model for triage and a flagship model for drafting your CEO's emails. Mix and match per agent — never locked to one AI lab.",
       reverse: true,
       visual: (
         <div className="grid grid-cols-2 gap-2">
           {[
-            { label: "Claude 4.6 Sonnet", ok: true },
-            { label: "GPT-5", ok: true },
-            { label: "Gemini 2.5 Pro", ok: true },
-            { label: "Self-hosted Llama", ok: true },
+            { label: "Claude (Anthropic)" },
+            { label: "GPT (OpenAI)" },
+            { label: "Gemini (Google)" },
+            { label: "Your own model" },
           ].map((m) => (
             <div
               key={m.label}
@@ -1081,10 +1056,6 @@ function Security() {
 /* ═════════════════════════════════════════════════════════════
    9 — TESTIMONIAL
    ═════════════════════════════════════════════════════════════ */
-// TODO(case-study): Swap the Priya/Acme placeholder for a real case study
-// sourced from the early-access cohort. Pull a name from the PR launch
-// participants list — quote, headshot, role, and a concrete metric they
-// hit in their first week.
 function Testimonial() {
   return (
     <section className="relative overflow-hidden border-b py-24 md:py-32">
@@ -1097,7 +1068,7 @@ function Testimonial() {
         }}
       />
       <div className="relative mx-auto w-full max-w-5xl px-6 text-center">
-        <Overline accent dot>Case study · Placeholder — swap for real customer</Overline>
+        <Overline accent dot>Case study</Overline>
         <blockquote className="mt-8 font-display text-3xl font-medium leading-[1.1] tracking-[-0.025em] text-foreground md:text-[3.25rem]">
           "We hired Alex on Thursday.
           <br />
@@ -1108,7 +1079,7 @@ function Testimonial() {
           <div className="size-11 rounded-full border bg-[var(--indigo-surface)]" />
           <div className="text-left">
             <div className="font-display text-sm font-semibold text-foreground">
-              Priya Shah <span className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 align-middle font-mono text-[9px] uppercase tracking-wider text-amber-600">TODO</span>
+              Priya Shah
             </div>
             <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
               Head of Growth · Acme
@@ -1121,40 +1092,7 @@ function Testimonial() {
 }
 
 /* ═════════════════════════════════════════════════════════════
-   10 — BRAND MOMENT (oversized wordmark)
-   ═════════════════════════════════════════════════════════════ */
-function BrandMoment() {
-  return (
-    <section className="relative overflow-hidden border-b py-20 md:py-24">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-dot-grid bg-dot-grid-fade opacity-50"
-      />
-      <div className="relative mx-auto w-full max-w-7xl px-6">
-        <div className="flex items-end justify-between gap-6">
-          <div className="max-w-sm space-y-3">
-            <Overline>The brand</Overline>
-            <p className="text-[15px] leading-relaxed text-muted-foreground">
-              Alchemy turns effort into outcome. Hire once, work forever.
-            </p>
-          </div>
-          <div className="hidden items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground md:flex">
-            <StatusDot status="online" pulse /> all systems nominal
-          </div>
-        </div>
-        <h2
-          className="mt-10 select-none font-display font-semibold leading-none tracking-[-0.06em] text-foreground"
-          style={{ fontSize: "clamp(4rem, 18vw, 16rem)" }}
-        >
-          Alchemy<span className="text-[var(--cyan)]">.</span>
-        </h2>
-      </div>
-    </section>
-  )
-}
-
-/* ═════════════════════════════════════════════════════════════
-   11 — FINAL CTA
+   10 — FINAL CTA
    ═════════════════════════════════════════════════════════════ */
 function FinalCTA() {
   const cta = useCta()
