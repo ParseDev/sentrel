@@ -17,9 +17,18 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Multi-arch builds under qemu emulation can run an hour on the default
+    # 6h runner — cap explicitly so a hang fails fast instead of burning
+    # quota.
+    timeout-minutes: 45
     permissions:
       packages: write
       contents: read
+    # Cancel an in-flight build when a new push comes in. Prevents two long
+    # multi-arch builds racing for the same `:latest` tag.
+    concurrency:
+      group: engine-image-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -47,11 +56,14 @@ jobs:
       - name: Stamp .git-sha
         run: echo "${{ github.sha }}" > engine/.git-sha
 
-      - name: Build + push (multi-arch)
+      - name: Build + push (linux/amd64)
+        # Engine deploys to Fly Machines in lax region (x86_64). ARM64 builds
+        # via qemu emulation triple build time and frequently timeout the
+        # runner — re-enable here if we ever deploy ARM Fly hosts.
         uses: docker/build-push-action@v5
         with:
           context: ./engine
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           cache-from: type=gha
           cache-to:   type=gha,mode=max
