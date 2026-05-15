@@ -22,6 +22,7 @@ import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } fr
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
 import { buildSecretsMcpServer } from "./tools/secrets.js";
 import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
+import { buildShareFileMcpServer } from "./tools/share-file.js";
 import { createSlackChannelMcpServer } from "./tools/slack-channel.js";
 import { detectIntegrationIntents, hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
@@ -1447,6 +1448,14 @@ async function buildQueryOptions(
   mcpServers.skills = skillsCreatorServer;
   baseMcpServers.skills = skillsCreatorServer;
 
+  // share_file — publish a file from the agent's sandbox to a public URL
+  // via Rails ActiveStorage. Always-on. Without this, when agents produce
+  // files (rendered videos, CSVs, PDFs), they construct chat replies with
+  // localhost: URLs that don't resolve outside the sandbox.
+  const shareFileServer = buildShareFileMcpServer({ agentId: agent.id });
+  mcpServers["share-file"] = shareFileServer;
+  baseMcpServers["share-file"] = shareFileServer;
+
   // Slack-as-channel outbound. Gated on whether this agent has a connected
   // Slack ChannelConfig — without one, the tool would always 404 so we skip
   // registering it. The bot_token lives only in Rails; engine never sees it.
@@ -1618,6 +1627,9 @@ async function buildQueryOptions(
       ...(caps.tasks.enabled && profile.approvals ? [
         "mcp__approvals__request_approval",
       ] : []),
+      // Always available — agents need this any time they produce a
+      // file the user has to download. No capability gate.
+      "mcp__share-file__share_file",
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,

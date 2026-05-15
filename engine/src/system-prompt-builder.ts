@@ -143,6 +143,17 @@ export function buildSystemPrompt(
     parts.push(memSection);
   }
 
+  // Always-on. Without this nudge, agents who produce files (rendered
+  // videos, CSVs, PDFs) often paste replies with localhost: URLs or
+  // /data/... paths that only exist inside the sandbox — the user can't
+  // fetch them. share_file publishes the bytes via Rails ActiveStorage
+  // and returns a public HTTPS URL.
+  parts.push(
+    `# Sharing files\n` +
+    `Any time you produce a file the user needs to download (rendered video, CSV report, PDF, image, transcript, source bundle, tarball), **call mcp__share-file__share_file BEFORE mentioning the file in your reply**. The tool returns a public HTTPS URL. Paste that URL in your message — never paste a \`/data/...\` path, a \`localhost:...\` URL, or a \`file://\` link. Those don't work outside your sandbox.\n\n` +
+    `Example: you rendered a video to \`/data/workspace/launch-video/renders/final.mp4\`. Call \`share_file({ path: "launch-video/renders/final.mp4" })\` → it returns \`{ url: "https://alchemy.scribemd.ai/api/blobs/<id>" }\`. Reply: "Download: https://alchemy.scribemd.ai/api/blobs/<id>".`,
+  );
+
   if (caps.scheduling.enabled) {
     parts.push(
       `# Scheduling & Reminders\n` +
