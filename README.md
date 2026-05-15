@@ -19,7 +19,33 @@ Most "AI agents" today are a single chatbot dressed in different system prompts.
 - **Model-agnostic.** Claude, GPT, Gemini, OpenRouter. Mix per-agent.
 - **Replayable.** Every tool call, every decision, every $ spent — searchable timeline with full traces.
 
-Built by [Elie Toubiana](https://github.com/eltoubia) (CEO) and [Abdelmoumin Mokhtari](https://github.com/qubitam) (Head of Engineering) at ScribeMD because we needed it ourselves.
+---
+
+## A concrete example
+
+Hire an SDR named Sarah. From `/agents/new`:
+
+```
+Name        Sarah
+Role        Sales Development Rep
+Template    SDR · books demos
+Skills      apollo, gmail, hubspot, web-search
+Channels    Email (sarah@yourco.com)  ·  Slack (#sarah)
+Permissions send_email: auto  ·  refund: never  ·  cold_email_bulk: ask
+Model       Claude Sonnet 4.6
+Manager     Reports to nobody
+```
+
+Hit Create. **90 seconds later**:
+
+- A Fly Machine boots in `lax` with Sarah's `/data` volume mounted
+- SES provisions `sarah@yourco.com` + DKIM records auto-applied if you're on a managed zone
+- A `#sarah` Slack channel auto-creates in your workspace, bot invited, topic set
+- Sarah's first inbound triage runs — she reads a list of new leads from Apollo, drafts emails, posts to `#sarah` with previews for your approval
+
+You DM `@Alchemy "sarah, reach out to anyone from a Series B company in our ICP this week"` in Slack. Sarah picks it up, builds a list, drafts 8 personalized emails, posts them in-thread asking which to send. You ✅ five of them. They go out. She logs each touch in HubSpot. The trace is at `/ops/runs` showing every tool call + cost.
+
+That's what one agent looks like. Now multiply by your team.
 
 ---
 
@@ -132,6 +158,170 @@ Manual triggers: both workflows have `workflow_dispatch` in the Actions tab.
 
 ---
 
+## Capabilities & policies
+
+Every agent has the same baseline tools (web search, scheduling, RAG over your docs, task creation, secrets, the agent's own outbound channel). Beyond that, two layers shape what each agent can actually do:
+
+**Capabilities** are coarse switches set at agent creation:
+
+```
+knowledge_base   Lets the agent read + cite your uploaded docs
+scheduling       Set reminders, schedule recurring work
+tasks            Create tasks, delegate to other agents, comment to log progress
+integrations     Composio's 250+ apps + native channel integrations
+recall           Search prior conversations and audit logs
+send_media       Voice notes, images, file attachments on channel replies
+```
+
+**Skills** are markdown bundles the agent loads on demand (Claude Agent SDK's skill system). Anyone in your org can write one. Casper, our chief-of-staff agent, ships with `skill-creator` so he can author new skills for himself or other agents and install them. A skill bundle looks like:
+
+```
+my-skill/
+├── SKILL.md                  # The instructions the agent reads
+├── scripts/                  # Optional: pre-baked code the agent can run
+└── references/               # Optional: docs the skill links to
+```
+
+**Policies** are per-action approval gates. Three modes per action:
+
+```
+auto    The agent does it without asking
+draft   The agent prepares it, you get a one-click approve / reject card
+never   The action is hidden from the agent entirely
+```
+
+Policies stack across levels: org-wide → team → per-agent → per-tool. A `send_email` policy of `auto` at the org level with `draft` overridden for `[email protected]` recipients gives you safe-by-default with surgical guardrails. Every approval (manual or auto-rule) writes an `audit_logs` row with full payload for compliance review.
+
+---
+
+## Security model
+
+- **Per-agent isolation.** Each agent is its own VM with its own `/data` volume. Token compromise on Sarah doesn't affect Casper. Memory blowup on Casper doesn't slow down Sarah.
+- **Encrypted credentials.** All `credentials.value` columns use Rails 7's `encrypts`. Bot tokens (Slack), API keys (Anthropic, OpenAI, …), and cloud creds (AWS, Stripe, …) round-trip through `ActiveRecord::Encryption`. The engine never holds raw tokens — it asks Rails via `/api/secrets` and gets back the resolved value scoped to that agent.
+- **Per-agent OAuth grants.** A `Credential` belongs to the org; an `AgentCredentialGrant` says which agents can use which credential. Empty grant list = falls back to org defaults. Revoke a single grant to surgically cut access.
+- **Audit trail.** Every tool call, every approval decision (manual + auto-rule), every secret fetch writes an `audit_logs` row with the acting agent, the human-of-record (`acting_user_id`), the action, and the full input/output payload.
+- **HMAC-signed webhooks.** Slack, Stripe, Twilio, and SES inbound traffic all signature-verify before doing work. 5-min replay window on Slack; AWS SNS verification on SES.
+- **No production secrets in git history.** Audited from initial commit forward.
+
+---
+
+## Extending it
+
+### Writing a skill
+
+The Claude Agent SDK reads markdown files as `Skill` definitions. To add a new skill:
+
+```bash
+mkdir -p backend/db/seeds/skills/common/refunds
+cat > backend/db/seeds/skills/common/refunds/SKILL.md <<'EOF'
+---
+name: refunds
+description: Process customer refund requests within policy
+---
+1. Look up the customer in Stripe.
+2. Check the refund window (< 30 days from purchase).
+3. If within policy, issue the refund + email the customer.
+4. If outside policy, draft an explanation for human approval.
+EOF
+bin/rails db:seed:skills
+```
+
+Agents who have this skill installed can `Skill("refunds")` and read it on demand. No re-deploy needed — `EngineSync.trigger_for_skill` re-syncs every agent that has it.
+
+### Adding a custom MCP tool
+
+For tools that need to run code (not just read instructions), drop a file under `engine/src/tools/`:
+
+```ts
+// engine/src/tools/your-tool.ts
+import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
+
+export function buildYourToolMcpServer(agentId: number) {
+  return createSdkMcpServer({
+    name: "your-tool",
+    version: "1.0.0",
+    tools: [
+      tool(
+        "your_tool.do_thing",
+        "What this does, in one line the model will read",
+        { input: z.string() },
+        async (args) => ({ content: [{ type: "text", text: `Did: ${args.input}` }] }),
+      ),
+    ],
+  });
+}
+```
+
+Wire it up in `engine/src/agent-runner.ts` under the MCP server registration block (search for `mcpServers["secrets"] =`). Gate it on whatever capability makes sense.
+
+### Spinning up a new agent host
+
+The engine is provisioner-agnostic. To run agents somewhere other than Fly:
+
+1. Implement an `AgentProvisioner` backend in `backend/app/services/agent_provisioner.rb` (sibling of `FlyBackend`).
+2. Make sure your backend returns a stable `machine_id` and supports `start` / `stop` / `restart` / `redeploy`.
+3. Flip `AGENT_PROVISIONER=hetzner` (or whatever you call it) in the Rails env.
+
+There's a partial Hetzner backend in the codebase as a reference implementation.
+
+---
+
+## Local dev cheatsheet
+
+```bash
+# Boot everything from repo root
+bin/dev
+# → Vite (dev assets)  ·  Rails (port 3200)  ·  Sidekiq  ·  Engine (one local instance on port 3300)
+
+# Just the backend, no engine
+cd backend && bin/dev
+
+# Reset the dev DB + reseed (templates, system skills, etc.)
+cd backend && bin/rails db:reset && bin/rails db:seed
+
+# Tail the engine logs for a specific agent in prod
+flyctl logs -a alchemy-prod-agent-1
+
+# Open a prod Rails console
+cd backend && bin/kamal console
+
+# Run the agent's engine locally pointed at prod DB (debug-only)
+cd engine && EMPLOYEE_ID=1 DATABASE_URL=$(grep DATABASE_URL ../backend/.kamal/secrets | cut -d= -f2-) bun run dev
+```
+
+Common gotchas:
+- **Bun's lockfile** generates on macOS but the engine Dockerfile is glibc Linux. Don't use `--frozen-lockfile` inside the engine container — the lockfile skips Linux-only optional deps. See `engine/Dockerfile` comment for context.
+- **PrefixedIds** makes `agent.as_json[:id]` a string (`"agt_abc"`), never `.to_i` it for ordering. Use `created_at` instead.
+- **acts_as_tenant** in tests requires `ActsAsTenant.with_tenant(org) { … }` blocks — easy to forget and tests pass empty.
+
+---
+
+## Roadmap
+
+What's working today:
+- ✅ Agent creation flow (scratch + template library)
+- ✅ Multi-channel: email (SES), Slack (channel-per-agent), Telegram, web chat
+- ✅ Composio + 250+ integrations
+- ✅ Policy engine + per-action approvals
+- ✅ Knowledge base (RAG over uploaded docs + URLs)
+- ✅ Per-agent encrypted credentials with engine `secrets.get` MCP tool
+- ✅ Skills system + agent self-authored skills
+- ✅ Scheduling + cron with wake-from-sleep guarantee
+- ✅ Audit log + run tracer + per-agent cost tracking
+- ✅ BYO domain (Route 53 / Cloudflare auto-config) or managed subdomain
+
+What's next:
+- 🟡 Slack v2 — slash commands, Block Kit approval modals, DM routing
+- 🟡 Slack Marketplace listing
+- 🟡 Real customer case studies on the landing page
+- 🟡 100 prebuilt agent templates with bundled skills + integrations
+- 🟡 Approval rules UI (today rules are seeded via Rails console)
+- 🟡 Mobile companion (approve / chat from your phone)
+- 🟡 SOC 2 type 1
+
+---
+
 ## Documentation
 
 | Document | What's inside |
@@ -146,15 +336,39 @@ Manual triggers: both workflows have `workflow_dispatch` in the Actions tab.
 
 ---
 
-## Status
+## FAQ
 
-**In early access.** Production at <https://alchemy.scribemd.ai> with a handful of users. Core surface stable; rough edges in places, plenty of [todo's](ROADMAP.md). If you're early-team material and want to break something on purpose, reach out.
+**How is this different from Lindy / Relevance / OpenAI's "Assistants"?**
+Lindy and Relevance are workflow builders — drag boxes, connect outputs to inputs. Great for one-shot automations. Alchemy gives you persistent **employees** who own a role and react to events 24/7 inside your existing channels. The mental model is "a teammate logs into Slack" not "a workflow runs when triggered." Different surface area.
+
+**Why per-agent VMs instead of one shared engine?**
+Three reasons. (1) **Isolation**: when an agent's prompt grows or its node modules corrupt, it doesn't take down the rest of the fleet. (2) **State**: each agent has its own `/data` volume — memory, RAG indices, OAuth token caches all survive restarts without a shared database becoming a bottleneck. (3) **Cost transparency**: machine-level cost = agent-level cost. You see exactly what each agent costs.
+
+The tradeoff is per-agent compute floor (~$0.50/month idle, ~$6/month always-on). At small fleets that's fine; at 1000+ agents we'd reconsider.
+
+**Can I self-host?**
+Not yet — the deployment story assumes ScribeMD's AWS account + Fly org. The code is structured to make this swap-able (see "Spinning up a new agent host" above) but we haven't dogfooded the self-host path. Reach out if you want to be the first.
+
+**What does it cost to run?**
+At today's pricing: Rails control plane on one t3.medium ≈ $25/mo, Fly Machines ≈ $0.50-$6/agent/mo depending on activity, model API calls pass-through to whichever provider the agent uses. A 10-agent team running mostly Claude Sonnet 4.6 with moderate activity is ~$200-400/mo all-in.
+
+**How do you handle context across model providers?**
+We don't try to. Each agent's session lives on one model. You can swap the model per agent (so Sarah uses Claude, Casper uses GPT) but cross-provider context migration is out of scope — the abstractions leak too much to be useful.
+
+**Is there a SaaS sign-up?**
+Yes — <https://alchemy.scribemd.ai>. Early access is friendly and the docs are real, but expect rough edges. Email us if anything breaks.
+
+---
+
+## Contributing
+
+Internal team only for now. If you're early-team material and want to build something here, reach out. Issues + PRs from external contributors will get a friendly "not yet" until we're past v1.
 
 ---
 
 ## License
 
-Source-available under a custom license — see [`LICENSE`](LICENSE) (TBD). Production use by ScribeMD; external use case-by-case for now.
+Source-available under a custom license — see [`LICENSE`](LICENSE) (TBD). Production use by ScribeMD; external commercial use case-by-case until we settle on terms.
 
 ---
 
