@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_13_100100) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_14_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -91,6 +91,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_13_100100) do
     t.datetime "created_at", null: false
     t.bigint "created_by_user_id"
     t.text "description"
+    t.text "email_signature_md"
     t.string "icon"
     t.text "identity_md"
     t.integer "install_count", default: 0, null: false
@@ -101,6 +102,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_13_100100) do
     t.boolean "published", default: false, null: false
     t.string "role", null: false
     t.string "slug", null: false
+    t.jsonb "suggested_integrations", default: [], null: false
     t.string "suggested_manager_role"
     t.string "suggested_model"
     t.string "suggested_provider", default: "anthropic", null: false
@@ -232,8 +234,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_13_100100) do
     t.jsonb "config", default: {}
     t.datetime "created_at", null: false
     t.boolean "enabled", default: true
+    t.text "secret_config"
     t.string "status", default: "disconnected", null: false
     t.datetime "updated_at", null: false
+    t.index "((config ->> 'team_id'::text)) text_pattern_ops", name: "idx_channel_configs_slack_team_id", where: "((channel_type)::text = 'slack'::text)"
     t.index ["agent_id", "channel_type"], name: "index_channel_configs_on_agent_id_and_channel_type", unique: true
     t.index ["agent_id"], name: "index_channel_configs_on_agent_id"
   end
