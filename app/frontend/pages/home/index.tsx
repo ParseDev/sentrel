@@ -1063,21 +1063,21 @@ function Security() {
 function Testimonial() {
   const quotes = [
     {
-      initial: "A",
+      initial: "E",
       tone: "indigo" as const,
-      name: "Abdelmoumin Mokhtari",
-      role: "Founder · ScribeMD",
+      name: "Elie Toubiana",
+      role: "CEO · ScribeMD",
       quote:
-        "Casper handles the work I used to context-switch into ten times a day — inbox triage, deal updates, partner outreach. I'm running the company instead of running between tools.",
-      highlight: "running the company instead of running between tools",
+        "Any time I think 'someone should handle this,' I spin up an agent for it. New role at the company, ten minutes — not three weeks of recruiting. It's the closest thing to actually scaling yourself.",
+      highlight: "the closest thing to actually scaling yourself",
     },
     {
-      initial: "E",
+      initial: "A",
       tone: "cyan" as const,
-      name: "Elie Toubiana",
-      role: "Engineer · Early user",
+      name: "Abdelmoumin Mokhtari",
+      role: "Head of Engineering · ScribeMD",
       quote:
-        "The whole stack feels like what you'd build internally if you had six months. Per-agent isolation, real OAuth, replayable runs, an SDK that doesn't fight you. I open the code more often than the UI.",
+        "The whole stack is what you'd build internally if you had six months. Per-agent isolation, real OAuth, replayable runs, an SDK that doesn't fight you. I open the code more often than the UI.",
       highlight: "what you'd build internally if you had six months",
     },
   ]
