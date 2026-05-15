@@ -75,10 +75,24 @@ jobs:
       # default doesn't apply here — the keys live at the runner's $HOME.
       - name: Configure SSH
         working-directory: .
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/deploy.pem
+          chmod 700 ~/.ssh
+          # printf preserves the multi-line key without `echo`'s portability
+          # quirks. Trailing newline is appended explicitly — OpenSSH refuses
+          # keys whose body doesn't end with one.
+          printf '%s\n' "$SSH_DEPLOY_KEY" > ~/.ssh/deploy.pem
           chmod 600 ~/.ssh/deploy.pem
+
+          # Fast-fail with a clear error if the secret is malformed (missing
+          # BEGIN/END headers usually means it was pasted as a single line).
+          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/deploy.pem; then
+            echo "::error::SSH_DEPLOY_KEY secret looks malformed — no BEGIN PRIVATE KEY header. Re-paste the file contents in full."
+            exit 1
+          fi
+
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/deploy.pem
           ssh-keyscan -H 52.2.137.107 >> ~/.ssh/known_hosts
