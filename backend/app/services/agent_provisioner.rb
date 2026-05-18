@@ -173,6 +173,10 @@ module AgentProvisioner
         "REDIS_URL"           => ENV.fetch("ENGINE_REDIS_URL", ENV["REDIS_URL"].to_s),
         "ENGINE_API_SECRET"   => ENV["ENGINE_API_SECRET"].to_s,
         "RAILS_INTERNAL_URL"  => ENV["RAILS_INTERNAL_URL"].to_s,
+        # Public-facing URL the agent should use when constructing user-
+        # facing links (download URLs from share_file, etc.). Falls back to
+        # RAILS_INTERNAL_URL when not set explicitly.
+        "WEBHOOK_BASE_URL"    => ENV["WEBHOOK_BASE_URL"].presence || ENV["RAILS_INTERNAL_URL"].to_s,
         # BYO LLM keys — Credential.find_for(agent, …) prefers the org's
         # stored key over the platform-wide ENV fallback so customers can
         # bill against their own account. Same lookup for openai (for

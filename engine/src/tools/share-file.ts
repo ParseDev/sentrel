@@ -27,12 +27,25 @@ function publicBaseUrl(): string {
   // Prefer the public-facing host (set in deploy.yml). Falls back to the
   // engine→Rails internal URL if WEBHOOK_BASE_URL isn't set. Either gives
   // an HTTPS URL on prod; both point at the same Rails app.
-  return (
+  const url =
     process.env.WEBHOOK_BASE_URL ||
     process.env.RAILS_PUBLIC_URL ||
     process.env.RAILS_INTERNAL_URL ||
-    "http://localhost:3200"
-  );
+    "http://localhost:3200";
+
+  // Defensive: if we're on Fly (prod) and somehow ended up with a localhost
+  // URL — typically because the machine was provisioned before
+  // RAILS_INTERNAL_URL was added to its env — log loudly. The agent will
+  // hand the user a broken link otherwise. Operator fix: hit Reload on
+  // the agent's page to re-push env vars.
+  if (process.env.FLY_APP_NAME && /localhost/.test(url)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[share-file] WARNING: publicBaseUrl=${url} on Fly machine — env stale. ` +
+      `Run AgentMachineOps.reload(agent) from Rails console to push fresh env.`,
+    );
+  }
+  return url;
 }
 
 interface ShareContext {
