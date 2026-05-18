@@ -1,5 +1,5 @@
 import { Head, Link } from "@inertiajs/react"
-import { ArrowUpRight, Bot, Filter, Plus, Rocket, Search } from "lucide-react"
+import { ArrowUpRight, Bot, ChevronDown, ChevronRight, Filter, LayoutGrid, Network, Plus, Rocket, Search } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
@@ -29,10 +29,12 @@ const STATUS_MAP: Record<string, { dot: "online" | "working" | "idle" | "error" 
 
 const FILTERS = ["All", "Running", "Paused", "Stopped"] as const
 type FilterKey = (typeof FILTERS)[number]
+type ViewMode = "cards" | "tree"
 
 export default function AgentsIndex({ agents }: { agents: Agent[] }) {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<FilterKey>("All")
+  const [view, setView] = useState<ViewMode>("cards")
   const [rollConfirm, setRollConfirm] = useState(false)
   const [rolling, setRolling] = useState(false)
 
@@ -113,41 +115,74 @@ export default function AgentsIndex({ agents }: { agents: Agent[] }) {
 
       {agents.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[240px] max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or role…"
-              className="h-9 pl-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          {view === "cards" && (
+            <>
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or role…"
+                  className="h-9 pl-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-1 rounded-md border bg-card p-1">
+                <Filter className="ml-2 size-3 text-muted-foreground" />
+                {FILTERS.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`rounded-sm px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      filter === f
+                        ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="flex items-center gap-1 rounded-md border bg-card p-1">
-            <Filter className="ml-2 size-3 text-muted-foreground" />
-            {FILTERS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-sm px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  filter === f
-                    ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+            <button
+              onClick={() => setView("cards")}
+              title="Card view"
+              className={`flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors ${
+                view === "cards"
+                  ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="size-3" />
+              Cards
+            </button>
+            <button
+              onClick={() => setView("tree")}
+              title="Org chart"
+              className={`flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors ${
+                view === "tree"
+                  ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Network className="size-3" />
+              Tree
+            </button>
           </div>
 
           <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-            {filtered.length} shown
+            {view === "cards" ? `${filtered.length} shown` : `${agents.length} total`}
           </span>
         </div>
       )}
 
       {agents.length === 0 ? (
         <EmptyState />
+      ) : view === "tree" ? (
+        <AgentTree agents={agents} />
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-20 text-center">
           <p className="font-mono text-sm text-muted-foreground">No matches</p>
@@ -311,6 +346,118 @@ function AgentListCard({ agent }: { agent: Agent }) {
         </div>
       </GlowCard>
     </Link>
+  )
+}
+
+/* ---------- tree ---------- */
+type TreeNode = { agent: Agent; children: TreeNode[] }
+
+function buildTree(agents: Agent[]): TreeNode[] {
+  const byId = new Map<string, TreeNode>()
+  agents.forEach((a) => byId.set(a.id, { agent: a, children: [] }))
+
+  const roots: TreeNode[] = []
+  agents.forEach((a) => {
+    const node = byId.get(a.id)!
+    const managerId = a.manager?.id
+    const parent = managerId ? byId.get(managerId) : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  })
+
+  const sortRec = (nodes: TreeNode[]) => {
+    nodes.sort((x, y) => x.agent.name.localeCompare(y.agent.name))
+    nodes.forEach((n) => sortRec(n.children))
+  }
+  sortRec(roots)
+  return roots
+}
+
+function AgentTree({ agents }: { agents: Agent[] }) {
+  const roots = useMemo(() => buildTree(agents), [agents])
+
+  if (roots.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-20 text-center">
+        <p className="font-mono text-sm text-muted-foreground">No roots</p>
+        <p className="text-sm text-muted-foreground">
+          Every agent has a manager — at least one needs to be a root for the tree to render.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <GlowCard tint="cyan" className="p-5">
+      <ul className="space-y-1">
+        {roots.map((node) => (
+          <TreeRow key={node.agent.id} node={node} depth={0} />
+        ))}
+      </ul>
+    </GlowCard>
+  )
+}
+
+function TreeRow({ node, depth }: { node: TreeNode; depth: number }) {
+  const [open, setOpen] = useState(true)
+  const hasChildren = node.children.length > 0
+  const { agent } = node
+  const st = STATUS_MAP[agent.status] ?? STATUS_MAP.stopped
+
+  return (
+    <li>
+      <div
+        className="group flex items-center gap-2 rounded-md py-1.5 pr-2 hover:bg-muted/50"
+        style={{ paddingLeft: `${depth * 20 + 4}px` }}
+      >
+        <button
+          type="button"
+          onClick={() => hasChildren && setOpen((o) => !o)}
+          className={`flex size-5 shrink-0 items-center justify-center rounded-sm ${
+            hasChildren ? "text-muted-foreground hover:bg-muted hover:text-foreground" : "invisible"
+          }`}
+          aria-label={open ? "Collapse" : "Expand"}
+        >
+          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+        </button>
+
+        <span className="flex size-6 shrink-0 items-center justify-center">
+          <StatusDot status={st.dot} pulse={agent.status === "running"} />
+        </span>
+
+        <Link
+          href={agentPath(agent.id)}
+          className="flex min-w-0 flex-1 items-center gap-2"
+        >
+          <span className="truncate font-display text-sm font-semibold text-foreground group-hover:text-[var(--color-indigo)]">
+            {agent.name}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">{agent.role}</span>
+          {hasChildren && (
+            <span className="rounded-sm border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              {node.children.length} report{node.children.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </Link>
+
+        {agent.ai_config && (
+          <span className="hidden rounded-sm bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
+            {agent.ai_config.model_id}
+          </span>
+        )}
+        <span className="rounded-sm border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+          {st.label}
+        </span>
+      </div>
+
+      {hasChildren && open && (
+        <ul className="space-y-1">
+          {node.children.map((child) => (
+            <TreeRow key={child.agent.id} node={child} depth={depth + 1} />
+          ))}
+        </ul>
+      )}
+    </li>
   )
 }
 
