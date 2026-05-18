@@ -20,6 +20,7 @@ class Agent < ApplicationRecord
   has_many :agent_tool_policies, dependent: :destroy
   has_many :agent_credential_grants, dependent: :destroy
   has_many :credentials, through: :agent_credential_grants
+  has_many :agent_summaries, dependent: :destroy
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: { scope: :organization_id }
