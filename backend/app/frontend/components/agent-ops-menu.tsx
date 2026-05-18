@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { router } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
@@ -42,7 +43,7 @@ type LogEntry = {
   instance?: string
 }
 
-type OpKey = "reload" | "restart" | "redeploy" | "reprovision"
+type OpKey = "reload" | "restart" | "redeploy" | "reprovision" | "delete"
 
 interface OpSpec {
   key: OpKey
@@ -123,6 +124,23 @@ const OPS: OpSpec[] = [
     confirmLabel: "Yes, destroy and rebuild",
     destructive: true,
   },
+  {
+    key: "delete",
+    label: "Delete agent",
+    title: "Delete this agent permanently",
+    icon: Trash2,
+    summary:
+      "Deprovisions the agent's machine and deletes the agent and all of its data from Alchemy. This cannot be undone.",
+    details: [
+      "Destroys the Fly/Hetzner machine and its persistent volume.",
+      "Deletes the agent record along with all conversations, tasks, scheduled work, skills, and audit logs.",
+      "Connected channels (Telegram, WhatsApp) will stop responding immediately.",
+      "Takes roughly 30–60 seconds depending on provider.",
+    ],
+    impact: { label: "Permanent deletion — no recovery", tone: "danger" },
+    confirmLabel: "Yes, delete this agent",
+    destructive: true,
+  },
 ]
 
 async function opsPost(agentId: string | number, action: string) {
@@ -146,6 +164,15 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
   const runOp = async (spec: OpSpec) => {
     setPending(null)
     setBusy(spec.key)
+    if (spec.key === "delete") {
+      router.delete(`/agents/${agentId}`, {
+        onError: () => {
+          toast.error("Delete failed")
+          setBusy(null)
+        },
+      })
+      return
+    }
     try {
       const result = await opsPost(agentId, spec.key)
       if (result.ok) toast.success(`${spec.label}: ${result.message}`)
