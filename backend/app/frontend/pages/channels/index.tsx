@@ -69,9 +69,10 @@ interface Props {
   twilio_configured: boolean
   org_email_domain: string | null
   org_email_domain_verified: boolean
+  shared_email_domain: string
 }
 
-export default function ChannelsIndex({ agent, channels, available_channels, twilio_configured, org_email_domain, org_email_domain_verified }: Props) {
+export default function ChannelsIndex({ agent, channels, available_channels, twilio_configured, org_email_domain, org_email_domain_verified, shared_email_domain }: Props) {
   const [connectingChannel, setConnectingChannel] = useState<string | null>(null)
   const connectedTypes = channels.map((c) => c.channel_type)
   const isTwilioChannel = (key: string) => key === "whatsapp" || key === "sms"
@@ -243,10 +244,11 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
       )}
       {connectingChannel && connectingChannel === "email" && (
         <EmailConnectDialog
-          agentSlug={agent.slug}
+          agentName={agent.name}
           agentId={agent.id}
           orgEmailDomain={org_email_domain}
           orgEmailDomainVerified={org_email_domain_verified}
+          sharedEmailDomain={shared_email_domain}
           onClose={() => setConnectingChannel(null)}
         />
       )}
@@ -496,47 +498,69 @@ function TwilioConnectDialog({ channelKey, channel, agentId, onClose }: {
   )
 }
 
-// ── Email connect dialog — pre-fills <agent-slug>@<org-domain>. ──
-// If the org hasn't claimed/verified a domain yet, redirect to /settings.
-function EmailConnectDialog({ agentSlug, agentId, orgEmailDomain, orgEmailDomainVerified, onClose }: {
-  agentSlug: string
+// ── Email connect dialog. Two modes:
+//   • Own domain  — user picks the local-part; we POST <local>@<org-domain>.
+//   • Shared domain — server allocates "<first-name>-<random>@<shared>" on save;
+//     the UI just confirms. Address is locked once provisioned.
+function EmailConnectDialog({ agentName, agentId, orgEmailDomain, orgEmailDomainVerified, sharedEmailDomain, onClose }: {
+  agentName: string
   agentId: number
   orgEmailDomain: string | null
   orgEmailDomainVerified: boolean
+  sharedEmailDomain: string
   onClose: () => void
 }) {
-  const [localPart, setLocalPart] = useState(agentSlug)
+  const slugged = agentName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  const firstName = slugged.split("-")[0] || "agent"
+  const [localPart, setLocalPart] = useState(slugged)
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (orgEmailDomain) {
+      const cleaned = localPart.toLowerCase().replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "")
+      if (!cleaned) return
+      router.post(`/agents/${agentId}/channel_configs`, {
+        channel_config: {
+          channel_type: "email",
+          enabled: true,
+          config: { address: `${cleaned}@${orgEmailDomain}` },
+        },
+      }, { onSuccess: onClose })
+    } else {
+      router.post(`/agents/${agentId}/channel_configs`, {
+        channel_config: { channel_type: "email", enabled: true, config: {} },
+      }, { onSuccess: onClose })
+    }
+  }
 
   if (!orgEmailDomain) {
     return (
       <Dialog open onOpenChange={() => onClose()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Set up email first</DialogTitle>
+            <DialogTitle>Connect Email</DialogTitle>
             <DialogDescription>
-              Pick a workspace email domain in Settings before connecting an agent inbox.
+              We'll auto-provision a unique inbox on our shared domain. To use your own domain instead, set it up in <a href="/settings" className="underline">Settings</a> first.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
-            <Button type="button" onClick={() => router.visit("/settings")}>Go to Settings</Button>
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Email address</Label>
+              <div className="flex items-center rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm">
+                {firstName}-xxxxx@{sharedEmailDomain}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The 5-character tail is generated on save to keep the address unique. The address can't be edited later.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
+              <Button type="submit">Provision inbox</Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     )
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const cleaned = localPart.toLowerCase().replace(/[^a-z0-9._-]/g, "").replace(/^[._-]+|[._-]+$/g, "")
-    if (!cleaned) return
-    router.post(`/agents/${agentId}/channel_configs`, {
-      channel_config: {
-        channel_type: "email",
-        enabled: true,
-        config: { address: `${cleaned}@${orgEmailDomain}` },
-      },
-    }, { onSuccess: onClose })
   }
 
   return (
@@ -556,7 +580,7 @@ function EmailConnectDialog({ agentSlug, agentId, orgEmailDomain, orgEmailDomain
                 value={localPart}
                 onChange={(e) => setLocalPart(e.target.value)}
                 className="border-0 focus-visible:ring-0 rounded-none"
-                placeholder={agentSlug}
+                placeholder={slugged}
                 required
               />
               <div className="flex items-center px-3 text-sm text-muted-foreground bg-muted/40 border-l">

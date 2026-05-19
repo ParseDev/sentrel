@@ -71,6 +71,9 @@ module Email
     private
 
     def domain_verified?
+      # Shared platform domain is verified once at the SES/Route 53 level —
+      # individual orgs don't need their own email_domain set to send from it.
+      return true if Email::SharedAddress.domain == @from_domain
       @org.email_domain == @from_domain && @org.email_domain_verified
     end
 

@@ -9,7 +9,8 @@ class ChannelConfigsController < ApplicationController
       available_channels: YAML.load_file(Rails.root.join("config/channels.yml")),
       twilio_configured: ENV["TWILIO_ACCOUNT_SID"].present?,
       org_email_domain: current_tenant.email_domain,
-      org_email_domain_verified: current_tenant.email_domain_verified?
+      org_email_domain_verified: current_tenant.email_domain_verified?,
+      shared_email_domain: Email::SharedAddress.domain
     }
   end
 
@@ -27,15 +28,23 @@ class ChannelConfigsController < ApplicationController
     config = @agent.channel_configs.build(channel_config_params)
     config.status = "connected"
 
-    # Email channel: validate domain + auto-setup SES inbound
+    # Email channel: validate domain + auto-setup SES inbound. If the org
+    # hasn't connected its own domain, fall back to a freshly-allocated
+    # address on the platform-owned shared domain. The address is system
+    # owned — any address the client posted is discarded.
     if config.channel_type == "email"
-      address = config.config["address"]
-      domain = address&.split("@")&.last
-      if current_tenant.email_domain.present? && current_tenant.email_domain != domain
-        redirect_back fallback_location: agent_channel_configs_path(@agent),
-          alert: "Email must use your org domain @#{current_tenant.email_domain}"
-        return
+      if current_tenant.email_domain.blank?
+        config.config["address"] = Email::SharedAddress.allocate_for(@agent)
+      else
+        posted = config.config["address"]
+        posted_domain = posted&.split("@")&.last
+        if posted_domain != current_tenant.email_domain
+          redirect_back fallback_location: agent_channel_configs_path(@agent),
+            alert: "Email must use your org domain @#{current_tenant.email_domain}"
+          return
+        end
       end
+      address = config.config["address"]
 
       begin
         setup_ses_inbound(address)
@@ -113,8 +122,12 @@ class ChannelConfigsController < ApplicationController
   def destroy
     config = @agent.channel_configs.find(params[:id])
 
-    # Clean up SES receipt rule on email disconnect
-    if config.channel_type == "email" && config.config["address"].present?
+    # Clean up SES receipt rule on email disconnect. Skip on the shared
+    # platform domain — there's no per-address rule to delete (the catch-all
+    # handles routing for every address on that domain).
+    if config.channel_type == "email" &&
+       config.config["address"].present? &&
+       !Email::SharedAddress.domain?(config.config["address"])
       begin
         rule_name = "alchemy-#{config.config['address'].gsub(/[^a-z0-9]/i, '-')}"
         ses_client.delete_receipt_rule(rule_set_name: "alchemy-inbound", rule_name: rule_name)
@@ -228,6 +241,11 @@ class ChannelConfigsController < ApplicationController
   end
 
   def setup_ses_inbound(address)
+    # Shared platform domain is wired up once at deploy time with a single
+    # catch-all SES receipt rule that routes every inbound to /webhooks/email.
+    # Per-address rules would just add clutter and risk hitting SES rule limits.
+    return if Email::SharedAddress.domain?(address)
+
     region = ENV.fetch("AWS_REGION", "us-east-1")
     account_id = ENV["AWS_ACCOUNT_ID"]
 
@@ -255,7 +273,7 @@ class ChannelConfigsController < ApplicationController
     sns_client.subscribe(topic_arn: bounce_arn, protocol: "https", endpoint: "#{webhook_base_url}/webhooks/email_bounces")
     sns_client.subscribe(topic_arn: complaint_arn, protocol: "https", endpoint: "#{webhook_base_url}/webhooks/email_complaints")
 
-    # Wire bounce/complaint topics to the SES identity
+    # Wire bounce/complaint topics to the SES identity.
     domain = address.split("@").last
     begin
       ses_client.set_identity_notification_topic(identity: domain, notification_type: "Bounce", sns_topic: bounce_arn)

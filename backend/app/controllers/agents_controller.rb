@@ -234,7 +234,8 @@ class AgentsController < ApplicationController
       agents: current_tenant.agents.select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
-      org_email_domain: current_tenant.try(:email_domain).presence
+      org_email_domain: current_tenant.try(:email_domain).presence,
+      shared_email_domain: Email::SharedAddress.domain
     }
   end
 
@@ -458,10 +459,10 @@ class AgentsController < ApplicationController
       cfg = (attrs["config"] || attrs[:config] || {}).to_h.stringify_keys
       status = "pending"
       if kind == "email"
-        cfg["address"] = cfg["address"].presence || default_email_address_for(agent)
-        # Org hasn't picked an email domain yet — skip the email channel rather
-        # than persisting a half-formed config. User can connect it from the
-        # Channels page after they set up email in /settings.
+        # Ignore any address the client posted — the address is system-owned
+        # and lives on either the org's verified domain or the shared platform
+        # domain. Never let an unverified address sneak in via form POST.
+        cfg["address"] = default_email_address_for(agent)
         next if cfg["address"].blank?
         status = "connected"
       end
@@ -479,8 +480,8 @@ class AgentsController < ApplicationController
 
   def default_email_address_for(agent)
     domain = current_tenant.try(:email_domain).presence
-    return nil unless domain
-    "#{agent.slug}@#{domain}"
+    return "#{agent.slug}@#{domain}" if domain
+    Email::SharedAddress.allocate_for(agent)
   end
 
   def agent_json(agent)
