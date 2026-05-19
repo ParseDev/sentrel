@@ -4,7 +4,7 @@ interface AppLogoProps {
 }
 
 /**
- * Alchemy logomark — a small indigo-to-cyan gradient diamond that
+ * Double.md logomark — a small indigo-to-cyan gradient diamond that
  * pairs with the wordmark. When variant="mark" only the square renders.
  */
 function Mark({ px = 18 }: { px?: number }) {
@@ -49,7 +49,7 @@ export default function AppLogo({ size = "default", variant = "full" }: AppLogoP
           fontWeight: 400,
         }}
       >
-        Alchemy<span className="text-[var(--cyan)]">.</span>
+        Double<span className="text-[var(--cyan)]">.md</span>
       </span>
     </div>
   )

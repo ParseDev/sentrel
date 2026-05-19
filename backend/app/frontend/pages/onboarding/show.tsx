@@ -648,7 +648,7 @@ export default function OnboardingShow({
           </div>
 
           <p className="relative font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
-            Alchemy · Turn effort into outcome
+            Double.md · Turn effort into outcome
           </p>
         </aside>
 

@@ -1,12 +1,12 @@
 {
   "display_information": {
-    "name": "Alchemy",
+    "name": "Double.md",
     "description": "Run AI teammates inside your Slack workspace",
     "background_color": "#0b0b0f"
   },
   "features": {
     "bot_user": {
-      "display_name": "Alchemy",
+      "display_name": "Double.md",
       "always_online": true
     },
     "app_home": {
@@ -18,7 +18,7 @@
       {
         "command": "/alchemy",
         "url": "https://www.double.md/webhooks/slack/commands",
-        "description": "Send a message to one of your Alchemy agents",
+        "description": "Send a message to one of your Double.md agents",
         "usage_hint": "<agent-slug> <message>   (or just <message> for the default agent)",
         "should_escape": false
       }

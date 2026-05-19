@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client"
 import PersistentLayout from "@/layouts/persistent-layout"
 
 void createInertiaApp({
-  title: (title) => (title ? `${title} - Alchemy` : "Alchemy"),
+  title: (title) => (title ? `${title} - Double.md` : "Double.md"),
 
   resolve: (name) => {
     const pages = import.meta.glob<{ default: ResolvedComponent }>(

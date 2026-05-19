@@ -38,7 +38,7 @@ function useCta() {
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
-      <Head title="Alchemy — AI employees that live inside your tools" />
+      <Head title="Double.md — AI employees that live inside your tools" />
       <LandingNav />
 
       <Hero />
@@ -322,7 +322,7 @@ function OrgGraphCard() {
         >
           <OrgGraphStats />
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">
-            streaming · alchemy/v0.9
+            streaming · double.md/v0.9
           </span>
         </div>
       </div>
@@ -446,7 +446,7 @@ function TerminalPreview() {
             <span className="size-2.5 rounded-full bg-[#ffbd2e]" />
             <span className="size-2.5 rounded-full bg-[#27c93f]" />
             <span className="ml-3 font-mono text-[11px] text-white/60">
-              app.alchemy.ai/runs/run_4fc1
+              app.double.md/runs/run_4fc1
             </span>
           </div>
           <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--cyan-strong)]">
@@ -544,7 +544,7 @@ function TerminalPreview() {
               </div>
               <pre className="overflow-x-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-white/80">
 {`To: priya@acme.co
-Subject: Your interest in Alchemy
+Subject: Your interest in Double.md
 
 Hi Priya — saw you signed up Monday. Acme
 is exactly the kind of team we built for…`}
@@ -585,7 +585,7 @@ is exactly the kind of team we built for…`}
 }
 
 /* ═════════════════════════════════════════════════════════════
-   4 — FEATURE GRID (why Alchemy)
+   4 — FEATURE GRID (why Double.md)
    ═════════════════════════════════════════════════════════════ */
 function FeatureGrid() {
   const features = [
@@ -633,7 +633,7 @@ function FeatureGrid() {
 
       <div className="relative mx-auto w-full max-w-7xl px-6">
         <div className="mb-16 max-w-3xl">
-          <Overline>Why Alchemy</Overline>
+          <Overline>Why Double.md</Overline>
           <h2 className="text-section mt-3 text-foreground">
             The team you'd build{" "}
             <span className="serif-italic text-muted-foreground">yourself</span> —
@@ -655,7 +655,7 @@ function FeatureGrid() {
             {" "}of hiring.
           </h2>
           <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
-            Most AI tools give you one chatbot. Alchemy gives you a whole team — specialists who know their role, log into your tools, and run on their own. You stay the editor.
+            Most AI tools give you one chatbot. Double.md gives you a whole team — specialists who know their role, log into your tools, and run on their own. You stay the editor.
           </p>
         </div>
 
@@ -1184,7 +1184,7 @@ function FinalCTA() {
           </Button>
           <Button asChild size="lg" variant="outline" className="h-12 gap-1.5 px-6">
             <a
-              href="https://github.com/your-org/alchemy"
+              href="https://github.com/your-org/double-md"
               target="_blank"
               rel="noopener noreferrer"
             >
