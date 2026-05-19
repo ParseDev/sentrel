@@ -4,11 +4,15 @@ class Users::RegistrationsController < Devise::RegistrationsController
   end
 
   def create
-    # Create org first, then user
-    org = Organization.create!(
+    org = Organization.new(
       name: sign_up_params[:organization_name] || "My Organization",
       slug: sign_up_params[:organization_name]&.parameterize || "org-#{SecureRandom.hex(4)}"
     )
+
+    unless org.save
+      message = org.errors[:slug].any? ? "Organization name is already taken" : org.errors.full_messages.join(", ")
+      redirect_to new_user_registration_path, alert: message and return
+    end
 
     build_resource(sign_up_params.except(:organization_name).merge(organization_id: org.id, role: "owner"))
 

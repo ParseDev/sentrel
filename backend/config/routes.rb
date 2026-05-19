@@ -77,6 +77,7 @@ Rails.application.routes.draw do
     get "onboarding/status", to: "onboarding#status", as: :onboarding_status
     post "onboarding/setup_mailbox", to: "onboarding#setup_mailbox", as: :onboarding_setup_mailbox
     post "onboarding/verify_mailbox", to: "onboarding#verify_mailbox", as: :onboarding_verify_mailbox
+    post "onboarding/connect_provider", to: "onboarding#connect_provider", as: :onboarding_connect_provider
     post "onboarding/complete", to: "onboarding#complete", as: :onboarding_complete
     post "onboarding/skip", to: "onboarding#skip", as: :onboarding_skip
 

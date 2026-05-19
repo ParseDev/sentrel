@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input"
 import {
   onboardingAnalyzePath,
   onboardingCompletePath,
+  onboardingConnectProviderPath,
   onboardingSetupMailboxPath,
   onboardingSkipPath,
   onboardingStatusPath,
@@ -64,6 +65,7 @@ type Step =
   | "mailbox_managed"  // Picker for the managed zone (auto-DNS)
   | "mailbox_subdomain"
   | "mailbox_dns"
+  | "ai_provider"
   | "agents"
 
 interface DnsRecord {
@@ -318,6 +320,11 @@ export default function OnboardingShow({
   )
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  type AiProvider = "claude_code" | "anthropic" | "openrouter"
+  const [aiProvider, setAiProvider] = useState<AiProvider>("claude_code")
+  const [aiTokenValue, setAiTokenValue] = useState("")
+  const [aiProviderError, setAiProviderError] = useState<string | null>(null)
+  const [aiProviderSaved, setAiProviderSaved] = useState(false)
 
   const baseDomain = baseDomainFromUrl(organization.website_url || (website ? `https://${website}` : null))
 
@@ -407,8 +414,41 @@ export default function OnboardingShow({
     setTimeout(() => setAgentsVisible(true), 100)
   }
 
+  function handleShowAiProvider() {
+    setStep("ai_provider")
+  }
+
   function handleSkipMailbox() {
-    handleShowAgents()
+    handleShowAiProvider()
+  }
+
+  async function handleConnectAiProvider(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!aiTokenValue.trim()) return
+    setSubmitting(true)
+    setAiProviderError(null)
+    try {
+      const res = await fetch(onboardingConnectProviderPath(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-Token": csrfToken(),
+        },
+        body: JSON.stringify({ provider: aiProvider, value: aiTokenValue.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAiProviderError(data.error || "Couldn't save — please check the value and try again")
+        return
+      }
+      setAiProviderSaved(true)
+      handleShowAgents()
+    } catch {
+      setAiProviderError("Network error — please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   // Managed-subdomain claim — submits to /settings/claim_managed_subdomain
@@ -554,6 +594,7 @@ export default function OnboardingShow({
                   { label: "Company website", matches: ["website"] },
                   { label: "AI analysis", matches: ["analyzing", "summary", "error"] },
                   { label: "Email mailbox", matches: ["mailbox_intro", "mailbox_choice", "mailbox_managed", "mailbox_subdomain", "mailbox_dns"] },
+                  { label: "AI provider", matches: ["ai_provider"] },
                   { label: "Meet your team", matches: ["agents"] },
                 ]
                 const order: Step[] = [
@@ -566,6 +607,7 @@ export default function OnboardingShow({
                   "mailbox_managed",
                   "mailbox_subdomain",
                   "mailbox_dns",
+                  "ai_provider",
                   "agents",
                 ]
                 const currentRank = order.indexOf(step)
@@ -1192,7 +1234,7 @@ export default function OnboardingShow({
                     )}
                   </Button>
                   <Button
-                    onClick={handleShowAgents}
+                    onClick={handleShowAiProvider}
                     variant="outline"
                     className="h-10 flex-1"
                   >
@@ -1211,11 +1253,99 @@ export default function OnboardingShow({
               </div>
             )}
 
+            {/* Step: AI provider — Claude Code / Anthropic / OpenRouter */}
+            {step === "ai_provider" && (
+              <div className="animate-fade-in space-y-5">
+                <div className="space-y-2">
+                  <Overline>Step 4</Overline>
+                  <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
+                    Connect your AI provider
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Your agents need an AI provider to think. Pick one — you
+                    can change or add more later in Settings.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {([
+                    { id: "claude_code", label: "Claude Code", hint: "Paste the JSON from ~/.claude/.credentials.json (or the bare access token)." },
+                    { id: "anthropic",   label: "Anthropic API key", hint: "Starts with sk-ant-…" },
+                    { id: "openrouter",  label: "OpenRouter API key", hint: "Starts with sk-or-…" },
+                  ] as const).map((opt) => {
+                    const selected = aiProvider === opt.id
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => { setAiProvider(opt.id); setAiTokenValue(""); setAiProviderError(null); setAiProviderSaved(false) }}
+                        className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
+                          selected ? "border-foreground bg-muted/40" : "border-border hover:bg-muted/20"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-foreground">{opt.label}</span>
+                          {selected && <Check className="size-3.5" />}
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{opt.hint}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <form onSubmit={handleConnectAiProvider} className="space-y-3">
+                  <textarea
+                    value={aiTokenValue}
+                    onChange={(e) => { setAiTokenValue(e.target.value); setAiProviderError(null); setAiProviderSaved(false) }}
+                    placeholder={
+                      aiProvider === "claude_code"
+                        ? "Paste JSON or access token here"
+                        : aiProvider === "anthropic"
+                          ? "sk-ant-…"
+                          : "sk-or-…"
+                    }
+                    rows={aiProvider === "claude_code" ? 5 : 2}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-foreground/30"
+                  />
+
+                  {aiProviderError && (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+                      {aiProviderError}
+                    </div>
+                  )}
+
+                  {aiProviderSaved && !aiProviderError && (
+                    <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs text-emerald-600">
+                      Connected.
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    className="h-10 w-full gap-1.5"
+                    disabled={submitting || !aiTokenValue.trim()}
+                  >
+                    {submitting ? "Saving..." : <>Connect &amp; continue <ArrowRight className="size-3.5" /></>}
+                  </Button>
+                </form>
+
+                <div className="border-t pt-4">
+                  <button
+                    onClick={handleShowAgents}
+                    className="flex w-full items-center justify-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <SkipForward className="size-3.5" />
+                    Skip — I'll add a provider later
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Step: Agent preview */}
             {step === "agents" && (
               <div className="animate-fade-in space-y-6">
                 <div className="space-y-2">
-                  <Overline>Step 4</Overline>
+                  <Overline>Step 5</Overline>
                   <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
                     Meet your AI team
                   </h2>

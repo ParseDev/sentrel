@@ -85,6 +85,29 @@ class OnboardingController < ApplicationController
     render json: { error: e.message }, status: :unprocessable_entity
   end
 
+  # POST /onboarding/connect_provider — store the user's AI provider key.
+  # Body: { provider: "claude_code" | "anthropic" | "openrouter", value: "..." }
+  # Returns JSON so the wizard can stay on-page; skipping is just not calling this.
+  def connect_provider
+    provider = params[:provider].to_s
+    value = params[:value].to_s.strip
+    return render json: { error: "Paste a token before continuing" }, status: :unprocessable_entity if value.blank?
+
+    case provider
+    when "claude_code"
+      import_claude_code_token!(value)
+    when "anthropic", "openrouter"
+      upsert_llm_api_key!(provider, value)
+    else
+      return render json: { error: "Unknown provider" }, status: :unprocessable_entity
+    end
+
+    render json: { ok: true }
+  rescue => e
+    Rails.logger.error "[OnboardingController#connect_provider] #{e.class}: #{e.message}"
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
   # POST /onboarding/complete — generate agents and mark onboarding done
   def complete
     OnboardingAgentGenerator.new(current_tenant, current_user).generate!
@@ -99,6 +122,50 @@ class OnboardingController < ApplicationController
   end
 
   private
+
+  # Mirrors OauthController#import_token: accepts either the raw
+  # ~/.claude/.credentials.json blob or a bare access token.
+  def import_claude_code_token!(raw)
+    parsed = begin
+      json = JSON.parse(raw)
+      json["claudeAiOauth"] || json
+    rescue JSON::ParserError
+      { "accessToken" => raw }
+    end
+
+    access = (parsed["accessToken"] || parsed["access_token"]).to_s.strip
+    raise "No accessToken in supplied JSON" if access.blank?
+
+    cred = OauthCredential.find_or_initialize_by(
+      organization_id: current_tenant.id,
+      provider: "anthropic",
+    )
+    cred.kind             = "ai_provider"
+    cred.access_token     = access
+    cred.refresh_token    = (parsed["refreshToken"] || parsed["refresh_token"]).to_s.strip.presence
+    if parsed["expiresAt"].present?
+      cred.expires_at = Time.zone.at(parsed["expiresAt"].to_i / 1000)
+    elsif parsed["expires_at"].present?
+      cred.expires_at = Time.zone.at(parsed["expires_at"].to_i)
+    elsif access.start_with?("sk-ant-oat01-")
+      cred.expires_at = 1.year.from_now
+    end
+    cred.scope = (parsed["scopes"] || parsed["scope"]).is_a?(Array) ? parsed["scopes"].join(" ") : parsed["scope"]
+    cred.account_email = parsed["email"] || "Claude Code OAuth"
+    cred.last_refreshed_at = Time.current
+    cred.save!
+  end
+
+  def upsert_llm_api_key!(provider, value)
+    cred = current_tenant.credentials.find_or_initialize_by(
+      kind: "llm_api_key",
+      provider: provider,
+      name: "Default #{provider} key",
+    )
+    cred.created_by_user_id ||= current_user.id
+    cred.fields = { "value" => value }
+    cred.save!
+  end
 
   GENERIC_DOMAINS = %w[gmail.com googlemail.com hotmail.com outlook.com live.com yahoo.com icloud.com me.com mac.com aol.com protonmail.com proton.me].freeze
 
