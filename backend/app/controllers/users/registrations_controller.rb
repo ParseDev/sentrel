@@ -9,22 +9,25 @@ class Users::RegistrationsController < Devise::RegistrationsController
       slug: sign_up_params[:organization_name]&.parameterize || "org-#{SecureRandom.hex(4)}"
     )
 
-    unless org.save
-      message = org.errors[:slug].any? ? "Organization name is already taken" : org.errors.full_messages.join(", ")
-      redirect_to new_user_registration_path, alert: message and return
+    build_resource(sign_up_params.except(:organization_name).merge(role: "owner"))
+    resource.organization = org
+
+    ActiveRecord::Base.transaction do
+      org.save!
+      resource.save!
     end
 
-    build_resource(sign_up_params.except(:organization_name).merge(organization_id: org.id, role: "owner"))
-
-    resource.save
-    if resource.persisted?
-      set_flash_message!(:notice, :signed_up)
-      sign_up(resource_name, resource)
-      redirect_to after_sign_up_path_for(resource)
+    set_flash_message!(:notice, :signed_up)
+    sign_up(resource_name, resource)
+    redirect_to after_sign_up_path_for(resource)
+  rescue ActiveRecord::RecordInvalid => e
+    invalid = e.record
+    message = if invalid.is_a?(Organization) && invalid.errors[:slug].any?
+      "Organization name is already taken"
     else
-      org.destroy
-      redirect_to new_user_registration_path, alert: resource.errors.full_messages.join(", ")
+      invalid.errors.full_messages.join(", ")
     end
+    redirect_to new_user_registration_path, alert: message
   end
 
   private
