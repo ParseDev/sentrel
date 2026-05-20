@@ -49,6 +49,28 @@ class Agent < ApplicationRecord
     effective_capabilities.dig(key.to_s, "enabled") == true
   end
 
+  # Composio toolkit slugs the agent's CURRENTLY-ENABLED skills depend on.
+  # Driven by SkillDefinition.requires_connections so it stays correct as
+  # the user toggles skills on/off — no template lookup needed.
+  def required_integration_slugs
+    skill_definitions.joins(:agent_skills)
+                     .where(agent_skills: { enabled: true })
+                     .pluck(:requires_connections)
+                     .flatten
+                     .map(&:to_s)
+                     .reject(&:blank?)
+                     .uniq
+  end
+
+  # Slugs the agent's skills require but the org hasn't connected yet.
+  # Empty array if the org has all of them OR the agent's skills require
+  # none.
+  def missing_integration_slugs
+    return [] unless organization
+    connected = organization.integrations.pluck(:service_name).map { |s| s.to_s.downcase }.to_set
+    required_integration_slugs.reject { |slug| connected.include?(slug.downcase) }
+  end
+
   # First enabled email channel address — the agent's outward identity for
   # outbound mail and the "From" label on the agent's own messages.
   def primary_email_address

@@ -22,7 +22,7 @@ import {
   Check,
 } from "lucide-react"
 import { useState, useCallback, useRef, useEffect } from "react"
-import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown } from "lucide-react"
+import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown, Plug } from "lucide-react"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -165,6 +165,13 @@ interface Props {
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
   anthropic_account_connected?: boolean
+  missing_integrations?: Array<{
+    slug: string
+    label: string
+    category: string
+    logo: string | null
+    description: string | null
+  }>
 }
 
 type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "memory" | "spend"
@@ -427,7 +434,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, missing_integrations = [] }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -525,6 +532,10 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
       topBarActions={<AgentTopBarActions agent={agent} anthropicAccountConnected={anthropic_account_connected} />}
     >
       <Head title={agent.name} />
+
+      {missing_integrations.length > 0 && (
+        <MissingIntegrationsCallout integrations={missing_integrations} />
+      )}
 
       {/* ═══ Tabs ═══ */}
       <div className="-mx-4 -mt-4 flex items-center gap-0 overflow-x-auto border-b border-border px-4 sm:-mx-5 sm:px-5 md:-mx-6 md:-mt-6 md:px-6">
@@ -2356,6 +2367,57 @@ function RunDetail({ run }: { run: ScheduledTaskRun }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Recommended-integrations callout ─────────────────────────────────
+// Shown above the section tabs when the agent has enabled skills that
+// require Composio toolkits the org hasn't connected yet. Linking
+// straight to /integrations with the toolkit pre-selected via the hash
+// fragment so the user lands directly on the right OAuth button.
+function MissingIntegrationsCallout({
+  integrations,
+}: {
+  integrations: Array<{ slug: string; label: string; category: string; logo: string | null; description: string | null }>
+}) {
+  return (
+    <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="mb-1 flex items-center gap-2">
+            <Plug className="size-4 text-amber-700 dark:text-amber-400" />
+            <h3 className="text-sm font-semibold">Connect {integrations.length} integration{integrations.length > 1 ? "s" : ""} to fully enable this agent</h3>
+          </div>
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            This agent's skills need these connected before it can use them. The agent will still run without them — it just won't be able to call those tools.
+          </p>
+        </div>
+        <a
+          href="/integrations"
+          className="rounded-md bg-amber-700 dark:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 dark:hover:bg-amber-500"
+        >
+          Connect now →
+        </a>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {integrations.map((i) => (
+          <a
+            key={i.slug}
+            href={`/integrations#${i.slug}`}
+            className="inline-flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-background px-2.5 py-1.5 text-xs hover:border-amber-500"
+            title={i.description || i.label}
+          >
+            {i.logo ? (
+              <img src={i.logo} alt="" className="size-4 rounded" />
+            ) : (
+              <span className="inline-block size-4 rounded bg-muted" />
+            )}
+            <span className="font-medium">{i.label}</span>
+            <span className="text-[10px] text-muted-foreground">{i.category}</span>
+          </a>
+        ))}
+      </div>
     </div>
   )
 }

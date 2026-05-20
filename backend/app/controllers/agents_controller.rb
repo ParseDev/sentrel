@@ -224,8 +224,32 @@ class AgentsController < ApplicationController
           s.as_json(only: [ :id, :slug, :name, :description, :category, :icon, :requires_connections, :source, :visibility, :install_count ]).merge(
             owned_by_me: s.organization_id == current_tenant&.id,
           )
-        }
+        },
+      # Surface integrations the agent's enabled skills need but the org
+      # hasn't connected yet. Drives the "Connect to unlock this agent"
+      # callout on the show page. Empty array = fully connected (hide).
+      missing_integrations: missing_integrations_for(@agent),
     }
+  end
+
+  # Build a UI-friendly payload for the missing-integrations card on the
+  # agent show page. Cross-references agent.missing_integration_slugs
+  # against Composio's toolkit catalog (label, logo, category) so the
+  # client doesn't have to look those up itself.
+  def missing_integrations_for(agent)
+    slugs = agent.missing_integration_slugs
+    return [] if slugs.empty?
+    catalog = ComposioSupported.list(current_tenant.id).index_by { |t| t[:slug] }
+    slugs.map do |slug|
+      meta = catalog[slug] || {}
+      {
+        slug: slug,
+        label: meta[:label] || slug.titleize,
+        category: meta[:category] || "Other",
+        logo: meta[:logo],
+        description: meta[:description],
+      }
+    end
   end
 
   def new
