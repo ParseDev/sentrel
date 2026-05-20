@@ -1,3 +1,5 @@
+require "ostruct"
+
 module Forge
   # Given a skill brief, calls Claude Sonnet 4.6 to produce a SKILL.md
   # (Anthropic skill pattern — When to use / NOT / Auth / Endpoints /

@@ -1,3 +1,5 @@
+require "ostruct"
+
 module Forge
   # Given a role brief, calls Claude Sonnet 4.6 to produce a full AgentTemplate
   # row (identity_md / personality_md / instructions_md, capabilities, suggested

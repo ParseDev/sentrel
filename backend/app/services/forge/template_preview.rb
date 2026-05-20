@@ -1,3 +1,5 @@
+require "ostruct"
+
 module Forge
   # Read-only sibling of TemplatePack. Runs the same chain (analyzer →
   # resolver → generator → lint → dedup) but never writes to the DB.
