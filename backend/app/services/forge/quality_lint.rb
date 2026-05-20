@@ -43,9 +43,16 @@ module Forge
     def self.template(record)
       warnings = []
 
-      check_present_and_lines(warnings, record, :identity_md, min: 6, max: 14)
-      check_present_and_lines(warnings, record, :personality_md, min: 5, max: 10)
-      check_instructions_md(warnings, record)
+      # Floors loosened to match the existing hand-seeded templates that
+      # were written before this lint existed. Real-world good copy from
+      # ChatDev / MetaGPT-style seeds runs 4-6 lines for identity and
+      # 3-5 for personality. We don't want lint to reject quality content
+      # over arbitrary length thresholds.
+      check_present_and_lines(warnings, record, :identity_md, min: 4, max: 14)
+      check_present_and_lines(warnings, record, :personality_md, min: 3, max: 10)
+      check_instructions_md(warnings, record, min_sections: 2)
+      # Signature: warn but don't kill — many hand seeds shipped without
+      # one, and Forge can backfill via a separate enrichment pass.
       check_signature(warnings, record)
       check_first_person(warnings, record)
       %i[identity_md personality_md instructions_md email_signature_md].each do |field|
@@ -97,16 +104,16 @@ module Forge
       end
     end
 
-    def self.check_instructions_md(warnings, record)
+    def self.check_instructions_md(warnings, record, min_sections: 2)
       text = record.instructions_md.to_s
       if text.strip.empty?
         warnings << { rule: :missing, message: "instructions_md is empty" }
         return
       end
       sections = text.scan(/^##\s+\S/).size
-      if sections < 3
+      if sections < min_sections
         warnings << { rule: :too_few_sections,
-                      message: "instructions_md has #{sections} ## sections, expected ≥3" }
+                      message: "instructions_md has #{sections} ## sections, expected ≥#{min_sections}" }
       end
     end
 
@@ -148,18 +155,22 @@ module Forge
       end
     end
 
-    # 100 → start. Each warning subtracts. Buzzwords are a stated
-    # NON-NEGOTIABLE rule in the generator system prompt, so a single
-    # buzzword hit drops below the 70-pass threshold by itself. Missing
-    # fields hurt the most.
+    # 100 → start. Each warning subtracts. Pass threshold = 70.
+    # Penalties tuned so:
+    #   - Missing required fields still hard-fail (30pts)
+    #   - Buzzwords still hard-fail (35pts — stated NON-NEGOTIABLE rule)
+    #   - Length/section issues warn but don't auto-fail on their own
+    #     (10pts each — two of those = 80, still pass; three = 70, edge)
+    #   - Missing signature is a soft warn (5pts — many hand seeds lack it)
     def self.compute_score(warnings)
       penalty = warnings.sum do |w|
         case w[:rule]
         when :missing, :empty_body                  then 30
-        when :too_short, :too_long                  then 15
-        when :too_few_sections, :missing_sections   then 15
-        when :missing_signature, :signature_no_token then 10
-        when :not_first_person, :third_person_drift then 15
+        when :too_short, :too_long                  then 10
+        when :too_few_sections, :missing_sections   then 10
+        when :missing_signature, :signature_no_token then 5
+        when :not_first_person                      then 15
+        when :third_person_drift                    then 10
         when :buzzwords                             then 35
         else 5
         end
