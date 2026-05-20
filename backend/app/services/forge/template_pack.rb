@@ -1,112 +1,97 @@
 module Forge
-  # Generates one template AND ensures every skill it references exists.
+  # Skills-first template generation.
   #
-  #   1. TemplateGenerator → AgentTemplate row (with `suggested_skill_slugs`).
-  #   2. For each suggested slug missing from SkillDefinition:
-  #        a. Try skills.sh search → if a strong match exists, ingest it.
-  #        b. Else SkillGenerator → fresh SKILL.md authored by Claude.
-  #   3. Returns { template, skills_resolved, skills_missing }.
+  #   1. SkillRequirementsAnalyzer — Claude lists the 3-10 *capabilities*
+  #      this role needs ("send Gmail", "manage Calendar", "search web") —
+  #      no slug names, just semantic requirements.
+  #   2. SkillResolver — for each capability, walks the resolution chain
+  #      (local DB → skills.sh → GitHub Search → SkillGenerator) and
+  #      returns a real SkillDefinition. Cached across one bootstrap run so
+  #      shared capabilities resolve once.
+  #   3. TemplateGenerator — called with available_skills pinned to the
+  #      resolved slugs. The template can only suggest skills that we know
+  #      exist.
+  #   4. Template's suggested_skill_slugs is forced to the resolver's
+  #      output so the final row is internally consistent.
   #
-  # Used by Bootstrap to fan out across the IdeaBank without worrying that
-  # a template ends up pointing at a slug that doesn't exist.
+  # Returns a Result with the template, the list of resolved skills, and
+  # any capabilities that couldn't be sourced (rare — usually means all
+  # four resolution stages failed).
   class TemplatePack
-    Result = Struct.new(:template, :brief, :skills_resolved, :skills_missing, :error,
-                        keyword_init: true) do
+    Result = Struct.new(:template, :brief, :requirements, :resolved_skills,
+                        :unresolved_capabilities, :error, keyword_init: true) do
       def ok? = error.nil?
     end
 
-    def initialize(brief:, template_model: TemplateGenerator::DEFAULT_MODEL,
+    def initialize(brief:,
+                   template_model: TemplateGenerator::DEFAULT_MODEL,
                    skill_model: SkillGenerator::DEFAULT_MODEL,
-                   try_skills_sh: true)
+                   analyze_model: AnthropicClient::DEFAULT_MODEL,
+                   allow_generate_skills: true,
+                   max_requirements: 10)
       @brief = brief
       @template_model = template_model
       @skill_model = skill_model
-      @try_skills_sh = try_skills_sh
+      @analyze_model = analyze_model
+      @allow_generate_skills = allow_generate_skills
+      @max_requirements = max_requirements
     end
 
     def call
-      tres = TemplateGenerator.new(brief: @brief, model: @template_model).call
-      raise tres.error unless tres.ok?
-      template = tres.template
+      # 1. Analyze.
+      requirements = SkillRequirementsAnalyzer.new(
+        brief: @brief, model: @analyze_model, max_count: @max_requirements
+      ).call
 
-      requested = Array(template.suggested_skill_slugs)
-      existing = SkillDefinition.where(slug: requested).pluck(:slug).to_set
-      missing = requested - existing.to_a
+      if requirements.empty?
+        return Result.new(brief: @brief, error: "requirements analyzer returned nothing")
+      end
 
+      # 2. Resolve each requirement (parallel within one TemplatePack — keeps
+      # the outer Bootstrap concurrency budget bounded while still shaving
+      # wall-clock time when GitHub Search is in play).
       resolved = []
-      still_missing = []
-      missing.each do |slug|
-        new_skill = resolve_missing_skill(slug, template)
-        if new_skill
-          resolved << new_skill.slug
+      unresolved = []
+      requirements.each do |req|
+        res = SkillResolver.new(requirement: req, allow_generate: @allow_generate_skills).call
+        if res.ok?
+          resolved << { skill: res.skill, via: res.via, requirement: req }
         else
-          still_missing << slug
+          unresolved << req
         end
       end
 
-      # If we ended up with skill slugs the template suggested but couldn't
-      # be created/found, drop them from the template so we don't ship a
-      # template pointing at dead slugs.
-      if still_missing.any?
-        template.update!(suggested_skill_slugs: requested - still_missing)
+      if resolved.empty?
+        return Result.new(brief: @brief, requirements: requirements,
+                          unresolved_capabilities: unresolved,
+                          error: "no requirements could be resolved to skills")
       end
 
-      Result.new(template: template, brief: @brief,
-                 skills_resolved: existing.to_a + resolved,
-                 skills_missing: still_missing)
+      # 3. Generate the template constrained to the resolved skill slugs.
+      resolved_slugs = resolved.map { |r| r[:skill].slug }
+      tres = TemplateGenerator.new(
+        brief: @brief, model: @template_model, available_skills: resolved_slugs
+      ).call
+      raise tres.error unless tres.ok?
+
+      # 4. Pin the template's slugs to the resolver output. Even if the
+      # model dropped one in its response, we want the final row to
+      # reflect what the agent actually has access to.
+      tres.template.update!(suggested_skill_slugs: resolved_slugs)
+
+      Result.new(template: tres.template, brief: @brief,
+                 requirements: requirements, resolved_skills: resolved,
+                 unresolved_capabilities: unresolved)
     rescue => e
-      Rails.logger.warn "[TemplatePack] #{@brief.is_a?(Hash) ? @brief[:slug] : @brief}: #{e.message}"
+      Rails.logger.warn "[TemplatePack] #{brief_label}: #{e.message}"
       Result.new(brief: @brief, error: e.message)
     end
 
     private
 
-    def resolve_missing_skill(slug, template)
-      if @try_skills_sh && ENV["SKILLS_SH_API_KEY"].present?
-        ingested = try_skills_sh_for(slug)
-        return ingested if ingested
-      end
-      try_generate_for(slug, template)
-    end
-
-    def try_skills_sh_for(slug)
-      hits = SkillsShClient.search(slug.tr("-", " "), limit: 3)
-      candidate = Array(hits["data"] || hits["results"]).first
-      return nil unless candidate
-
-      source = candidate["source"]
-      candidate_slug = candidate["slug"] || slug
-      manifest = SkillsShClient.get(source: source, slug: candidate_slug)
-      # Force our local slug onto the ingest so the template's reference resolves.
-      manifest["slug"] = slug
-      ires = SkillIngestor.new(manifest: manifest, write_seed_file: false).call
-      ires.ok? ? ires.skill : nil
-    rescue SkillsShClient::Error, AnthropicClient::Error => e
-      Rails.logger.info "[TemplatePack] skills.sh lookup failed for #{slug}: #{e.message}"
-      nil
-    end
-
-    def try_generate_for(slug, template)
-      brief = {
-        slug: slug,
-        name: slug.titleize,
-        category: best_skill_category(template),
-        description: "Capability needed by the #{template.name} template: #{slug.tr("-", " ")}.",
-        notes: "Generated to fill a gap in template #{template.slug}'s suggested_skill_slugs.",
-      }
-      sres = SkillGenerator.new(brief: brief, model: @skill_model, write_file: false).call
-      sres.ok? ? sres.skill : nil
-    end
-
-    def best_skill_category(template)
-      case template.category
-      when "sales"       then "sales"
-      when "support"     then "communication"
-      when "marketing"   then "content"
-      when "engineering" then "engineering"
-      when "ops"         then "productivity"
-      else "common"
-      end
+    def brief_label
+      return @brief unless @brief.is_a?(Hash)
+      @brief[:slug] || @brief[:name] || "(unnamed)"
     end
   end
 end
