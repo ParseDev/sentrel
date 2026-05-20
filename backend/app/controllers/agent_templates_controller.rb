@@ -3,8 +3,16 @@ class AgentTemplatesController < ApplicationController
 
   # GET /agent_templates           — Inertia browse page
   # GET /agent_templates.json      — JSON for the new-agent picker (legacy)
+  #
+  # acts_as_tenant on AgentTemplate stacks its default_scope on top of
+  # `visible_to`, filtering out organization_id: NULL rows (system seeds)
+  # even though visible_to explicitly includes them. Wrap in
+  # without_tenant so visible_to does the actual access check itself
+  # (which already permits "NULL OR current org").
   def index
-    scope = AgentTemplate.visible_to(current_tenant).order(:category, :name)
+    scope = ActsAsTenant.without_tenant do
+      AgentTemplate.visible_to(current_tenant).order(:category, :name).to_a
+    end
 
     respond_to do |format|
       format.json { render json: scope.map { |t| template_json(t) } }
@@ -26,7 +34,9 @@ class AgentTemplatesController < ApplicationController
 
   # GET /agent_templates/:id  (slug)
   def show
-    template = AgentTemplate.visible_to(current_tenant).find_by!(slug: params[:id])
+    template = ActsAsTenant.without_tenant do
+      AgentTemplate.visible_to(current_tenant).find_by!(slug: params[:id])
+    end
     respond_to do |format|
       format.json {
         render json: template_json(template).merge(
@@ -74,7 +84,7 @@ class AgentTemplatesController < ApplicationController
   # PATCH /agent_templates/:id — toggle published, rename, recategorize. Only
   # the template's owner (or system admins) may mutate it.
   def update
-    template = AgentTemplate.find_by!(slug: params[:id])
+    template = ActsAsTenant.without_tenant { AgentTemplate.find_by!(slug: params[:id]) }
     forbid_mutation_for_non_owner!(template)
 
     if template.update(template_params)
@@ -86,7 +96,7 @@ class AgentTemplatesController < ApplicationController
 
   # DELETE /agent_templates/:id — owner-only.
   def destroy
-    template = AgentTemplate.find_by!(slug: params[:id])
+    template = ActsAsTenant.without_tenant { AgentTemplate.find_by!(slug: params[:id]) }
     forbid_mutation_for_non_owner!(template)
     template.destroy
     redirect_to agent_templates_path, notice: "Template removed"

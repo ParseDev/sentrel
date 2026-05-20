@@ -229,8 +229,14 @@ class AgentsController < ApplicationController
   end
 
   def new
+    # AgentTemplate acts_as_tenant filters out system seeds (org_id: NULL).
+    # Wrap so the new-agent picker shows ALL published templates the org
+    # is allowed to install (visible_to handles the access check).
+    templates_for_picker = ActsAsTenant.without_tenant do
+      AgentTemplate.visible_to(current_tenant).order(:name).to_a
+    end
     render inertia: "agents/new", props: {
-      templates: AgentTemplate.order(:name).map { |t| template_summary(t) },
+      templates: templates_for_picker.map { |t| template_summary(t) },
       agents: current_tenant.agents.select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
@@ -249,11 +255,18 @@ class AgentsController < ApplicationController
       return
     end
 
+    # AgentDrafter picks from the platform's full template catalog (system
+    # seeds + the org's own community templates). Bypass acts_as_tenant
+    # so NULL-org system seeds are in the candidate pool.
+    drafter_templates = ActsAsTenant.without_tenant do
+      AgentTemplate.visible_to(current_tenant).to_a
+    end
+
     drafter = AgentDrafter.new(
       description: description,
       tools_preference: params[:tools_preference],
       tools_description: params[:tools_description],
-      templates: AgentTemplate.all.to_a,
+      templates: drafter_templates,
       skills: SkillDefinition.all.to_a,
       # `regenerate` is plumbed through but a no-op today — AgentDrafter is
       # stateless. Reserved for future cache-busting when we add memoization
@@ -263,7 +276,12 @@ class AgentsController < ApplicationController
   end
 
   def create
-    template = params[:template_slug].present? ? AgentTemplate.find_by(slug: params[:template_slug]) : nil
+    # Tenant bypass: a user installing a system template (org_id: NULL)
+    # needs to be able to look it up by slug. visible_to is the access
+    # check; tenant scoping would 404 NULL-org rows.
+    template = if params[:template_slug].present?
+      ActsAsTenant.without_tenant { AgentTemplate.visible_to(current_tenant).find_by(slug: params[:template_slug]) }
+    end
 
     @agent = current_tenant.agents.build(agent_params)
 
