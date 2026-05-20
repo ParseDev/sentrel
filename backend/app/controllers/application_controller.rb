@@ -11,13 +11,16 @@ class ApplicationController < ActionController::Base
   before_action :consume_pending_invitation, if: :user_signed_in?
   before_action :redirect_to_onboarding, if: :user_signed_in?
 
-  # Share current user and org with all Inertia pages
+  # Share current user and org with all Inertia pages. `is_admin` lets the
+  # React sidebar render the admin nav link conditionally without a
+  # second round-trip.
   inertia_share do
     {
       auth: {
         user: current_user&.as_json(only: [ :id, :name, :email, :role ]),
         organization: current_tenant&.as_json(only: [ :id, :name, :slug, :onboarding_completed_at ])
       },
+      is_admin: current_user&.admin? || false,
       flash: {
         success: flash[:notice],
         error: flash[:alert]

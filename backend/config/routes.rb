@@ -70,6 +70,15 @@ Rails.application.routes.draw do
     post :web, to: "webhooks#web"
   end
 
+  # Admin panel (owner + admin roles only — gate is in Admin::BaseController).
+  # Routes populated in commit 13 when controllers land. Namespace stub
+  # ensures URL helpers (admin_dashboard_path etc.) exist now so the
+  # sidebar's conditional admin link doesn't 500 if visited early.
+  namespace :admin do
+    root to: "dashboard#index", as: :root
+    get "dashboard", to: "dashboard#index"
+  end
+
   # Authenticated routes
   authenticate :user do
     get "onboarding", to: "onboarding#show", as: :onboarding

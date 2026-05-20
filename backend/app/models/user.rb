@@ -10,4 +10,15 @@ class User < ApplicationRecord
 
   validates :name, presence: true
   validates :role, presence: true, inclusion: { in: %w[owner admin member viewer] }
+
+  # Admin panel access. `owner` and `admin` both qualify — owner is the
+  # billing/legal account holder; admin is operational. Both can use
+  # /admin. Member + viewer cannot.
+  def admin?
+    role.in?(%w[admin owner])
+  end
+
+  def owner?
+    role == "owner"
+  end
 end
