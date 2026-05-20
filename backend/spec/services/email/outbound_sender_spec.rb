@@ -17,7 +17,19 @@ RSpec.describe Email::OutboundSender do
   end
 
   let(:ses_response) { double("SES Response", message_id: "ses-msg-123") }
-  let(:ses_client) { instance_double(Aws::SES::Client, send_raw_email: ses_response) }
+  let(:ses_verification_status) { "Success" }
+  let(:ses_verification_attrs) do
+    double("SES VerificationAttrs", verification_status: ses_verification_status)
+  end
+  let(:ses_verification_response) do
+    double("SES VerificationResponse",
+      verification_attributes: { "acme.com" => ses_verification_attrs })
+  end
+  let(:ses_client) do
+    instance_double(Aws::SES::Client,
+      send_raw_email: ses_response,
+      get_identity_verification_attributes: ses_verification_response)
+  end
 
   before do
     allow(SesClient).to receive(:for).and_return(ses_client)
@@ -94,13 +106,45 @@ RSpec.describe Email::OutboundSender do
     end
 
     context "domain verification" do
-      it "fails when domain not verified" do
+      it "fails when domain not verified in DB and SES still reports pending" do
         org.update!(email_domain_verified: false)
+        allow(ses_verification_attrs).to receive(:verification_status).and_return("Pending")
         with_tenant(org) do
           result = described_class.new(base_payload).call
           expect(result.status).to eq(:failed)
           expect(result.error).to match(/not verified/)
         end
+        expect(org.reload.email_domain_verified).to be(false)
+      end
+
+      it "self-heals when DB flag is stale but SES reports Success" do
+        org.update!(email_domain_verified: false)
+        with_tenant(org) do
+          result = described_class.new(base_payload).call
+          expect(result.status).to eq(:sent)
+        end
+        expect(org.reload.email_domain_verified).to be(true)
+        expect(ses_client).to have_received(:get_identity_verification_attributes)
+          .with(identities: [ "acme.com" ])
+      end
+
+      it "skips the SES call when DB flag is already true" do
+        with_tenant(org) do
+          described_class.new(base_payload).call
+        end
+        expect(ses_client).not_to have_received(:get_identity_verification_attributes)
+      end
+
+      it "fails when SES verification check raises a service error" do
+        org.update!(email_domain_verified: false)
+        allow(ses_client).to receive(:get_identity_verification_attributes)
+          .and_raise(Aws::SES::Errors::ServiceError.new(nil, "boom"))
+        with_tenant(org) do
+          result = described_class.new(base_payload).call
+          expect(result.status).to eq(:failed)
+          expect(result.error).to match(/not verified/)
+        end
+        expect(org.reload.email_domain_verified).to be(false)
       end
 
       it "fails when from_address domain doesn't match org domain" do
@@ -110,6 +154,7 @@ RSpec.describe Email::OutboundSender do
           expect(result.status).to eq(:failed)
           expect(result.error).to match(/not verified/)
         end
+        expect(ses_client).not_to have_received(:get_identity_verification_attributes)
       end
     end
 

@@ -71,7 +71,26 @@ module Email
     private
 
     def domain_verified?
-      @org.email_domain == @from_domain && @org.email_domain_verified
+      return false unless @org.email_domain == @from_domain
+      return true if @org.email_domain_verified?
+      ses_verified_now?
+    end
+
+    # The settings UI flips email_domain_verified by polling SES, so the DB
+    # column lags reality whenever nobody has that page open. Re-check SES
+    # directly when the flag is false so a verified identity isn't blocked
+    # by a stale row.
+    def ses_verified_now?
+      attrs = SesClient.for(@org)
+        .get_identity_verification_attributes(identities: [ @from_domain ])
+        .verification_attributes[@from_domain]
+      return false unless attrs&.verification_status == "Success"
+
+      @org.update!(email_domain_verified: true)
+      true
+    rescue Aws::SES::Errors::ServiceError => e
+      Rails.logger.warn "OutboundSender SES verification check failed (#{@from_domain}): #{e.class}: #{e.message}"
+      false
     end
 
     def suppressed?
