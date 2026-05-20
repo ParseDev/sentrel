@@ -66,6 +66,16 @@ module Forge
       sync_files!(record, files)
       maybe_write_seed_file!(record, slug, category, frontmatter, body)
 
+      # Quality gate. A skill that fails (missing sections, buzzwords,
+      # too short) gets unpublished so the admin can review before it
+      # surfaces in the marketplace.
+      lint = QualityLint.skill(record)
+      unless lint.pass
+        record.update!(published: false)
+        Rails.logger.warn "[Forge::SkillIngestor] #{record.slug} failed lint (score=#{lint.score}): " +
+                          lint.warnings.map { |w| "[#{w[:rule]}] #{w[:message]}" }.join(" | ")
+      end
+
       Result.new(skill: record, source_info: @manifest["source"])
     rescue => e
       Rails.logger.warn "[SkillIngestor] #{@manifest.dig("source")}/#{@manifest.dig("slug")} failed: #{e.message}"

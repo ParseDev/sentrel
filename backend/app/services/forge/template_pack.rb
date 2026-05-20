@@ -95,6 +95,17 @@ module Forge
         suggested_integrations: aggregated_integrations,
       )
 
+      # Quality gate. Failures are downgraded to published: false so they
+      # show up under "Pending Review" in the admin panel rather than
+      # going straight to the marketplace. Re-running TemplatePack on the
+      # same brief re-lints (and may republish if quality improved).
+      lint = QualityLint.template(tres.template)
+      unless lint.pass
+        tres.template.update!(published: false)
+        Rails.logger.warn "[Forge::TemplatePack] #{tres.template.slug} failed lint (score=#{lint.score}): " +
+                          lint.warnings.map { |w| "[#{w[:rule]}] #{w[:message]}" }.join(" | ")
+      end
+
       Result.new(template: tres.template, brief: @brief,
                  requirements: requirements, resolved_skills: resolved,
                  unresolved_capabilities: unresolved)

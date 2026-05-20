@@ -96,6 +96,45 @@ namespace :forge do
     puts "Forge: bootstrap state cleared."
   end
 
+  desc "Lint every template + skill against QualityLint rules. Pass --unpublish to downgrade failures."
+  task :lint, [:unpublish] => :environment do |_, args|
+    unpublish = args[:unpublish].to_s == "1"
+    template_pass = template_fail = 0
+    skill_pass = skill_fail = 0
+    failures = []
+
+    AgentTemplate.where(system_template: true).find_each do |t|
+      r = Forge::QualityLint.template(t)
+      if r.pass then template_pass += 1
+      else
+        template_fail += 1
+        failures << { type: "template", slug: t.slug, score: r.score, warnings: r.warnings }
+        t.update!(published: false) if unpublish && t.published?
+      end
+    end
+
+    SkillDefinition.find_each do |s|
+      r = Forge::QualityLint.skill(s)
+      if r.pass then skill_pass += 1
+      else
+        skill_fail += 1
+        failures << { type: "skill", slug: s.slug, score: r.score, warnings: r.warnings }
+        s.update!(published: false) if unpublish && s.published?
+      end
+    end
+
+    puts "Templates: #{template_pass} pass, #{template_fail} fail"
+    puts "Skills:    #{skill_pass} pass, #{skill_fail} fail"
+    if failures.any?
+      puts "\nFailures:"
+      failures.each do |f|
+        puts "  [#{f[:type]}] #{f[:slug]} (score=#{f[:score]})"
+        f[:warnings].each { |w| puts "    - [#{w[:rule]}] #{w[:message]}" }
+      end
+    end
+    puts "\nTip: re-run with [1] to auto-unpublish failures (e.g. rake forge:lint[1])" unless unpublish
+  end
+
   desc "Pre-warm skill library only (skills.sh trending or KNOWN_REPOS)"
   task :prewarm_skills, [:concurrency, :count] => :environment do |_, args|
     concurrency = (args[:concurrency] || "20").to_i
