@@ -1,6 +1,7 @@
 import { router } from "@inertiajs/react"
 import { useState } from "react"
 import AdminLayout from "@/layouts/admin-layout"
+import BulkActionBar from "@/components/admin/bulk-action-bar"
 
 interface Skill {
   id: number
@@ -28,6 +29,8 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
   const [filter, setFilter] = useState("all")
   const [search, setSearch] = useState("")
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  const toggleSelect = (id: number) => setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
 
   const filtered = skills.filter((s) => {
     if (filter !== "all" && s.category !== filter) return false
@@ -71,6 +74,13 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr className="text-left">
+                <th className="p-2 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.length > 0 && selected.length === filtered.length}
+                    onChange={() => setSelected(selected.length === filtered.length ? [] : filtered.map((s) => s.id))}
+                  />
+                </th>
                 <th className="p-2">Slug / Name</th>
                 <th className="p-2">Category</th>
                 <th className="p-2">Source</th>
@@ -85,6 +95,9 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
               {filtered.map((s) => (
                 <>
                   <tr key={s.id} className="border-t">
+                    <td className="p-2">
+                      <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggleSelect(s.id)} />
+                    </td>
                     <td className="p-2">
                       <button onClick={() => setExpanded(expanded === s.id ? null : s.id)} className="text-left hover:underline">
                         <div className="font-medium">{s.name}</div>
@@ -124,7 +137,7 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
                   </tr>
                   {expanded === s.id && (
                     <tr className="bg-muted/40">
-                      <td colSpan={8} className="p-4">
+                      <td colSpan={9} className="p-4">
                         <div className="mb-2 text-[10px] font-medium uppercase text-muted-foreground">SKILL.md</div>
                         <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded border bg-background p-2 text-xs">{s.skill_md}</pre>
                         {s.files.length > 1 && (
@@ -140,6 +153,12 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
             </tbody>
           </table>
         </div>
+        <BulkActionBar
+          selectedIds={selected}
+          onClear={() => setSelected([])}
+          deletePath="/admin/skills/bulk_destroy"
+          noun="skill"
+        />
       </div>
     </AdminLayout>
   )

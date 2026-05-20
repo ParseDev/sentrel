@@ -81,14 +81,22 @@ Rails.application.routes.draw do
       collection do
         post :draft          # AI Template Creator: run preview (no DB write)
         post :commit         # AI Template Creator: commit the preview
+        post :bulk_destroy
       end
     end
     resources :skills, only: [:index, :update, :destroy] do
       member { post :resync }
+      collection { post :bulk_destroy }
     end
-    resources :agents, only: [:index, :update, :destroy]
-    resources :users, only: [:index, :update]
-    resources :organizations, only: [:index, :update, :destroy]
+    resources :agents, only: [:index, :update, :destroy] do
+      collection { post :bulk_destroy }
+    end
+    resources :users, only: [:index, :update, :destroy] do
+      collection { post :bulk_destroy }
+    end
+    resources :organizations, only: [:index, :update, :destroy] do
+      collection { post :bulk_destroy }
+    end
 
     # Forge runner — kicks the background job, polls for status.
     get  "forge",                  to: "forge#show"

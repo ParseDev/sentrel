@@ -2,6 +2,9 @@ module Admin
   # Cross-org view of every agent. The owning organization gets surfaced
   # so admins can spot which org owns what without switching tenants.
   class AgentsController < BaseController
+    include Admin::Concerns::BulkDestroyable
+    bulk_destroyable Agent, tenant_bypass: true
+
     def index
       # acts_as_tenant scopes Agent by default; use unscoped to bypass since
       # admin is cross-org by design.

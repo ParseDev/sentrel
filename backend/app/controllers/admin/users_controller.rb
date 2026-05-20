@@ -1,11 +1,24 @@
 module Admin
   class UsersController < BaseController
+    include Admin::Concerns::BulkDestroyable
+    # Guard: never bulk-destroy yourself.
+    bulk_destroyable User, guard: ->(user, current_user) { user != current_user }
+
     def index
       rows = User.includes(:organization).order(created_at: :desc).map { |u| serialize(u) }
       render inertia: "admin/users/index", props: {
         users: rows,
         roles: %w[owner admin member viewer],
       }
+    end
+
+    def destroy
+      user = User.find(params[:id])
+      if user == current_user
+        redirect_to admin_users_path, alert: "Can't delete yourself" and return
+      end
+      user.destroy!
+      redirect_to admin_users_path, notice: "Deleted #{user.email}"
     end
 
     def update

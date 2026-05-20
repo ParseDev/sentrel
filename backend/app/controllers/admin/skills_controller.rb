@@ -1,5 +1,8 @@
 module Admin
   class SkillsController < BaseController
+    include Admin::Concerns::BulkDestroyable
+    bulk_destroyable SkillDefinition
+
     def index
       rows = SkillDefinition.order(updated_at: :desc).map { |s| serialize(s) }
       render inertia: "admin/skills/index", props: {

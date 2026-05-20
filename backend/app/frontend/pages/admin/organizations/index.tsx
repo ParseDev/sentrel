@@ -1,5 +1,7 @@
 import { router } from "@inertiajs/react"
+import { useState } from "react"
 import AdminLayout from "@/layouts/admin-layout"
+import BulkActionBar from "@/components/admin/bulk-action-bar"
 
 interface Org {
   id: number
@@ -15,18 +17,30 @@ interface Org {
 interface Props { organizations: Org[] }
 
 export default function AdminOrganizationsIndex({ organizations }: Props) {
+  const [selected, setSelected] = useState<number[]>([])
+
   function destroy(o: Org) {
     if (!confirm(`Delete org "${o.slug}"? This is destructive (cascades agents, users, etc).`)) return
     router.delete(`/admin/organizations/${o.id}`, { preserveScroll: true })
   }
+  function toggleSelect(id: number) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+  function toggleAll() {
+    setSelected(selected.length === organizations.length ? [] : organizations.map((o) => o.id))
+  }
+
   return (
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Organizations" }]}>
-      <div className="mx-auto max-w-7xl space-y-4 p-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         <h1 className="text-2xl font-semibold">Organizations ({organizations.length})</h1>
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr className="text-left">
+                <th className="p-2 w-8">
+                  <input type="checkbox" checked={selected.length > 0 && selected.length === organizations.length} onChange={toggleAll} />
+                </th>
                 <th className="p-2">Name</th>
                 <th className="p-2">Slug</th>
                 <th className="p-2">Onboarded</th>
@@ -39,6 +53,9 @@ export default function AdminOrganizationsIndex({ organizations }: Props) {
             <tbody>
               {organizations.map((o) => (
                 <tr key={o.id} className="border-t">
+                  <td className="p-2">
+                    <input type="checkbox" checked={selected.includes(o.id)} onChange={() => toggleSelect(o.id)} />
+                  </td>
                   <td className="p-2">
                     <div className="font-medium">{o.name}</div>
                     {o.company_summary && <div className="text-xs text-muted-foreground truncate max-w-md">{o.company_summary}</div>}
@@ -56,6 +73,12 @@ export default function AdminOrganizationsIndex({ organizations }: Props) {
             </tbody>
           </table>
         </div>
+        <BulkActionBar
+          selectedIds={selected}
+          onClear={() => setSelected([])}
+          deletePath="/admin/organizations/bulk_destroy"
+          noun="organization"
+        />
       </div>
     </AdminLayout>
   )

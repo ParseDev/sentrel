@@ -2,6 +2,7 @@ import { Link, router } from "@inertiajs/react"
 import { useState } from "react"
 import { Sparkles } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
+import BulkActionBar from "@/components/admin/bulk-action-bar"
 
 interface Template {
   id: number
@@ -36,6 +37,8 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
   const [search, setSearch] = useState("")
   const [showOnly, setShowOnly] = useState<"all" | "pending" | "system" | "community">("all")
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  const toggleSelect = (id: number) => setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
 
   const filtered = templates.filter((t) => {
     if (filter !== "all" && t.category !== filter) return false
@@ -89,6 +92,13 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr className="text-left">
+                <th className="p-2 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.length > 0 && selected.length === filtered.length}
+                    onChange={() => setSelected(selected.length === filtered.length ? [] : filtered.map((t) => t.id))}
+                  />
+                </th>
                 <th className="p-2">Slug / Name</th>
                 <th className="p-2">Role</th>
                 <th className="p-2">Category</th>
@@ -103,6 +113,9 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
               {filtered.map((t) => (
                 <>
                   <tr key={t.id} className="border-t">
+                    <td className="p-2">
+                      <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggleSelect(t.id)} />
+                    </td>
                     <td className="p-2">
                       <button onClick={() => setExpanded(expanded === t.id ? null : t.id)} className="text-left hover:underline">
                         <div className="font-medium">{t.name}</div>
@@ -136,7 +149,7 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
                   </tr>
                   {expanded === t.id && (
                     <tr className="bg-muted/40">
-                      <td colSpan={8} className="p-4">
+                      <td colSpan={9} className="p-4">
                         <div className="grid gap-4 md:grid-cols-2">
                           <Field label="Identity">{t.identity_md}</Field>
                           <Field label="Personality">{t.personality_md}</Field>
@@ -162,6 +175,12 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
             </tbody>
           </table>
         </div>
+        <BulkActionBar
+          selectedIds={selected}
+          onClear={() => setSelected([])}
+          deletePath="/admin/templates/bulk_destroy"
+          noun="template"
+        />
       </div>
     </AdminLayout>
   )

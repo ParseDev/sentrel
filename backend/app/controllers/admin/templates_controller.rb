@@ -5,6 +5,9 @@ module Admin
   # wrap every query in ActsAsTenant.without_tenant so admin sees ALL
   # templates regardless of which org owns them (or no org at all).
   class TemplatesController < BaseController
+    include Admin::Concerns::BulkDestroyable
+    bulk_destroyable AgentTemplate, tenant_bypass: true
+
     def index
       rows = ActsAsTenant.without_tenant do
         AgentTemplate.order(updated_at: :desc).to_a.map { |t| serialize(t) }

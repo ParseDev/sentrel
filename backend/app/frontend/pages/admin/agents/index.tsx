@@ -1,6 +1,7 @@
 import { router } from "@inertiajs/react"
 import { useState } from "react"
 import AdminLayout from "@/layouts/admin-layout"
+import BulkActionBar from "@/components/admin/bulk-action-bar"
 
 interface Agent {
   id: number
@@ -21,6 +22,10 @@ interface Props { agents: Agent[] }
 export default function AdminAgentsIndex({ agents }: Props) {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [selected, setSelected] = useState<number[]>([])
+  function toggleSelect(id: number) {
+    setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+  }
 
   const filtered = agents.filter((a) => {
     if (statusFilter !== "all" && a.status !== statusFilter) return false
@@ -37,7 +42,7 @@ export default function AdminAgentsIndex({ agents }: Props) {
 
   return (
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Agents" }]}>
-      <div className="mx-auto max-w-7xl space-y-4 p-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Agents ({agents.length})</h1>
           <input
@@ -55,6 +60,13 @@ export default function AdminAgentsIndex({ agents }: Props) {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr className="text-left">
+                <th className="p-2 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.length > 0 && selected.length === filtered.length}
+                    onChange={() => setSelected(selected.length === filtered.length ? [] : filtered.map((a) => a.id))}
+                  />
+                </th>
                 <th className="p-2">Agent</th>
                 <th className="p-2">Org</th>
                 <th className="p-2">Role</th>
@@ -68,6 +80,9 @@ export default function AdminAgentsIndex({ agents }: Props) {
             <tbody>
               {filtered.map((a) => (
                 <tr key={a.id} className="border-t">
+                  <td className="p-2">
+                    <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} />
+                  </td>
                   <td className="p-2">
                     <div className="font-medium">{a.name}</div>
                     <div className="font-mono text-[11px] text-muted-foreground">{a.slug}</div>
@@ -86,6 +101,12 @@ export default function AdminAgentsIndex({ agents }: Props) {
             </tbody>
           </table>
         </div>
+        <BulkActionBar
+          selectedIds={selected}
+          onClear={() => setSelected([])}
+          deletePath="/admin/agents/bulk_destroy"
+          noun="agent"
+        />
       </div>
     </AdminLayout>
   )

@@ -1,5 +1,8 @@
 module Admin
   class OrganizationsController < BaseController
+    include Admin::Concerns::BulkDestroyable
+    bulk_destroyable Organization
+
     def index
       rows = Organization.order(created_at: :desc).map { |o| serialize(o) }
       render inertia: "admin/organizations/index", props: { organizations: rows }

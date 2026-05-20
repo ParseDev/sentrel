@@ -1,5 +1,8 @@
 import { router } from "@inertiajs/react"
+import { useState } from "react"
+import { Trash2 } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
+import BulkActionBar from "@/components/admin/bulk-action-bar"
 
 interface User {
   id: number
@@ -16,15 +19,29 @@ interface User {
 interface Props { users: User[]; roles: string[] }
 
 export default function AdminUsersIndex({ users, roles }: Props) {
+  const [selected, setSelected] = useState<number[]>([])
+
   function changeRole(u: User, role: string) {
     router.put(`/admin/users/${u.id}`, { role }, { preserveScroll: true })
   }
   function togglePlatformAdmin(u: User) {
     router.put(`/admin/users/${u.id}`, { platform_admin: !u.platform_admin }, { preserveScroll: true })
   }
+  function destroyUser(u: User) {
+    if (!confirm(`Delete ${u.email}?`)) return
+    router.delete(`/admin/users/${u.id}`, { preserveScroll: true })
+  }
+  function toggleSelect(id: number) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+  function toggleAll() {
+    const selectable = users.filter((u) => !u.is_current).map((u) => u.id)
+    setSelected(selected.length === selectable.length ? [] : selectable)
+  }
+
   return (
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Users" }]}>
-      <div className="mx-auto max-w-7xl space-y-4 p-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         <h1 className="text-2xl font-semibold">Users ({users.length})</h1>
         <p className="text-xs text-muted-foreground">
           <b>Role</b> is the user's role within their own organization. <b>Platform admin</b> grants cross-tenant /admin access — ScribeMD operators only.
@@ -33,17 +50,33 @@ export default function AdminUsersIndex({ users, roles }: Props) {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr className="text-left">
+                <th className="p-2 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.length > 0 && selected.length === users.filter((u) => !u.is_current).length}
+                    onChange={toggleAll}
+                  />
+                </th>
                 <th className="p-2">Name</th>
                 <th className="p-2">Email</th>
                 <th className="p-2">Organization</th>
                 <th className="p-2">Org Role</th>
                 <th className="p-2">Platform Admin</th>
                 <th className="p-2">Created</th>
+                <th className="p-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} className={`border-t ${u.platform_admin ? "bg-purple-50/30 dark:bg-purple-950/10" : ""}`}>
+                  <td className="p-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(u.id)}
+                      disabled={u.is_current}
+                      onChange={() => toggleSelect(u.id)}
+                    />
+                  </td>
                   <td className="p-2">
                     {u.name}
                     {u.is_current && <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700">you</span>}
@@ -72,11 +105,27 @@ export default function AdminUsersIndex({ users, roles }: Props) {
                     </label>
                   </td>
                   <td className="p-2 text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td className="p-2 text-right">
+                    <button
+                      onClick={() => destroyUser(u)}
+                      disabled={u.is_current}
+                      className="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={u.is_current ? "Can't delete yourself" : "Delete user"}
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <BulkActionBar
+          selectedIds={selected}
+          onClear={() => setSelected([])}
+          deletePath="/admin/users/bulk_destroy"
+          noun="user"
+        />
       </div>
     </AdminLayout>
   )
