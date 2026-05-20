@@ -1,5 +1,5 @@
 import { Head, useForm } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import * as icons from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -128,7 +128,16 @@ const CAPABILITIES: Array<{ key: string; label: string; description: string }> =
 type Step = "intro" | "details"
 
 export default function AgentNew({ templates, agents, org_email_domain }: Props) {
-  const [step, setStep] = useState<Step>("intro")
+  // If the user arrived via /agents/new?template=<slug> (clicking Install
+  // on a template page), skip the intro wizard entirely — they already
+  // told us what they want by picking the template. Start them on the
+  // details step with the template pre-filled.
+  const initialStep: Step = (() => {
+    if (typeof window === "undefined") return "intro"
+    const slug = new URLSearchParams(window.location.search).get("template")
+    return slug && templates.some((t) => t.slug === slug) ? "details" : "intro"
+  })()
+  const [step, setStep] = useState<Step>(initialStep)
   const [picked, setPicked] = useState<Template | null>(null)
 
   // Intro form state
@@ -363,6 +372,18 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       setDrafting(false)
     }
   }
+
+  // Mount-time pre-fill when arriving via /agents/new?template=<slug>.
+  // We call chooseTemplate after the form is initialized so it can write
+  // into setData. Empty dep array — runs once.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const slug = new URLSearchParams(window.location.search).get("template")
+    if (!slug) return
+    const t = templates.find((x) => x.slug === slug)
+    if (t) chooseTemplate(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function chooseTemplate(t: Template) {
     setPicked(t)

@@ -55,10 +55,10 @@ export default function TemplateShow({ template }: Props) {
         title={template.name}
         description={template.description || `An agent set up to act as a ${template.role}.`}
         action={
-          <Button asChild>
+          <Button asChild size="lg">
             <Link href={`/agents/new?template=${template.slug}`}>
-              <ExternalLink className="size-4 mr-1.5" />
-              Install
+              <Sparkles className="size-4 mr-1.5" />
+              Hire this agent
             </Link>
           </Button>
         }

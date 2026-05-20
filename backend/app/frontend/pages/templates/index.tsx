@@ -84,7 +84,7 @@ export default function TemplatesIndex({ templates, categories }: Props) {
       <PageHeader
         eyebrow="Library"
         title="Agent templates"
-        description="Pre-built roles you can install in one click — and your own templates saved from existing agents."
+        description="Pre-built roles you can hire in one click — and your own templates saved from existing agents."
       />
 
       <div className="max-w-5xl space-y-6">
