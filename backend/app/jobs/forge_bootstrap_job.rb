@@ -7,9 +7,12 @@ class ForgeBootstrapJob < ApplicationJob
 
   def perform(brief_slugs:, concurrency: 20, prewarm_count: 50, resume: false)
     Forge::AnthropicClient.reset_usage!
-    write_cache(status: "running", started_at: Time.current.iso8601,
-                concurrency: concurrency, prewarm_count: prewarm_count,
-                brief_count: brief_slugs.size)
+    # Replace (NOT merge) on start so fields from the previous run
+    # (finished_at, summary, failures, error) don't bleed through into
+    # the live status panel.
+    replace_cache(status: "running", started_at: Time.current.iso8601,
+                  concurrency: concurrency, prewarm_count: prewarm_count,
+                  brief_count: brief_slugs.size)
 
     briefs = Forge::IdeaBank::ALL.select { |b| brief_slugs.include?(b[:slug]) }
     summary = Forge::Bootstrap.new(
@@ -17,16 +20,21 @@ class ForgeBootstrapJob < ApplicationJob
       prewarm_count: prewarm_count, resume: resume,
     ).run
 
-    write_cache(status: "done", finished_at: Time.current.iso8601,
+    merge_cache(status: "done", finished_at: Time.current.iso8601,
                 summary: summary_payload(summary))
   rescue => e
-    write_cache(status: "errored", finished_at: Time.current.iso8601, error: e.message)
+    merge_cache(status: "errored", finished_at: Time.current.iso8601, error: e.message)
     raise
   end
 
   private
 
-  def write_cache(payload)
+  def replace_cache(payload)
+    Rails.cache.write(Admin::ForgeController::PROGRESS_CACHE_KEY,
+                      payload.stringify_keys, expires_in: 7.days)
+  end
+
+  def merge_cache(payload)
     existing = Rails.cache.read(Admin::ForgeController::PROGRESS_CACHE_KEY) || {}
     Rails.cache.write(Admin::ForgeController::PROGRESS_CACHE_KEY,
                       existing.merge(payload.stringify_keys),
