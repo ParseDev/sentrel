@@ -10,15 +10,22 @@ module Forge
       def ok? = error.nil?
     end
 
-    # Maps repo-path patterns to our local categories. Falls back to "common".
-    CATEGORY_HINTS = {
-      /sales|crm|outreach|prospect|hubspot|salesforce/i => "sales",
-      /support|ticket|help|zendesk|intercom/i         => "support",
-      /content|writing|copy|blog|social|design|video|image/i => "content",
-      /engineer|code|dev|github|deploy|aws|docker|kubernetes|vercel/i => "engineering",
-      /finance|stripe|invoice|expense|book|account/i  => "finance",
-      /calendar|notion|airtable|sheets|drive|document/i => "productivity",
-      /slack|email|gmail|chat|messaging/i             => "communication",
+    # Weighted keyword scoring for category inference. Signals carry
+    # different weights:
+    #   - frontmatter `category` (explicit author intent) → 10
+    #   - repo / source-path tokens (organizational signal)  → 5
+    #   - skill body text (most authoritative content signal) → 3
+    #   - skill name (short, often-generic)                   → 2
+    # Highest-scoring category wins; ties break alphabetically. Falls back
+    # to "common" if every score is zero.
+    CATEGORY_KEYWORDS = {
+      "sales"          => %w[sales crm outreach prospect hubspot salesforce pipedrive apollo lead deal pipeline],
+      "support"        => %w[support ticket help zendesk intercom escalation customer-service],
+      "content"        => %w[content writing copy blog post design video image creative caption brand],
+      "engineering"    => %w[engineer code dev github deploy aws docker kubernetes vercel api ci cd pipeline],
+      "finance"        => %w[finance stripe invoice expense bookkeep account payment refund payable receivable],
+      "productivity"   => %w[calendar notion airtable sheets drive document task schedule meeting reminder],
+      "communication"  => %w[slack email gmail chat message sms whatsapp telegram],
     }.freeze
 
     def initialize(manifest:, write_seed_file: false)
@@ -50,6 +57,7 @@ module Forge
         requires_connections: Array(frontmatter["requires_connections"]).map(&:to_s),
         required_capabilities: Array(frontmatter["required_capabilities"]).map(&:to_s),
         source: "imported",
+        source_url: derive_source_url(skill_md_file["path"]),
         visibility: "marketplace",
         published: true,
         skill_md: body,
@@ -78,13 +86,60 @@ module Forge
       s.to_s.downcase.gsub(/[^a-z0-9-]/, "-").squeeze("-").gsub(/\A-|-\z/, "")
     end
 
+    # Weighted multi-signal scoring. Beats the old single-regex sweep
+    # because it doesn't let stray words ("engineer" in "social media
+    # engineering") capture a skill that's clearly content/marketing.
     def infer_category(frontmatter, source, body)
       explicit = frontmatter["category"].to_s.downcase
       return explicit if SkillGenerator::CATEGORIES.include?(explicit)
 
-      haystack = "#{source} #{frontmatter["name"]} #{frontmatter["description"]} #{body[0, 400]}"
-      CATEGORY_HINTS.each { |pattern, cat| return cat if haystack.match?(pattern) }
-      "common"
+      scores = Hash.new(0)
+
+      # Signal 1: source / repo path keywords (weight 5 per hit)
+      tokens_in(source.to_s).each do |tok|
+        CATEGORY_KEYWORDS.each { |cat, kws| scores[cat] += 5 if kws.include?(tok) }
+      end
+
+      # Signal 2: body text first 800 chars (weight 3 per hit, capped to
+      # avoid one common word dominating)
+      body_tokens = tokens_in(body.to_s[0, 800])
+      seen_in_body = Set.new
+      body_tokens.each do |tok|
+        next if seen_in_body.include?(tok)
+        CATEGORY_KEYWORDS.each do |cat, kws|
+          if kws.include?(tok)
+            scores[cat] += 3
+            seen_in_body << tok
+          end
+        end
+      end
+
+      # Signal 3: name (weight 2 per hit)
+      tokens_in("#{frontmatter["name"]} #{frontmatter["slug"]}").each do |tok|
+        CATEGORY_KEYWORDS.each { |cat, kws| scores[cat] += 2 if kws.include?(tok) }
+      end
+
+      return "common" if scores.empty?
+      scores.sort_by { |cat, sc| [-sc, cat] }.first.first
+    end
+
+    def tokens_in(text)
+      text.to_s.downcase.scan(/[a-z][a-z0-9]{2,}/)
+    end
+
+    # Best-effort source-of-truth URL the admin can click through to. For
+    # skills.sh manifests `source` is "owner/repo"; for GitHub-scraped
+    # manifests we already have a path. For SkillGenerator output we have
+    # no upstream URL, so leave it nil.
+    def derive_source_url(skill_md_path)
+      source = @manifest["source"].to_s
+      return nil if source.blank? || source == "generated"
+      # owner/repo coordinate → link to the repo's SKILL.md.
+      if source.match?(%r{\A[^/\s]+/[^/\s]+\z})
+        return "https://github.com/#{source}/blob/main/#{skill_md_path}"
+      end
+      # Already a URL.
+      source if source.start_with?("http")
     end
 
     def sync_files!(record, files)

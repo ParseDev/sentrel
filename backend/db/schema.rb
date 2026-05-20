@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_15_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_20_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -542,6 +542,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_15_110000) do
     t.text "skill_md"
     t.string "slug"
     t.string "source", default: "built_in"
+    t.string "source_url"
     t.text "system_prompt_fragment"
     t.datetime "updated_at", null: false
     t.integer "version", default: 1, null: false
@@ -549,6 +550,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_15_110000) do
     t.index ["organization_id"], name: "index_skill_definitions_on_organization_id"
     t.index ["published"], name: "index_skill_definitions_on_published"
     t.index ["slug"], name: "index_skill_definitions_on_slug", unique: true
+    t.index ["source_url"], name: "index_skill_definitions_on_source_url"
     t.index ["visibility"], name: "index_skill_definitions_on_visibility"
   end
 
