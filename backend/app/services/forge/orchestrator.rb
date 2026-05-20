@@ -30,7 +30,12 @@ module Forge
     end
 
     DEFAULT_CONCURRENCY = 20
-    JOB_TIMEOUT = 90 # seconds — generous; templates + skills both finish in ~30-60s typically
+    # Per-job ceiling. Templates needing many fresh skill generations
+    # (analyzer → 10 SkillGenerator calls sequentially → template gen)
+    # can take 100-180s legitimately when scraping/skills.sh misses and
+    # everything falls through to Claude. 240s catches truly-hung calls
+    # without falsely killing the slow-but-honest ones.
+    JOB_TIMEOUT = 240
     RETRY_BACKOFF = 5
 
     def self.run(briefs:, generator:, concurrency: DEFAULT_CONCURRENCY, **opts)

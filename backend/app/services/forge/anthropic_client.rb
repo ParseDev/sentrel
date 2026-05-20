@@ -55,7 +55,11 @@ module Forge
       end
     end
 
-    def self.complete(prompt:, model: DEFAULT_MODEL, max_tokens: DEFAULT_MAX_TOKENS, system: nil, timeout: 60)
+    # Per-request read timeout. 120s accommodates long completions
+    # (instructions_md sections, multi-file SKILL.md output) without the
+    # Net::HTTP read raising mid-stream. The outer Orchestrator
+    # JOB_TIMEOUT still caps total wall time for a TemplatePack.
+    def self.complete(prompt:, model: DEFAULT_MODEL, max_tokens: DEFAULT_MAX_TOKENS, system: nil, timeout: 120)
       api_key = ENV["ANTHROPIC_API_KEY"]
       raise Error, "ANTHROPIC_API_KEY not set" if api_key.blank?
 
