@@ -43,22 +43,68 @@ module Forge
       end
     end
 
-    def initialize(briefs: IdeaBank::ALL, concurrency: 20, prewarm_count: 50, try_skills_sh: true)
+    # Cache key for resumable state. Stores completed + failed slugs across
+    # runs so a `resume: true` invocation skips work already done.
+    STATE_CACHE_KEY = "forge:bootstrap:state".freeze
+
+    def initialize(briefs: IdeaBank::ALL, concurrency: 20, prewarm_count: 50,
+                   try_skills_sh: true, resume: false)
       @briefs = briefs
       @concurrency = concurrency
       @prewarm_count = prewarm_count
       @try_skills_sh = try_skills_sh
+      @resume = resume
     end
 
     def run
       started = Time.current
+      state = load_state
+      if @resume && state.any?
+        completed = state["completed_briefs"] || []
+        puts "[Forge::Bootstrap] resuming: #{completed.size} briefs already done, skipping"
+        @briefs = @briefs.reject { |b| completed.include?(brief_slug(b)) }
+      else
+        save_state({}) # reset
+      end
+
       prewarmed = prewarm_skills!
       template_results = generate_templates!
       Summary.new(skills_prewarmed: prewarmed, template_results: template_results,
                   duration_s: Time.current - started)
     end
 
+    # Public state APIs (used by Admin::ForgeController + tests).
+    def self.load_state
+      Rails.cache.read(STATE_CACHE_KEY) || {}
+    end
+
+    def self.reset_state!
+      Rails.cache.delete(STATE_CACHE_KEY)
+    end
+
     private
+
+    def load_state
+      self.class.load_state
+    end
+
+    def save_state(state)
+      Rails.cache.write(STATE_CACHE_KEY, state, expires_in: 7.days)
+    end
+
+    def update_state(slug, success)
+      state = load_state
+      state["completed_briefs"] ||= []
+      state["failed_briefs"]    ||= []
+      bucket = success ? state["completed_briefs"] : state["failed_briefs"]
+      bucket << slug unless bucket.include?(slug)
+      state["last_updated_at"] = Time.current.iso8601
+      save_state(state)
+    end
+
+    def brief_slug(brief)
+      brief.is_a?(Hash) ? (brief[:slug] || brief["slug"]) : brief.to_s
+    end
 
     # Phase 1.
     def prewarm_skills!
@@ -97,7 +143,13 @@ module Forge
     # Phase 2.
     def generate_templates!
       puts "[Forge::Bootstrap] phase 2: generating #{@briefs.size} templates at concurrency=#{@concurrency}"
-      Orchestrator.run(briefs: @briefs, generator: TemplatePack, concurrency: @concurrency).results
+      summary = Orchestrator.run(briefs: @briefs, generator: TemplatePack, concurrency: @concurrency)
+      # Persist completion state for resumability. Done after Orchestrator
+      # returns so we get an atomic write per brief in any future tighter
+      # integration; for v1 a single batch write is fine since one crash
+      # mid-run loses only what was in-flight.
+      summary.results.each { |r| update_state(brief_slug(r.brief), r.ok?) }
+      summary.results
     end
 
     # Lists ~limit trending skills from skills.sh and fully fetches each one.

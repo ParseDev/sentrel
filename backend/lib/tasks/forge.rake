@@ -81,12 +81,19 @@ namespace :forge do
     end
   end
 
-  desc "Full 100-template bootstrap: pre-warm skills + generate IdeaBank::ALL"
-  task :bootstrap, [:concurrency, :prewarm_count] => :environment do |_, args|
+  desc "Full 100-template bootstrap. Args: concurrency (20), prewarm_count (50), resume (0|1)"
+  task :bootstrap, [:concurrency, :prewarm_count, :resume] => :environment do |_, args|
     concurrency = (args[:concurrency] || "20").to_i
     prewarm = (args[:prewarm_count] || "50").to_i
-    summary = Forge::Bootstrap.new(concurrency: concurrency, prewarm_count: prewarm).run
+    resume = args[:resume].to_s == "1"
+    summary = Forge::Bootstrap.new(concurrency: concurrency, prewarm_count: prewarm, resume: resume).run
     puts summary
+  end
+
+  desc "Clear resumable bootstrap state (forget completed briefs)."
+  task reset_bootstrap_state: :environment do
+    Forge::Bootstrap.reset_state!
+    puts "Forge: bootstrap state cleared."
   end
 
   desc "Pre-warm skill library only (skills.sh trending or KNOWN_REPOS)"
