@@ -124,7 +124,12 @@ Rails.application.routes.draw do
     post "agents/draft", to: "agents#draft", as: :agents_draft
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
-      resources :conversations, only: [ :index, :show ]
+      resources :conversations, only: [ :index, :show ] do
+        member do
+          patch :archive
+          patch :unarchive
+        end
+      end
       resources :channel_configs, only: [ :index, :create, :update, :destroy ] do
         member do
           post :resync_inbound

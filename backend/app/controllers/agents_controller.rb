@@ -145,7 +145,7 @@ class AgentsController < ApplicationController
       agent: agent_json(@agent),
       anthropic_account_connected: anthropic_account_connected,
       spend: AgentSpend.for_agent(@agent),
-      conversations: @agent.conversations.where(kind: "external").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
+      conversations: @agent.conversations.where(kind: "external").where.not(status: "archived").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
         last_msg = c.messages.order(created_at: :desc).first
         c.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at ]).merge(
           channel: last_msg&.channel,
@@ -154,9 +154,13 @@ class AgentsController < ApplicationController
           last_message_direction: last_msg&.direction,
         )
       },
-      # Individual email messages for mail-style inbox
+      # Individual email messages for mail-style inbox. Archived
+      # conversations hide all their messages from this list — archive is
+      # the user's "out of sight" signal, so leaving them in the email
+      # row stream would defeat the point.
       emails: Message.joins(:conversation)
         .where(conversations: { agent_id: @agent.id, kind: "external" })
+        .where.not(conversations: { status: "archived" })
         .where(channel: "email")
         .order(created_at: :desc)
         .limit(50)

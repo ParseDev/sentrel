@@ -35,6 +35,7 @@ module Email
           contact_name: from_name,
           subject: subject,
           in_reply_to: @parsed.in_reply_to,
+          references: @parsed.references,
         )
 
         message = create_message(conversation, from, from_name, to_addr, subject, effective_cc)

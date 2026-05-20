@@ -20,6 +20,7 @@ import {
   PenLine,
   Save,
   Check,
+  Archive,
 } from "lucide-react"
 import { useState, useCallback, useRef, useEffect } from "react"
 import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown, Plug } from "lucide-react"
@@ -940,6 +941,36 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <Badge variant="secondary" className="text-[10px]">{conv.channel || "web"}</Badge>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
+                            title="Archive (hide from inbox)"
+                            onClick={async () => {
+                              const idToArchive = selectedConvId
+                              if (idToArchive == null) return
+                              // Close the detail pane immediately for snappy
+                              // feedback; reload props so the list updates
+                              // without a full page navigation.
+                              setSelectedConvId(null)
+                              setConvMessages([])
+                              setFallbackConv(null)
+                              try {
+                                const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+                                await fetch(`/agents/${agent.id}/conversations/${idToArchive}/archive`, {
+                                  method: "PATCH",
+                                  headers: { "X-CSRF-Token": csrf, Accept: "application/json" },
+                                })
+                              } catch {
+                                // Swallow — Inertia reload below will resync state
+                                // and the list will show the right thing.
+                              }
+                              router.reload({ only: ["conversations", "emails"] })
+                            }}
+                          >
+                            <Archive className="size-3.5" />
+                            Archive
+                          </Button>
                           {isEmailThread && agentPrimaryEmail && counterpartyAddr && (
                             <Button
                               size="sm"

@@ -44,6 +44,27 @@ class ConversationsController < ApplicationController
     end
   end
 
+  # Soft-delete: flip status to "archived" so the conversation drops out of
+  # the default inbox without losing the underlying history (messages,
+  # threading anchors, audit trail). Reversible via #unarchive.
+  def archive
+    conversation = find_by_public_id!(@agent.conversations, params[:id])
+    conversation.update!(status: "archived")
+    respond_to do |format|
+      format.json { render json: { ok: true, id: conversation.id, status: conversation.status } }
+      format.html { redirect_back fallback_location: agent_path(@agent, tab: "inbox") }
+    end
+  end
+
+  def unarchive
+    conversation = find_by_public_id!(@agent.conversations, params[:id])
+    conversation.update!(status: "active")
+    respond_to do |format|
+      format.json { render json: { ok: true, id: conversation.id, status: conversation.status } }
+      format.html { redirect_back fallback_location: agent_path(@agent, tab: "inbox") }
+    end
+  end
+
   private
 
   # Sprint 1d — include attachments (filename, size, content_type, download URL)
