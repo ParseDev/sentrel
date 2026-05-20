@@ -88,7 +88,10 @@ module Forge
     def parse_frontmatter(raw)
       match = raw.match(/\A---\n(.*?)\n---\s*\n(.*)/m)
       return [{}, raw] unless match
-      meta = YAML.safe_load(match[1]) || {}
+      # Some third-party SKILL.md frontmatter includes Date / Time / Symbol
+      # values (created_on, updated_at, etc). Whitelist them so safe_load
+      # doesn't raise "Tried to load unspecified class: Date" mid-bootstrap.
+      meta = YAML.safe_load(match[1], permitted_classes: [Date, Time, Symbol], aliases: true) || {}
       [meta, match[2].to_s.lstrip]
     end
 

@@ -22,14 +22,28 @@ module Forge
     end
 
     def call
-      # max_tokens: 8000 is enough for the new depth target (~50-100 lines
-      # of instructions_md + identity + personality + signature + the JSON
-      # scaffold ≈ 6-7K tokens output). Sonnet's max_tokens cap is 8192
-      # which we leave a small buffer under to avoid hard truncation.
-      raw = AnthropicClient.complete(prompt: build_prompt, model: @model, max_tokens: 8000, system: system_prompt)
-      parsed = AnthropicClient.parse_json(raw)
-      validate!(parsed)
+      # Up to 2 attempts. First failure on JSON parse usually means the
+      # model dropped out of structured-output mid-stream ("...{...\"I'll
+      # add more...\"..."). A second attempt with a stricter reminder
+      # usually fixes it.
+      parsed = nil
+      attempts = 0
+      last_err = nil
+      while attempts < 2 && parsed.nil?
+        attempts += 1
+        prompt = attempts == 1 ? build_prompt : build_prompt + "\n\nReturn ONLY valid JSON — your last response had prose mixed in. JSON only. No commentary."
+        raw = AnthropicClient.complete(prompt: prompt, model: @model, max_tokens: 8000, system: system_prompt)
+        begin
+          parsed = AnthropicClient.parse_json(raw)
+        rescue AnthropicClient::Error => e
+          last_err = e
+          parsed = nil
+          Rails.logger.warn "[TemplateGenerator] #{@brief[:slug] || @brief[:name]} attempt #{attempts} JSON parse failed: #{e.message[0, 150]}"
+        end
+      end
+      raise last_err if parsed.nil?
 
+      validate!(parsed)
       template = @dry_run ? OpenStruct.new(parsed) : upsert!(parsed)
       Result.new(template: template, brief: @brief)
     rescue => e
@@ -104,7 +118,7 @@ module Forge
         Output rules:
         - Return ONLY a single JSON object. No markdown fences. No prose before/after.
         - identity_md: 6–14 lines. Who the agent is, who they report to, what they own, what they explicitly don't.
-        - personality_md: 5–10 lines. How they communicate. Tone, defaults, what they refuse to do (e.g. "I don't say 'circle back'").
+        - personality_md: 5–10 lines. How they communicate. Tone, defaults, what they refuse to do. DO NOT include any banned phrases (synergy, leverage, robust, ecosystem, journey, holistic, paradigm, "circle back", "deep dive", "move the needle", "north star", "table stakes", "best in class", "world class", "mission critical") — not even as examples of phrases the agent avoids. Use OTHER concrete examples of corporate-speak to disavow if you need one.
         - instructions_md: 50–100+ lines of operating manual matching the GOOD example above. Markdown with `## Headers`. MUST include: at least one `## Example: …` scenario walk-through, named tool calls, concrete thresholds, what-they-don't-do, escalation rules.
         - email_signature_md: 3–5 lines. Closes the role's outbound email in the role's voice. MUST include the literal `{{agent_name}}` token. No "Best regards" / "Sincerely" boilerplate — use language that fits the role (e.g. an SDR's "— Sarah · SDR @ {{company_name}}" or a CFO's "{{agent_name}}, Finance · {{company_name}}").
       SYS
