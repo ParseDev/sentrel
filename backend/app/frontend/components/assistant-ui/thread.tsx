@@ -1098,14 +1098,58 @@ const ColdStartAwareDot: FC = () => {
       </div>
     );
   }
-  return (
-    <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
-      <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
-      <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
-      <span className="size-2 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
-    </div>
-  );
+  return <ThinkingEyes />;
 };
+
+// "Agent is thinking" indicator — a tiny line-art computer whose eyes dart
+// around (saccades) and blink, hinting that the model is reading / processing.
+// Stroke uses currentColor so it inherits the surrounding text color.
+const ThinkingEyes: FC = () => (
+  <div className="flex items-center py-1" aria-label="Agent is thinking">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="105 90 190 115"
+      className="h-6 w-auto text-foreground/70"
+      aria-hidden="true"
+    >
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .aui-thinking-eyes-stroke {
+              stroke: currentColor;
+              stroke-width: 12;
+              stroke-linecap: round;
+              stroke-linejoin: round;
+              fill: none;
+            }
+            .aui-thinking-eyes-group { animation: aui-thinking-eyes-saccade 4.5s ease-in-out infinite; }
+            .aui-thinking-eye-left { transform-origin: 165px 137px; animation: aui-thinking-eye-blink 4.5s infinite; }
+            .aui-thinking-eye-right { transform-origin: 190px 137px; animation: aui-thinking-eye-blink 4.5s infinite; }
+            @keyframes aui-thinking-eyes-saccade {
+              0%, 10% { transform: translateX(0); }
+              13%, 25% { transform: translateX(45px); }
+              28%, 40% { transform: translateX(10px); }
+              43%, 55% { transform: translateX(55px); }
+              58%, 70% { transform: translateX(-5px); }
+              73%, 85% { transform: translateX(25px); }
+              88%, 100% { transform: translateX(0); }
+            }
+            @keyframes aui-thinking-eye-blink {
+              0%, 26%, 30%, 34%, 78%, 82%, 100% { transform: scaleY(1); }
+              28%, 32%, 80% { transform: scaleY(0.1); }
+            }
+          `,
+        }}
+      />
+      <line x1="115" y1="195" x2="285" y2="195" className="aui-thinking-eyes-stroke" />
+      <rect x="140" y="100" width="120" height="75" rx="14" className="aui-thinking-eyes-stroke" />
+      <g className="aui-thinking-eyes-group">
+        <line x1="165" y1="130" x2="165" y2="144" className="aui-thinking-eyes-stroke aui-thinking-eye-left" />
+        <line x1="190" y1="130" x2="190" y2="144" className="aui-thinking-eyes-stroke aui-thinking-eye-right" />
+      </g>
+    </svg>
+  </div>
+);
 
 // "Thought for Xs" pill — collapsed by default. Click to expand the
 // model's extended-thinking trace. Italic + dimmed so it reads as a
