@@ -6,23 +6,53 @@ require "json"
 # without pulling in async-http or a connection pool — Net::HTTP is fine for
 # the few-dozen concurrent calls Forge fires off, and the API rate-limits
 # us long before we'd benefit from keepalive.
+#
+# Retry + cost logging:
+#   - 429 → honor `retry-after` header, sleep min(value, 30s).
+#   - 5xx → exponential backoff 1s → 2s → 4s.
+#   - Up to 3 attempts total.
+#   - On 200 we log input/output tokens to Rails.logger.info AND accumulate
+#     them in Forge::AnthropicClient.usage_total — Bootstrap reads that at
+#     the end of a run for a single-line cost summary.
 module Forge
   class AnthropicClient
     URL = URI.parse("https://api.anthropic.com/v1/messages").freeze
 
     DEFAULT_MODEL = "claude-sonnet-4-6"
     DEFAULT_MAX_TOKENS = 4096
+    ANTHROPIC_VERSION = "2024-09-15".freeze
+
+    MAX_ATTEMPTS = 3
+    MAX_RETRY_AFTER = 30 # seconds — cap whatever the server asks
+    BACKOFF_5XX = [1, 2, 4].freeze
 
     class Error < StandardError; end
+
+    # Process-wide token counters. Thread-safe; we accumulate from any of the
+    # 20 parallel orchestrator threads.
+    @input_tokens  = Concurrent::AtomicFixnum.new(0)
+    @output_tokens = Concurrent::AtomicFixnum.new(0)
+    @call_count    = Concurrent::AtomicFixnum.new(0)
+
+    class << self
+      def usage_total
+        {
+          input_tokens: @input_tokens.value,
+          output_tokens: @output_tokens.value,
+          calls: @call_count.value,
+        }
+      end
+
+      def reset_usage!
+        @input_tokens.value  = 0
+        @output_tokens.value = 0
+        @call_count.value    = 0
+      end
+    end
 
     def self.complete(prompt:, model: DEFAULT_MODEL, max_tokens: DEFAULT_MAX_TOKENS, system: nil, timeout: 60)
       api_key = ENV["ANTHROPIC_API_KEY"]
       raise Error, "ANTHROPIC_API_KEY not set" if api_key.blank?
-
-      http = Net::HTTP.new(URL.host, URL.port)
-      http.use_ssl = true
-      http.read_timeout = timeout
-      http.open_timeout = 15
 
       body = {
         model: model,
@@ -31,20 +61,36 @@ module Forge
       }
       body[:system] = system if system.present?
 
-      request = Net::HTTP::Post.new(URL.path)
-      request["Content-Type"] = "application/json"
-      request["x-api-key"] = api_key
-      request["anthropic-version"] = "2023-06-01"
-      request.body = body.to_json
+      attempt = 0
+      loop do
+        attempt += 1
+        response = http_post(api_key: api_key, body: body, timeout: timeout)
+        code = response.code.to_i
 
-      response = http.request(request)
-      parsed = JSON.parse(response.body)
+        if code == 200
+          parsed = JSON.parse(response.body)
+          record_usage!(parsed, model)
+          return parsed.dig("content", 0, "text").to_s
+        end
 
-      unless response.is_a?(Net::HTTPSuccess)
-        raise Error, "Anthropic #{response.code}: #{parsed.dig('error', 'message') || response.body[0, 200]}"
+        if code == 429 && attempt < MAX_ATTEMPTS
+          delay = retry_after_seconds(response) || (2**attempt)
+          Rails.logger.warn "[Forge] Anthropic 429 (attempt #{attempt}/#{MAX_ATTEMPTS}) — sleeping #{delay}s"
+          sleep(delay)
+          next
+        end
+
+        if code >= 500 && code < 600 && attempt < MAX_ATTEMPTS
+          delay = BACKOFF_5XX[attempt - 1] || 4
+          Rails.logger.warn "[Forge] Anthropic #{code} (attempt #{attempt}/#{MAX_ATTEMPTS}) — sleeping #{delay}s"
+          sleep(delay)
+          next
+        end
+
+        # Non-retryable, or out of attempts.
+        parsed = JSON.parse(response.body) rescue {}
+        raise Error, "Anthropic #{code}: #{parsed.dig('error', 'message') || response.body[0, 200]}"
       end
-
-      parsed.dig("content", 0, "text").to_s
     end
 
     # Parse a Claude response that we asked to be JSON. Strips ``` fences if
@@ -60,6 +106,41 @@ module Forge
       JSON.parse(stripped)
     rescue JSON::ParserError => e
       raise Error, "JSON parse failed: #{e.message}; raw=#{text[0, 200].inspect}"
+    end
+
+    # ── private-ish ─────────────────────────────────────────────────────
+
+    def self.http_post(api_key:, body:, timeout:)
+      http = Net::HTTP.new(URL.host, URL.port)
+      http.use_ssl = true
+      http.read_timeout = timeout
+      http.open_timeout = 15
+
+      request = Net::HTTP::Post.new(URL.path)
+      request["Content-Type"] = "application/json"
+      request["x-api-key"] = api_key
+      request["anthropic-version"] = ANTHROPIC_VERSION
+      request.body = body.to_json
+      http.request(request)
+    end
+
+    # Some 429 responses include Retry-After (in seconds, integer string).
+    def self.retry_after_seconds(response)
+      raw = response["retry-after"].to_s.strip
+      return nil if raw.empty?
+      n = raw.to_i
+      n > 0 ? [n, MAX_RETRY_AFTER].min : nil
+    end
+
+    def self.record_usage!(parsed, model)
+      usage = parsed["usage"] || {}
+      input = usage["input_tokens"].to_i
+      output = usage["output_tokens"].to_i
+      return if input.zero? && output.zero?
+      @input_tokens.update { |v| v + input }
+      @output_tokens.update { |v| v + output }
+      @call_count.increment
+      Rails.logger.info "[Forge] tokens in/out: #{input}/#{output} model=#{model}"
     end
   end
 end

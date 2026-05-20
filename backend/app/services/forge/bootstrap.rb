@@ -25,11 +25,16 @@ module Forge
       def successes = template_results.select(&:ok?)
       def failures  = template_results.reject(&:ok?)
       def to_s
+        usage = AnthropicClient.usage_total
+        # Pricing assumes Sonnet 4.6 (Bootstrap's default).
+        # $3/MTok input, $15/MTok output — divide accordingly.
+        cost = ((usage[:input_tokens] * 3.0) + (usage[:output_tokens] * 15.0)) / 1_000_000.0
         lines = []
         lines << "Forge::Bootstrap"
         lines << "  Pre-warmed skills: #{skills_prewarmed}"
         lines << "  Templates: #{successes.size}/#{template_results.size} ok in #{duration_s.round(1)}s"
         lines << "  Final counts: AgentTemplate=#{AgentTemplate.count}, SkillDefinition=#{SkillDefinition.count}"
+        lines << "  Claude usage: #{usage[:calls]} calls, #{usage[:input_tokens]} in / #{usage[:output_tokens]} out tokens (~$#{format('%.2f', cost)})"
         if failures.any?
           lines << "  Failures:"
           failures.each { |r| lines << "    #{r.brief.is_a?(Hash) ? r.brief[:slug] : r.brief}: #{r.error}" }
