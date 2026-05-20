@@ -86,9 +86,12 @@ Rails.application.routes.draw do
     resources :organizations, only: [:index, :update, :destroy]
 
     # Forge runner — kicks the background job, polls for status.
-    get  "forge",       to: "forge#show"
-    post "forge",       to: "forge#create"
-    post "forge/reset", to: "forge#reset_state"
+    get  "forge",                  to: "forge#show"
+    post "forge",                  to: "forge#create"
+    post "forge/reset",            to: "forge#reset_state"
+    post "forge/lint",             to: "forge#lint"             # ?unpublish=1 to also unpublish failures
+    post "forge/republish_passing", to: "forge#republish_passing"
+    post "forge/dedup",            to: "forge#dedup"
   end
 
   # Authenticated routes

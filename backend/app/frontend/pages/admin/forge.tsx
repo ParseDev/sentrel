@@ -41,11 +41,12 @@ interface Props {
   env_sources: EnvSource[]
   state: State
   last_run: LastRun | null
+  last_dedup: string[][] | null  // array of slug-groups
   idea_bank_size: number
   defaults: { concurrency: number; prewarm_count: number; brief_count: number }
 }
 
-export default function AdminForge({ env_sources, state, last_run: initialLastRun, idea_bank_size, defaults }: Props) {
+export default function AdminForge({ env_sources, state, last_run: initialLastRun, last_dedup, idea_bank_size, defaults }: Props) {
   const [concurrency, setConcurrency] = useState(defaults.concurrency)
   const [prewarmCount, setPrewarmCount] = useState(defaults.prewarm_count)
   const [briefCount, setBriefCount] = useState(defaults.brief_count)
@@ -81,6 +82,16 @@ export default function AdminForge({ env_sources, state, last_run: initialLastRu
     router.post("/admin/forge/reset", {}, { preserveScroll: true })
   }
 
+  function runLint(opts: { unpublish?: boolean } = {}) {
+    router.post("/admin/forge/lint", opts.unpublish ? { unpublish: 1 } : {}, { preserveScroll: true })
+  }
+  function republishPassing() {
+    router.post("/admin/forge/republish_passing", {}, { preserveScroll: true })
+  }
+  function runDedup() {
+    router.post("/admin/forge/dedup", {}, { preserveScroll: true })
+  }
+
   const completedCount = state.completed_briefs?.length || 0
 
   return (
@@ -88,6 +99,30 @@ export default function AdminForge({ env_sources, state, last_run: initialLastRu
       <AdminNav />
       <div className="mx-auto max-w-7xl space-y-6 p-6">
         <h1 className="text-2xl font-semibold">Forge Runner</h1>
+
+        {/* Quick actions — run common maintenance tasks without dropping
+            to the rails console. Cheap operations only (no LLM calls).
+            Results show in the flash banner + relevant panels below. */}
+        <section className="rounded-lg border bg-card p-4">
+          <h2 className="mb-3 text-sm font-semibold">Quick actions</h2>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => runLint()} className="rounded border px-3 py-1.5 text-xs hover:bg-muted">
+              Lint all
+            </button>
+            <button type="button" onClick={() => { if (confirm("Unpublish every template/skill that fails QualityLint right now?")) runLint({ unpublish: true }) }} className="rounded border border-orange-300 px-3 py-1.5 text-xs text-orange-700 hover:bg-orange-50">
+              Lint &amp; unpublish failures
+            </button>
+            <button type="button" onClick={republishPassing} className="rounded border border-green-300 px-3 py-1.5 text-xs text-green-700 hover:bg-green-50">
+              Republish passing (after rule changes)
+            </button>
+            <button type="button" onClick={runDedup} className="rounded border px-3 py-1.5 text-xs hover:bg-muted">
+              Find near-duplicates
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Lint scans every template + skill against current QualityLint rules. Republish passing brings rows back live after you loosen the rules. Dedup uses identity + name + skill overlap.
+          </p>
+        </section>
 
         {/* Env sources */}
         <section className="rounded-lg border bg-card p-4">
@@ -131,6 +166,26 @@ export default function AdminForge({ env_sources, state, last_run: initialLastRu
             </button>
           </div>
         </form>
+
+        {/* Dedup result — populated by clicking "Find near-duplicates". */}
+        {last_dedup && last_dedup.length > 0 && (
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="mb-3 text-sm font-semibold">Near-duplicate groups ({last_dedup.length})</h2>
+            <p className="mb-3 text-xs text-muted-foreground">Templates with identity + name + skill overlap above 0.65. Decide manually whether to keep, merge, or delete.</p>
+            <div className="space-y-2">
+              {last_dedup.map((group, i) => (
+                <div key={i} className="rounded border bg-background p-2 text-xs">
+                  <div className="mb-1 font-semibold">Group {i + 1}</div>
+                  <ul className="ml-4 list-disc">
+                    {group.map((slug) => (
+                      <li key={slug}><a href={`/admin/templates`} className="font-mono hover:underline">{slug}</a></li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* State / resume info */}
         {completedCount > 0 && (
