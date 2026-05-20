@@ -33,12 +33,7 @@ module Email
       return failure("Domain not verified: #{@from_domain}") unless domain_verified?
       return suppressed if suppressed?
 
-      conversation = Threading.find_or_create(
-        agent: @agent,
-        contact_email: @to_address,
-        contact_name: @to_address,
-        subject: @subject,
-      )
+      conversation = find_conversation
 
       threading_headers = build_threading_headers(conversation)
       mail = build_mail(threading_headers)
@@ -95,6 +90,27 @@ module Email
 
     def suppressed?
       EmailSuppression.suppressed?(@org.id, @to_address.downcase)
+    end
+
+    # Use the conversation the engine handed us when present — the engine sets
+    # this to the inbound's conversation, which is the only way to thread an
+    # agent reply when the agent was CC'd and is replying to someone other
+    # than the inbound sender (Threading.find_or_create can't recover that
+    # because @to_address won't match the conversation's contact_email).
+    def find_conversation
+      conv_id = @payload[:conversation_id]
+      if conv_id.present?
+        conv = @agent.conversations.find_by(id: conv_id)
+        return conv if conv
+        Rails.logger.warn "OutboundSender: conversation_id=#{conv_id} not found for agent=#{@agent.id}, falling back to Threading"
+      end
+
+      Threading.find_or_create(
+        agent: @agent,
+        contact_email: @to_address,
+        contact_name: @to_address,
+        subject: @subject,
+      )
     end
 
     def suppressed

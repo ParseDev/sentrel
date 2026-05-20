@@ -53,6 +53,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { agentsPath, dashboardPath, editAgentPath, agentChannelConfigsPath } from "@/routes"
+import { formatSmartDate } from "@/lib/utils"
 import type { Agent, Task, ChannelConfig, ScheduledTask, ScheduledTaskRun } from "@/types"
 
 interface ConversationItem {
@@ -692,7 +693,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                 )}
                               </div>
                               <span className="text-[10px] text-muted-foreground shrink-0">
-                                {new Date(email.created_at).toLocaleDateString()}
+                                {formatSmartDate(email.created_at)}
                               </span>
                             </div>
                             {email.subject && (
@@ -727,7 +728,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-medium text-sm truncate">{conv.contact_name || conv.contact_email || conv.contact_phone || "Unknown"}</span>
-                              <span className="text-[10px] text-muted-foreground shrink-0">{new Date(conv.updated_at).toLocaleDateString()}</span>
+                              <span className="text-[10px] text-muted-foreground shrink-0">{formatSmartDate(conv.updated_at)}</span>
                             </div>
                             {conv.subject && <p className="text-xs font-medium mt-0.5 truncate">{conv.subject}</p>}
                             {conv.last_message_preview && (

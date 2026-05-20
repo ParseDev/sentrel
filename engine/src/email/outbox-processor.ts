@@ -41,11 +41,13 @@ export async function processOutbox(
   // agent wanted to send. Otherwise the agent's work gets silently dropped
   // — and the user reads 'Drafted email for review' in Slack with no card
   // to actually review. Approvals on this path force permLevel = 'draft'.
+  const conversationId = job.conversationId ?? null;
+
   if (!emailConfig) {
     logger.warn(`No email channel configured — surfacing ${emailsToProcess.length} captured email(s) as draft approval(s) anyway`);
     for (const content of emailsToProcess) {
       try {
-        const result = await processOneEmail(content, agent, null, messageId);
+        const result = await processOneEmail(content, agent, null, messageId, conversationId);
         if (result) results.push(result);
       } catch (err) {
         logger.error(`Failed to surface captured email to ${content.to}`, { error: (err as Error).message });
@@ -56,7 +58,7 @@ export async function processOutbox(
 
   for (const content of emailsToProcess) {
     try {
-      const result = await processOneEmail(content, agent, emailConfig, messageId);
+      const result = await processOneEmail(content, agent, emailConfig, messageId, conversationId);
       if (result) results.push(result);
     } catch (err) {
       logger.error(`Failed to process email to ${content.to}`, { error: (err as Error).message });
@@ -103,6 +105,7 @@ async function processOneEmail(
   agent: Agent,
   emailConfig: { config: Record<string, unknown> } | null,
   messageId?: number | null,
+  conversationId?: number | null,
 ): Promise<ApprovalResult | null> {
   // Upload attachments if specified
   const attachmentIds: string[] = [];
@@ -116,7 +119,7 @@ async function processOneEmail(
   const emailPayload = {
     agent_id: agent.id,
     org_id: agent.organization_id,
-    conversation_id: null,
+    conversation_id: conversationId ?? null,
     to: content.to,
     cc: content.cc || [],
     bcc: content.bcc || [],
