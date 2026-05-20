@@ -65,6 +65,7 @@ module Forge
 
     def self.skill(record)
       warnings = []
+      imported = record.source.to_s == "imported"
 
       md = record.skill_md.to_s
       lines = md.lines.count
@@ -76,13 +77,22 @@ module Forge
         warnings << { rule: :too_long, message: "skill_md is #{lines} lines, ≤1000 expected" }
       end
 
-      found = SKILL_REQUIRED_HEADERS.count { |re| md.match?(re) }
-      if found < 5
-        warnings << { rule: :missing_sections,
-                      message: "skill_md has only #{found}/7 expected section headers (When to Use / NOT / Auth / Endpoints / Workflow / Errors / Rules)" }
+      # Section-header check ONLY for skills we generate (built_in source).
+      # Imported skills come from third-party repos with varied structures
+      # — applying our convention to their content is wrong.
+      unless imported
+        found = SKILL_REQUIRED_HEADERS.count { |re| md.match?(re) }
+        if found < 5
+          warnings << { rule: :missing_sections,
+                        message: "skill_md has only #{found}/7 expected section headers (When to Use / NOT / Auth / Endpoints / Workflow / Errors / Rules)" }
+        end
       end
 
-      check_buzzwords(warnings, record, :skill_md)
+      # Buzzword check intentionally NOT applied to skill_md — buzzwords
+      # in documentation text don't propagate to the agent's voice (that
+      # only matters in template personality_md). A skill called
+      # "lifecycle-marketing" can legitimately use words like "journey"
+      # in its description of marketing concepts.
 
       score = compute_score(warnings)
       Result.new(pass: score >= 70, score: score, warnings: warnings)

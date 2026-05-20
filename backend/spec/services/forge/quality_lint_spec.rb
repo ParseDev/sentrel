@@ -85,15 +85,22 @@ RSpec.describe Forge::QualityLint do
     it "passes a well-structured skill" do
       sections = ["When to Use", "When NOT to Use", "Auth", "Endpoints", "Workflow", "Errors", "Rules"]
       body = sections.map { |s| "## #{s}\n- bullet\n" }.join("\n") + ("\nfiller line." * 50)
-      good_skill = double("skill", skill_md: body)
+      good_skill = double("skill", skill_md: body, source: "built_in")
       result = described_class.skill(good_skill)
       expect(result.pass).to be true
     end
 
-    it "fails skills missing the canonical sections" do
-      bad_skill = double("skill", skill_md: "# Skill\n" + ("body line.\n" * 60))
+    it "fails BUILT_IN skills missing the canonical sections" do
+      bad_skill = double("skill", skill_md: "# Skill\n" + ("body line.\n" * 60), source: "built_in")
       result = described_class.skill(bad_skill)
       expect(result.warnings.map { |w| w[:rule] }).to include(:missing_sections)
+    end
+
+    it "does NOT enforce canonical sections on IMPORTED skills (third-party)" do
+      imported_skill = double("skill", skill_md: "# Skill\n" + ("body line.\n" * 60), source: "imported")
+      result = described_class.skill(imported_skill)
+      expect(result.warnings.map { |w| w[:rule] }).not_to include(:missing_sections)
+      expect(result.pass).to be true
     end
   end
 end
