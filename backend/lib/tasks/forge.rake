@@ -1,4 +1,32 @@
 namespace :forge do
+  desc "Print env-source health table. Exits non-zero if ANTHROPIC_API_KEY missing."
+  task check_env: :environment do
+    rows = [
+      ["ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "required — no key, no generation"],
+      ["SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "optional — enables skills.sh API (8420 skills)"],
+      ["GITHUB_TOKEN",      ENV["GITHUB_TOKEN"],      false, "optional — enables GitHub search source"],
+      ["COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "optional — for live toolkit catalog refresh"],
+    ]
+    puts "Forge env-source health:"
+    puts "─" * 90
+    missing_hard = false
+    rows.each do |name, value, required, note|
+      mark = value.present? ? "✓" : "✗"
+      last4 = value.present? ? " (last 4: ...#{value[-4..]})" : ""
+      hardness = required ? "REQUIRED" : "optional"
+      missing_hard = true if required && value.blank?
+      puts "  #{mark} #{name.ljust(20)} #{hardness.ljust(9)}#{last4}"
+      puts "      #{note}"
+    end
+    puts "─" * 90
+    if missing_hard
+      puts "✗ Missing required env vars. Set them before running forge:bootstrap."
+      exit 1
+    else
+      puts "✓ Ready to run forge:bootstrap"
+    end
+  end
+
   desc "Generate agent templates from a brief list. Args: batch (1|2|all, default 1), concurrency (default 20)"
   task :templates, [:batch, :concurrency] => :environment do |_, args|
     batch = (args[:batch] || "1").to_s

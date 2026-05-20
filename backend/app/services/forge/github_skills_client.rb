@@ -16,10 +16,38 @@ module Forge
 
     class Error < StandardError; end
 
+    # GitHub's /search/code endpoint REQUIRES authentication — unauthenticated
+    # calls return 422. We emit one big warning the first time anyone tries
+    # to use it without a token, then short-circuit silently so we don't spam
+    # the log with one warning per template lookup.
+    @token_check_mutex = Mutex.new
+    @token_check_done  = false
+    @token_present     = false
+
+    def self.token_available?
+      @token_check_mutex.synchronize do
+        return @token_present if @token_check_done
+        @token_check_done = true
+        @token_present = ENV["GITHUB_TOKEN"].present?
+        unless @token_present
+          Rails.logger.warn "[Forge] " + ("─" * 76)
+          Rails.logger.warn "[Forge] GITHUB_TOKEN not set — GitHub Search source DISABLED."
+          Rails.logger.warn "[Forge] GitHub's /search/code endpoint requires auth (returns 422 without it)."
+          Rails.logger.warn "[Forge] Skills will fall through from GitHub → SkillGenerator (slower + costs"
+          Rails.logger.warn "[Forge]   more in Claude tokens). Fix: create a PAT at"
+          Rails.logger.warn "[Forge]   github.com/settings/tokens (Classic, public_repo scope), set as"
+          Rails.logger.warn "[Forge]   GITHUB_TOKEN in your env. Then re-run."
+          Rails.logger.warn "[Forge] " + ("─" * 76)
+        end
+        @token_present
+      end
+    end
+
     # Search public repos for `SKILL.md` matching the query terms. Returns
     # an array of { source, slug, path, html_url } candidates, ranked by
     # GitHub's score (which weighs match quality, stars, and freshness).
     def self.search(query, limit: 5)
+      return [] unless token_available?
       q = "#{query} filename:SKILL.md"
       data = get_json("#{API}/search/code", { q: q, per_page: limit })
       Array(data["items"]).first(limit).map do |item|
