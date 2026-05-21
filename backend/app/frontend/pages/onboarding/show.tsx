@@ -508,7 +508,14 @@ export default function OnboardingShow({
       } else {
         setMailboxDomain(data.domain)
         setDnsRecords(data.records || [])
-        setVerificationStatus(null)
+        // If SES says the domain is ALREADY verified (e.g. another org owned by
+        // the same admin set up the DNS on the same AWS account previously),
+        // skip the DNS-records step and mark as Success immediately.
+        if (data.already_verified) {
+          setVerificationStatus("Success")
+        } else {
+          setVerificationStatus(null)
+        }
         setStep("mailbox_dns")
       }
     } catch {
@@ -1147,12 +1154,22 @@ export default function OnboardingShow({
                 <div className="space-y-2">
                   <Overline>Step 3 · DNS</Overline>
                   <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
-                    Add these records
+                    {verificationStatus === "Success" ? "Already verified" : "Add these records"}
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Add the records below in your DNS provider for{" "}
-                    <span className="font-mono text-foreground">{mailboxDomain}</span>,
-                    then hit Verify.
+                    {verificationStatus === "Success" ? (
+                      <>
+                        <span className="font-mono text-foreground">{mailboxDomain}</span> is already set up
+                        on our SES account — typically because another org you own already added the DNS records.
+                        Nothing to do here. Click Continue.
+                      </>
+                    ) : (
+                      <>
+                        Add the records below in your DNS provider for{" "}
+                        <span className="font-mono text-foreground">{mailboxDomain}</span>,
+                        then hit Verify.
+                      </>
+                    )}
                   </p>
                 </div>
 
