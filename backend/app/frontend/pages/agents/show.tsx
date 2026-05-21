@@ -454,7 +454,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], missing_integrations = [] }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [] }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -576,7 +576,14 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const channels = [...new Set(conversations.map((c) => c.channel).filter(Boolean))]
+  // Channel chips come from the agent's configured channels so a freshly
+  // connected channel still shows up before its first conversation lands.
+  // Union with any channels surfaced by existing conversations so we don't
+  // hide legacy rows from channels that have since been disabled.
+  const channels = [...new Set([
+    ...channel_configs.filter((c) => c.enabled).map((c) => c.channel_type),
+    ...conversations.map((c) => c.channel).filter(Boolean) as string[],
+  ])]
 
   const tabs: { key: Section; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[] = [
     { key: "chat", label: "Chat", icon: Send },
