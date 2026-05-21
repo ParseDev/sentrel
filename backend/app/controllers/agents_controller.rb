@@ -345,6 +345,15 @@ class AgentsController < ApplicationController
         ai_cfg[:provider] = template.suggested_provider if ai_cfg[:provider].blank? && template.suggested_provider.present?
         ai_cfg[:model_id] = template.suggested_model    if ai_cfg[:model_id].blank?    && template.suggested_model.present?
       end
+      # Prefer the org's connected Claude OAuth (Pro/Max/Team) over the
+      # platform API key. Without this, every new agent burns through the
+      # platform's ANTHROPIC_API_KEY credit pool instead of the org's
+      # subscription. Only applies when the chosen provider is the bare
+      # "anthropic" API path; explicit "openrouter" / "openai_account"
+      # selections are respected.
+      if ai_cfg[:provider].to_s == "anthropic" && org_has_anthropic_oauth?
+        ai_cfg[:provider] = "anthropic_account"
+      end
       @agent.create_ai_config!(ai_cfg)
 
       # Install the template's suggested skills (if any).
@@ -478,6 +487,18 @@ class AgentsController < ApplicationController
 
   def ai_config_params
     params.fetch(:ai_config, {}).permit(:provider, :model_id, :temperature, :max_tokens, :thinking_level)
+  end
+
+  # True when the current_tenant has a usable Anthropic OAuth credential
+  # (Pro/Max/Team subscription). Drives the auto-pick to
+  # provider: "anthropic_account" at agent install time so the org's
+  # subscription pays for usage, not the platform's API key.
+  def org_has_anthropic_oauth?
+    OauthCredential.exists?(
+      organization_id: current_tenant.id,
+      provider: "anthropic",
+      kind: "ai_provider",
+    )
   end
 
   # Replaces the agent's credential grants with whatever the form sent.
