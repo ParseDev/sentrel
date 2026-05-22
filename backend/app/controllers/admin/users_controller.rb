@@ -28,6 +28,7 @@ module Admin
       if user == current_user
         redirect_to admin_users_path, alert: "Can't delete yourself" and return
       end
+      record_admin_destroy(user)
       user.destroy!
       redirect_to admin_users_path, notice: "Deleted #{user.email}"
     end

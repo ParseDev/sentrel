@@ -34,6 +34,7 @@ module Admin
 
     def destroy
       skill = SkillDefinition.find(params[:id])
+      record_admin_destroy(skill)
       skill.destroy!
       redirect_to admin_skills_path, notice: "Deleted #{skill.slug}"
     end

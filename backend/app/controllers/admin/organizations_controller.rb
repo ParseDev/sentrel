@@ -30,6 +30,7 @@ module Admin
 
     def destroy
       org = Organization.find(params[:id])
+      record_admin_destroy(org)
       org.destroy!
       redirect_to admin_organizations_path, notice: "Deleted org #{org.slug}"
     end

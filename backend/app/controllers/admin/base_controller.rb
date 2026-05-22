@@ -33,5 +33,35 @@ module Admin
         to: pagy.to,
       }
     end
+
+    # Records a row destroyed by a platform admin. AuditLog#organization_id
+    # is NOT NULL, so when the destroyed record has no org (e.g. system
+    # template, user with org dependent-destroyed already, agent we just
+    # nuked), fall back to the acting admin's own org so the entry is still
+    # written. action defaults to "admin_destroy"; bulk callers override
+    # with "admin_bulk_destroy".
+    def record_admin_destroy(record, action: "admin_destroy")
+      tenant_id = (record.respond_to?(:organization_id) && record.organization_id) ||
+                  current_user&.organization_id
+      return if tenant_id.nil? # last-ditch — shouldn't happen but don't crash a destroy on logging
+      ActsAsTenant.without_tenant do
+        AuditLog.create!(
+          organization_id: tenant_id,
+          acting_user_id: current_user.id,
+          action: action,
+          tool_name: record.class.name.demodulize.underscore,
+          input: {
+            target_type: record.class.name,
+            target_id: record.id,
+            target_slug: record.try(:slug),
+            target_name: record.try(:name) || record.try(:email),
+          }.compact,
+          status: "success",
+        )
+      end
+    rescue => e
+      # Never let an audit-log failure block the actual destroy.
+      Rails.logger.error "[Admin#record_admin_destroy] #{e.class}: #{e.message}"
+    end
   end
 end

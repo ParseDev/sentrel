@@ -35,6 +35,9 @@ module Admin
               protected_count += 1
               next
             end
+            # Snapshot identity for the audit log before destroy nils
+            # out the loaded attrs.
+            record_admin_destroy(record, action: "admin_bulk_destroy")
             record.destroy
             destroyed += 1
           end

@@ -36,6 +36,7 @@ module Admin
     def destroy
       ActsAsTenant.without_tenant do
         agent = Agent.find(params[:id])
+        record_admin_destroy(agent)
         agent.destroy!
         redirect_to admin_agents_path, notice: "Deleted agent #{agent.name}"
       end

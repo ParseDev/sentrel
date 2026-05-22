@@ -45,6 +45,7 @@ module Admin
     def destroy
       ActsAsTenant.without_tenant do
         template = AgentTemplate.find(params[:id])
+        record_admin_destroy(template)
         template.destroy!
         redirect_to admin_templates_path, notice: "Deleted #{template.slug}"
       end
