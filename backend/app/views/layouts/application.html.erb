@@ -12,6 +12,26 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
+    <%# Social share preview (Open Graph + Twitter). Inertia pages can override
+        any of these by yielding into :head with their own tags. %>
+    <% og_title = "Double.md — Meet your new AI team" %>
+    <% og_description = "Hire AI specialists that live inside Slack, Gmail, your CRM, and 250+ other tools. They draft, you approve, the work ships." %>
+    <% og_image = "#{request.base_url}/og-image.png" %>
+    <meta name="description" content="<%= og_description %>">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Double.md">
+    <meta property="og:title" content="<%= og_title %>">
+    <meta property="og:description" content="<%= og_description %>">
+    <meta property="og:url" content="<%= request.original_url %>">
+    <meta property="og:image" content="<%= og_image %>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Double.md — Meet your new AI team">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<%= og_title %>">
+    <meta name="twitter:description" content="<%= og_description %>">
+    <meta name="twitter:image" content="<%= og_image %>">
+
     <%= yield :head %>
 
     <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>

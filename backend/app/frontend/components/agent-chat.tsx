@@ -580,14 +580,19 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         if (last?.role === "assistant" && last.status === "running") {
-          const startedAt = last.thinking?.startedAt ?? Date.now()
+          // Anchor to the placeholder's createdAt (= moment the user sent)
+          // so the very first thinking_delta yields a non-zero duration.
+          // Falling back to Date.now() here made the FIRST delta record
+          // durationMs=0 — and for runs where only one delta arrives, the
+          // pill would forever render as a bare "Thought".
+          const startedAt = last.thinking?.startedAt ?? last.createdAt
           return [
             ...prev.slice(0, -1),
             {
               ...last,
               thinking: {
                 text,
-                durationMs: Date.now() - startedAt,
+                durationMs: Math.max(0, Date.now() - startedAt),
                 startedAt,
               },
             },
