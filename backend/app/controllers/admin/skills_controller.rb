@@ -81,28 +81,35 @@ module Admin
     end
 
     # AI Skill Creator — step 3: commit the (possibly edited) preview to
-    # the DB. We rerun SkillGenerator with write_file: true to create the
-    # canonical seed file + the SkillDefinition row, then layer any
-    # edits the user made to the preview pane (skill_md) on top.
+    # the DB. Persists DIRECTLY from the preview payload (no second Claude
+    # call) — re-running the generator at commit time produced different
+    # output than the preview, silently dropping the user's edits to
+    # supporting files whose paths shifted. The preview payload is already
+    # validated; we just merge user edits on top and write rows.
     def commit
-      brief = params.require(:brief).permit(:slug, :name, :category, :description, :icon).to_h.symbolize_keys
-      edited_skill_md = params[:skill_md].to_s
+      attrs = params.require(:preview).permit(
+        :slug, :name, :description, :category, :icon,
+        requires_connections: [], required_capabilities: [],
+      ).to_h
+      attrs["skill_md"] = params[:skill_md].to_s
+      attrs["additional_files"] = Array(params[:additional_files]).map do |f|
+        h = f.respond_to?(:to_unsafe_h) ? f.to_unsafe_h : f.to_h
+        { "path" => h["path"].to_s, "content" => h["content"].to_s }
+      end.reject { |f| f["path"].empty? || f["content"].empty? }
 
-      result = Forge::SkillGenerator.new(brief: brief, write_file: true).call
-      if result.ok?
-        # Layer the user's edited skill_md on top of the freshly-generated
-        # row, if they touched it. We update both the record and the
-        # SKILL.md skill_file to keep them in sync.
-        if edited_skill_md.present? && edited_skill_md != result.skill.skill_md
-          result.skill.update!(skill_md: edited_skill_md)
-          if (primary = result.skill.skill_files.find_by(path: "SKILL.md"))
-            primary.update!(content: edited_skill_md)
-          end
-        end
-        redirect_to admin_skills_path, notice: "Created skill #{result.skill.slug}"
-      else
-        redirect_to new_admin_skill_path, alert: "Skill generation failed: #{result.error}"
-      end
+      skill = Forge::SkillGenerator.persist!(attrs)
+      AuditLog.create!(
+        organization_id: current_user.organization_id,
+        acting_user_id: current_user.id,
+        action: "skill_created_via_ai",
+        tool_name: "skill_definition",
+        input: { target_id: skill.id, target_slug: skill.slug, target_name: skill.name },
+        status: "success",
+      )
+      redirect_to admin_skills_path, notice: "Created skill #{skill.slug}"
+    rescue => e
+      Rails.logger.error "[Admin::SkillsController#commit] #{e.class}: #{e.message}"
+      redirect_to new_admin_skill_path, alert: "Skill generation failed: #{e.message}"
     end
 
     # POST /admin/skills/:id/resync — refetches the SKILL.md (and siblings)

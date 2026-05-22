@@ -19,6 +19,19 @@ module Forge
     DEFAULT_MODEL = "claude-sonnet-4-6"
     CATEGORIES = %w[common communication content engineering finance productivity sales].freeze
 
+    # Persist a pre-validated payload as a SkillDefinition + SkillFile
+    # rows. Used by the AI Skill Creator's commit endpoint: the preview
+    # already validated the payload via Claude; we don't want to call
+    # Claude again at commit time (slow + non-deterministic — paths
+    # could shift between runs, dropping the user's edits). This is
+    # the canonical write path; SkillGenerator#call funnels through it.
+    def self.persist!(parsed)
+      hash = parsed.respond_to?(:stringify_keys) ? parsed.stringify_keys : parsed
+      gen = new(brief: {})
+      gen.send(:validate!, hash) # normalizes slug + caps additional_files
+      gen.send(:upsert!, hash)
+    end
+
     def initialize(brief:, model: DEFAULT_MODEL, write_file: true, dry_run: false)
       @brief = normalize_brief(brief)
       @model = model

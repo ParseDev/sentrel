@@ -78,9 +78,15 @@ export default function AdminSkillsNew({ categories, form: initialForm, preview_
   }, [isJobRunning])
 
   const [editedSkillMd, setEditedSkillMd] = useState(preview?.skill_attrs?.skill_md || "")
+  // Editable copy of the supporting files. Each entry's content can be
+  // tweaked in place; the path stays whatever the preview emitted.
+  const [editedFiles, setEditedFiles] = useState<Array<{ path: string; content: string }>>(
+    preview?.additional_files || [],
+  )
   useEffect(() => {
     if (preview?.skill_attrs) {
       setEditedSkillMd(preview.skill_attrs.skill_md || "")
+      setEditedFiles(preview.additional_files || [])
     }
   }, [preview?.skill_attrs?.slug])
 
@@ -93,14 +99,17 @@ export default function AdminSkillsNew({ categories, form: initialForm, preview_
     if (!preview?.skill_attrs) return
     const attrs = preview.skill_attrs
     router.post("/admin/skills/commit", {
-      brief: {
+      preview: {
         slug: attrs.slug,
         name: attrs.name,
-        category: attrs.category,
         description: attrs.description,
+        category: attrs.category,
         icon: attrs.icon,
+        requires_connections: attrs.requires_connections,
+        required_capabilities: attrs.required_capabilities,
       },
       skill_md: editedSkillMd,
+      additional_files: editedFiles,
     })
   }
 
@@ -214,8 +223,8 @@ export default function AdminSkillsNew({ categories, form: initialForm, preview_
 
             <SkillMdEditor value={editedSkillMd} onChange={setEditedSkillMd} />
 
-            {preview.additional_files.length > 0 && (
-              <AdditionalFilesCard files={preview.additional_files} />
+            {editedFiles.length > 0 && (
+              <AdditionalFilesCard files={editedFiles} onChange={setEditedFiles} />
             )}
 
             <div className="sticky bottom-0 -mx-6 border-t border-border bg-card/95 backdrop-blur px-6 py-3 flex items-center justify-between">
@@ -351,30 +360,67 @@ function SkillMdEditor({ value, onChange }: { value: string; onChange: (v: strin
   )
 }
 
-function AdditionalFilesCard({ files }: { files: Array<{ path: string; content: string }> }) {
+function AdditionalFilesCard({
+  files,
+  onChange,
+}: {
+  files: Array<{ path: string; content: string }>
+  onChange: (next: Array<{ path: string; content: string }>) => void
+}) {
   const [openIdx, setOpenIdx] = useState<number | null>(null)
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+
+  function updateContent(idx: number, content: string) {
+    onChange(files.map((f, i) => (i === idx ? { ...f, content } : f)))
+  }
+
   return (
     <section className="rounded-lg border bg-card p-4">
       <h3 className="mb-2 text-sm font-semibold">
-        Supporting files <span className="text-xs font-normal text-muted-foreground">({files.length}) — read-only preview</span>
+        Supporting files <span className="text-xs font-normal text-muted-foreground">({files.length}) — tweak before committing if needed</span>
       </h3>
       <ul className="space-y-1">
-        {files.map((f, i) => (
-          <li key={f.path} className="border-t pt-1 first:border-t-0 first:pt-0">
-            <button
-              type="button"
-              onClick={() => setOpenIdx(openIdx === i ? null : i)}
-              className="flex w-full items-center gap-2 py-1 text-left text-xs hover:bg-muted/40"
-            >
-              <FileText className="size-3 text-muted-foreground" />
-              <span className="font-mono">{f.path}</span>
-              <span className="text-muted-foreground">({f.content.split("\n").length} lines)</span>
-            </button>
-            {openIdx === i && (
-              <pre className="mt-1 max-h-64 overflow-auto rounded border bg-background p-2 text-[11px] font-mono whitespace-pre-wrap">{f.content}</pre>
-            )}
-          </li>
-        ))}
+        {files.map((f, i) => {
+          const open = openIdx === i
+          const editing = editingIdx === i
+          return (
+            <li key={f.path} className="border-t pt-1 first:border-t-0 first:pt-0">
+              <div className="flex items-center gap-2 py-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setOpenIdx(open ? null : i)}
+                  className="flex flex-1 items-center gap-2 text-left hover:underline"
+                >
+                  <FileText className="size-3 text-muted-foreground" />
+                  <span className="font-mono">{f.path}</span>
+                  <span className="text-muted-foreground">({f.content.split("\n").length} lines)</span>
+                </button>
+                {open && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingIdx(editing ? null : i)}
+                    className="rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    {editing ? "Done" : "Edit"}
+                  </button>
+                )}
+              </div>
+              {open && (
+                editing ? (
+                  <textarea
+                    value={f.content}
+                    onChange={(e) => updateContent(i, e.target.value)}
+                    rows={Math.min(24, Math.max(6, f.content.split("\n").length + 2))}
+                    spellCheck={false}
+                    className="mt-1 w-full rounded border bg-background p-2 text-[11px] font-mono"
+                  />
+                ) : (
+                  <pre className="mt-1 max-h-64 overflow-auto rounded border bg-background p-2 text-[11px] font-mono whitespace-pre-wrap">{f.content}</pre>
+                )
+              )}
+            </li>
+          )
+        })}
       </ul>
     </section>
   )
