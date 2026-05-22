@@ -99,6 +99,8 @@ export default function AdminOrganizationsIndex({ organizations, pagy, q: initia
           onClear={() => setSelected([])}
           deletePath="/admin/organizations/bulk_destroy"
           noun="organization"
+          totalCount={pagy.count}
+          filterParams={{ q: search || undefined }}
         />
       </div>
     </AdminLayout>

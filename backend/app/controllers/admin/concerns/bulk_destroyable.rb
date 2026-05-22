@@ -20,8 +20,11 @@ module Admin
       end
 
       def bulk_destroy
+        select_all = ActiveModel::Type::Boolean.new.cast(params[:select_all])
         ids = Array(params[:ids]).map(&:to_i).reject(&:zero?)
-        return redirect_back(fallback_location: request.referer, alert: "No items selected") if ids.empty?
+        if !select_all && ids.empty?
+          return redirect_back(fallback_location: request.referer, alert: "No items selected")
+        end
 
         model = bulk_destroy_target_model
         guard = bulk_destroy_guard
@@ -30,7 +33,16 @@ module Admin
         destroyed = 0
         protected_count = 0
         scope_block.call do
-          model.where(id: ids).find_each do |record|
+          # When select_all is set, controllers narrow the dataset via
+          # `bulk_destroy_filter_scope` (search/category from the index).
+          # Otherwise we use the explicit ids from the per-page checkboxes.
+          target_scope = if select_all
+            respond_to?(:bulk_destroy_filter_scope, true) ? bulk_destroy_filter_scope(model) : model.all
+          else
+            model.where(id: ids)
+          end
+
+          target_scope.find_each do |record|
             if guard && !guard.call(record, current_user)
               protected_count += 1
               next

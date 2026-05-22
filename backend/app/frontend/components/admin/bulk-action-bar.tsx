@@ -1,5 +1,6 @@
 import { router } from "@inertiajs/react"
 import { Trash2, X } from "lucide-react"
+import { useState } from "react"
 
 interface Props {
   selectedIds: number[]
@@ -7,26 +8,73 @@ interface Props {
   deletePath: string
   // Display name in messages: "Delete 3 templates" → noun: "template"
   noun: string
+  // Total rows in the filtered dataset (not the current page). When supplied
+  // and larger than the current selection, the bar surfaces a "Select all N
+  // matching" escalation so users can act across pages in one click.
+  totalCount?: number
+  // Filter params (q, category, etc.) that scoped the index. Echoed back on
+  // bulk_destroy so the backend rebuilds the same scope when select_all=true.
+  filterParams?: Record<string, string | undefined>
   // Optional extra actions rendered between delete + clear
   extra?: React.ReactNode
 }
 
 // Floating sticky action bar at the bottom of an admin index page.
 // Visible whenever ≥1 row is checkboxed. Confirms before destruction.
-export default function BulkActionBar({ selectedIds, onClear, deletePath, noun, extra }: Props) {
+export default function BulkActionBar({
+  selectedIds,
+  onClear,
+  deletePath,
+  noun,
+  totalCount,
+  filterParams = {},
+  extra,
+}: Props) {
+  const [allMatching, setAllMatching] = useState(false)
+
   if (selectedIds.length === 0) return null
 
+  const canEscalate = !!totalCount && totalCount > selectedIds.length
+  const effectiveCount = allMatching ? (totalCount ?? selectedIds.length) : selectedIds.length
+
   function destroy() {
-    if (!confirm(`Delete ${selectedIds.length} ${noun}${selectedIds.length === 1 ? "" : "s"}? This can't be undone.`)) return
-    router.post(deletePath, { ids: selectedIds }, {
+    const label = `${effectiveCount} ${noun}${effectiveCount === 1 ? "" : "s"}`
+    const message = allMatching
+      ? `Delete ${label} matching the current filter — across ALL pages? This can't be undone.`
+      : `Delete ${label}? This can't be undone.`
+    if (!confirm(message)) return
+
+    const payload = allMatching
+      ? { select_all: "true", ...stripEmpty(filterParams) }
+      : { ids: selectedIds.map(String) }
+
+    router.post(deletePath, payload, {
       preserveScroll: true,
-      onSuccess: onClear,
+      onSuccess: () => {
+        setAllMatching(false)
+        onClear()
+      },
     })
   }
 
   return (
     <div className="sticky bottom-4 z-30 mx-auto mt-4 flex w-fit items-center gap-2 rounded-full border bg-card px-3 py-1.5 shadow-lg">
-      <span className="text-xs text-muted-foreground">{selectedIds.length} selected</span>
+      <span className="text-xs text-muted-foreground">
+        {allMatching
+          ? `All ${totalCount} matching selected`
+          : `${selectedIds.length} selected on this page`}
+      </span>
+      {canEscalate && (
+        <button
+          type="button"
+          onClick={() => setAllMatching((v) => !v)}
+          className="text-xs text-[var(--color-indigo)] hover:underline"
+        >
+          {allMatching
+            ? "Clear all-matching"
+            : `Select all ${totalCount} matching`}
+        </button>
+      )}
       <div className="h-4 w-px bg-border" />
       {extra}
       <button
@@ -36,7 +84,10 @@ export default function BulkActionBar({ selectedIds, onClear, deletePath, noun, 
         <Trash2 className="size-3" /> Delete
       </button>
       <button
-        onClick={onClear}
+        onClick={() => {
+          setAllMatching(false)
+          onClear()
+        }}
         className="rounded-md p-1 text-muted-foreground hover:bg-muted"
         title="Clear selection"
       >
@@ -44,4 +95,12 @@ export default function BulkActionBar({ selectedIds, onClear, deletePath, noun, 
       </button>
     </div>
   )
+}
+
+function stripEmpty(obj: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined && v !== null && String(v).length > 0) out[k] = String(v)
+  }
+  return out
 }

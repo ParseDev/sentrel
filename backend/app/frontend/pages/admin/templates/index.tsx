@@ -201,6 +201,8 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
           onClear={() => setSelected([])}
           deletePath="/admin/templates/bulk_destroy"
           noun="template"
+          totalCount={pagy.count}
+          filterParams={{ q: search || undefined, category: filter !== "all" ? filter : undefined }}
         />
       </div>
     </AdminLayout>

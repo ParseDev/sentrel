@@ -37,6 +37,16 @@ module Admin
 
     private
 
+    def bulk_destroy_filter_scope(model)
+      scope = model.all
+      q = params[:q].to_s.strip
+      if q.present?
+        like = "%#{q.downcase}%"
+        scope = scope.where("LOWER(name) LIKE ? OR LOWER(slug) LIKE ?", like, like)
+      end
+      scope
+    end
+
     def serialize(o)
       counts = ActsAsTenant.with_tenant(o) do
         {

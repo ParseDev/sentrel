@@ -55,6 +55,16 @@ module Admin
 
     private
 
+    def bulk_destroy_filter_scope(model)
+      scope = model.all
+      q = params[:q].to_s.strip
+      if q.present?
+        like = "%#{q.downcase}%"
+        scope = scope.where("LOWER(users.email) LIKE ? OR LOWER(users.name) LIKE ?", like, like)
+      end
+      scope
+    end
+
     def serialize(u)
       {
         id: u.id, name: u.name, email: u.email, role: u.role,

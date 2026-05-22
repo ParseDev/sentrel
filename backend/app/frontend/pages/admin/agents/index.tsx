@@ -118,6 +118,8 @@ export default function AdminAgentsIndex({ agents, pagy, q: initialQ }: Props) {
           onClear={() => setSelected([])}
           deletePath="/admin/agents/bulk_destroy"
           noun="agent"
+          totalCount={pagy.count}
+          filterParams={{ q: search || undefined }}
         />
       </div>
     </AdminLayout>

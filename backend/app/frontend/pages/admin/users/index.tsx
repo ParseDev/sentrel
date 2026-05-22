@@ -146,6 +146,8 @@ export default function AdminUsersIndex({ users, roles, pagy, q: initialQ }: Pro
           onClear={() => setSelected([])}
           deletePath="/admin/users/bulk_destroy"
           noun="user"
+          totalCount={pagy.count}
+          filterParams={{ q: search || undefined }}
         />
       </div>
     </AdminLayout>

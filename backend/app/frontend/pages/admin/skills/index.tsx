@@ -189,6 +189,8 @@ export default function AdminSkillsIndex({ skills, categories, pagy, q: initialQ
           onClear={() => setSelected([])}
           deletePath="/admin/skills/bulk_destroy"
           noun="skill"
+          totalCount={pagy.count}
+          filterParams={{ q: search || undefined, category: filter !== "all" ? filter : undefined }}
         />
       </div>
     </AdminLayout>

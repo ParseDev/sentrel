@@ -146,6 +146,18 @@ module Admin
 
     private
 
+    def bulk_destroy_filter_scope(model)
+      scope = model.all
+      q = params[:q].to_s.strip
+      category = params[:category].to_s.strip
+      if q.present?
+        like = "%#{q.downcase}%"
+        scope = scope.where("LOWER(name) LIKE ? OR LOWER(slug) LIKE ? OR LOWER(description) LIKE ?", like, like, like)
+      end
+      scope = scope.where(category: category) if category.present? && category != "all"
+      scope
+    end
+
     def extract_form_params
       {
         description:          params[:description].to_s,
