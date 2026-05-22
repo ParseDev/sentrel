@@ -11,6 +11,7 @@ class Organization < ApplicationRecord
   has_many :invitations, dependent: :destroy
   has_many :credentials, dependent: :destroy
   has_many :agent_templates, dependent: :destroy
+  has_many :approval_rules, dependent: :destroy
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: true

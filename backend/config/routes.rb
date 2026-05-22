@@ -265,9 +265,12 @@ Rails.application.routes.draw do
     # with CSV export for compliance reviews.
     get "audits/approvals", to: "audits#approvals", as: :audits_approvals
     get "audits/approvals.csv", to: "audits#approvals", defaults: { format: "csv" }
-    # approval_rules CRUD UI is a follow-up — for MVP, rules are created via
-    # Rails console: ApprovalRule.create!(organization:, payload_type: "linkedin_post",
-    #   predicate: { max_per_day: 3 }, auto_decision: "approve", label: "...")
+    # Approval rules CRUD — org-wide + per-agent rules that the engine
+    # consults via Api::ApprovalRulesController#match before pausing for
+    # a human. Audit-logged on every create/update/toggle/destroy.
+    resources :approval_rules, only: [ :index, :create, :update, :destroy ] do
+      member { post :toggle }
+    end
 
     # Observability — run timings, costs, tool call trees, error tracking
     namespace :ops do

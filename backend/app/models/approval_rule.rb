@@ -1,11 +1,19 @@
 class ApprovalRule < ApplicationRecord
   has_prefix_id :aprl
+  include PublicIdSerialization
 
+  acts_as_tenant :organization
   belongs_to :organization
   belongs_to :agent, optional: true
 
+  PAYLOAD_TYPES = %w[
+    linkedin_post email_draft cold_email_bulk shell_command
+    spend_request external_share destructive_action generic
+  ].freeze
+
   validates :auto_decision, presence: true, inclusion: { in: %w[approve reject] }
   validates :predicate, presence: true
+  validates :payload_type, inclusion: { in: PAYLOAD_TYPES, allow_nil: true, allow_blank: true }
 
   scope :enabled, -> { where(enabled: true) }
 

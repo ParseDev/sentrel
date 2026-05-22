@@ -139,6 +139,15 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
         eyebrow="Control panel"
         title="Approvals"
         description="Review actions your agents want to take before they happen."
+        action={
+          <a
+            href="/approval_rules"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+          >
+            <ShieldCheck className="size-4" />
+            Auto-approval rules
+          </a>
+        }
       />
 
       {/* Filter tabs */}
