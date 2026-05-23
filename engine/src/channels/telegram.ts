@@ -236,9 +236,14 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   // the agent produces its answer. User sees text arriving live instead of
   // waiting 2+ minutes for the final blob. Throttled to 1 edit/1.5s to
   // respect Telegram's rate limits (~30 edits/min per chat).
+  //
+  // Note: emitTextDelta delivers full snapshots of streamingText (not
+  // incremental tokens), so we replace streamedText on each event rather
+  // than appending.
   let streamedText = "";
   let lastEditAt = 0;
   let pendingEdit: NodeJS.Timeout | null = null;
+  let creatingStatusMsg = false;
   const EDIT_INTERVAL_MS = 1500;
   const MAX_STREAM_CHARS = 3800; // below Telegram's 4096 hard cap
 
@@ -255,20 +260,33 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
     } catch {}
   }
 
-  const textListener = (delta: string) => {
-    streamedText += delta;
+  const textListener = (snapshot: string) => {
+    streamedText = snapshot;
     // If we have a status message, edit it. Otherwise create one.
     if (!statusMsgId) {
+      // Guard against the race where multiple deltas arrive while the first
+      // sendMessage is in flight — without this, every delta would create a
+      // new Telegram message.
+      if (creatingStatusMsg) return;
+      creatingStatusMsg = true;
       // Lazy-create the message on first delta
       fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: streamedText.slice(0, MAX_STREAM_CHARS) || "..." }),
+        body: JSON.stringify({ chat_id: chatId, text: streamedText.slice(-MAX_STREAM_CHARS) || "..." }),
       }).then(async (res) => {
         const data = await res.json() as { ok: boolean; result?: { message_id: number } };
         statusMsgId = data.result?.message_id ?? null;
         lastEditAt = Date.now();
-      }).catch(() => {});
+        creatingStatusMsg = false;
+        // Catch up if more content arrived while sendMessage was in flight.
+        if (statusMsgId && !pendingEdit) {
+          pendingEdit = setTimeout(() => {
+            pendingEdit = null;
+            flushStreamEdit();
+          }, EDIT_INTERVAL_MS);
+        }
+      }).catch(() => { creatingStatusMsg = false; });
       return;
     }
     // Throttle edits
