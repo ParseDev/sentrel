@@ -9,6 +9,21 @@ export interface KnowledgeBaseCapability extends Capability {
   top_k?: number;
 }
 
+// Capabilities with a provider selector — picks which vendor implementation
+// the registry uses. "auto" walks the registry in cost-cheapest order.
+export interface ImageGenerationCapability extends Capability {
+  provider?: "auto" | "replicate" | "openai" | "google_ai" | "fal";
+}
+export interface TtsCapability extends Capability {
+  provider?: "auto" | "elevenlabs" | "openai" | "google_ai" | "deepgram";
+}
+export interface SttCapability extends Capability {
+  provider?: "auto" | "groq" | "deepgram" | "openai" | "google_ai";
+}
+export interface BrowserCapability extends Capability {
+  provider?: "auto" | "camoufox" | "browserbase";
+}
+
 export interface Capabilities {
   knowledge_base?: KnowledgeBaseCapability;
   scheduling?:    Capability;
@@ -16,6 +31,10 @@ export interface Capabilities {
   integrations?:  Capability;
   recall?:        Capability;
   send_media?:    Capability;
+  image_generation?: ImageGenerationCapability;
+  tts?:           TtsCapability;
+  stt?:           SttCapability;
+  browser_access?: BrowserCapability;
 }
 
 export interface Agent {

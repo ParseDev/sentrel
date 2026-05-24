@@ -31,7 +31,12 @@ import { host } from "../host/index.js";
 import type { Origin } from "../channels/origin-delivery.js";
 import { railsInternalUrl } from "../host/rails-url.js";
 
-interface SecretResponse {
+// Where the key came from. Capability MCP tools surface this so we can show
+// "running on Double.md platform key" in audit / UI when the org hasn't
+// BYOK'd. Rails resolves: agent grant → org default → platform default ENV.
+export type CredentialSource = "agent_grant" | "org_default" | "platform_default";
+
+export interface SecretResponse {
   value: string;
   // Multi-field creds (AWS = access_key_id + secret_access_key + region,
   // Twilio = account_sid + auth_token, Stripe = secret_key + …) ship every
@@ -41,6 +46,7 @@ interface SecretResponse {
   kind: string;
   provider: string;
   name: string;
+  source?: CredentialSource;
   // Usage context the workspace owner pasted in. base_url tells the agent
   // where to POST; usage_md is a short markdown blob describing endpoints,
   // auth header shape, payload rules. Both flow into the tool result so
@@ -192,6 +198,46 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
     version: "1.0.0",
     tools: [getTool],
   });
+}
+
+// Programmatic secret fetch — used by capability providers (image_gen, tts,
+// stt, browser) to resolve their API key WITHOUT going through the SDK tool
+// wrapper. Returns null when no key is configured at any tier so the caller
+// can either fall through to the next provider in its registry or return
+// a graceful "no key configured" error.
+//
+// Bypasses the high-risk approval gate: capability providers are pre-approved
+// by their `capabilities.<cap>.enabled` flag at the agent level. The gate
+// is meant for ad-hoc cloud-provider secrets the agent decides to use mid-run.
+export async function fetchSecret(opts: {
+  agentId: number;
+  provider: string;
+  kind?: string; // default "generic"
+}): Promise<SecretResponse | null> {
+  const secret = process.env.ENGINE_API_SECRET;
+  if (!secret) return null;
+
+  const kind = opts.kind || "generic";
+  const params = new URLSearchParams({
+    agent_id: String(opts.agentId),
+    provider: opts.provider,
+    kind: kind,
+  });
+
+  try {
+    const res = await fetch(`${railsInternalUrl()}/api/secrets?${params.toString()}`, {
+      headers: { "X-Engine-Secret": secret },
+    });
+    if (res.status === 404 || res.status === 403) return null;
+    if (!res.ok) {
+      logger.warn(`fetchSecret(${opts.provider}) failed ${res.status}`);
+      return null;
+    }
+    return (await res.json()) as SecretResponse;
+  } catch (err) {
+    logger.error(`fetchSecret(${opts.provider}) network error`, { error: (err as Error).message });
+    return null;
+  }
 }
 
 // Pushes a request_approval card to the chat and waits for the user's

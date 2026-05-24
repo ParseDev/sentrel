@@ -39,7 +39,16 @@ class Agent < ApplicationRecord
     "tasks"        => { "enabled" => true },
     "integrations" => { "enabled" => true },
     "recall"       => { "enabled" => true },
-    "send_media"   => { "enabled" => true }
+    "send_media"   => { "enabled" => true },
+    # Multi-provider capabilities. provider: "auto" walks the engine
+    # registry (preference: cheapest-first) and picks the first vendor
+    # whose key resolves at any tier (agent grant → org default → platform
+    # default ENV). Switch provider to a specific name to lock the agent
+    # to one vendor.
+    "image_generation" => { "enabled" => true, "provider" => "auto" },
+    "tts"              => { "enabled" => true, "provider" => "auto" },
+    "stt"              => { "enabled" => true, "provider" => "auto" },
+    "browser_access"   => { "enabled" => true, "provider" => "auto" }
   }.freeze
 
   def effective_capabilities

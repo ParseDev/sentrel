@@ -184,16 +184,64 @@ class Credential < ApplicationRecord
   #      pre-pick which key a particular agent may use).
   #   2. Org default — when no grant rows of this kind/provider exist for
   #      the agent, use the org's first credential of that kind+provider.
+  #   3. Platform default — falls through to ENV["PLATFORM_#{PROVIDER}_KEY"]
+  #      so Double.md-provided fallback keys make capabilities work on day
+  #      1 without forcing every org to BYOK. The returned object is a
+  #      PlatformDefault (duck-types like a Credential) with `source:
+  #      "platform_default"` so the audit log + UI can flag it.
   #
   # Tenant-safe: scoped to the agent's organization.
   def self.find_for(agent, provider:, kind:)
     return nil unless agent&.organization_id
 
-    ActsAsTenant.with_tenant(agent.organization) do
+    db_match = ActsAsTenant.with_tenant(agent.organization) do
       grants = agent.credentials.where(provider: provider, kind: kind).order(:id)
-      return grants.first if grants.exists?
-
+      next grants.first if grants.exists?
       where(provider: provider, kind: kind).order(:id).first
+    end
+    return db_match if db_match
+
+    PlatformDefault.from_env(provider: provider, kind: kind)
+  end
+
+  # Reads from this row. Real Credentials are "org_default" unless an agent
+  # explicitly grants them — the controller fills in "agent_grant" then.
+  def source
+    "org_default"
+  end
+
+  # Quack-alike for Credential read paths when no DB row exists for a
+  # provider/kind but ENV["PLATFORM_#{PROVIDER}_KEY"] does. Engine receives
+  # the value identically; audit log + frontend can branch on `source`.
+  class PlatformDefault
+    attr_reader :provider, :kind
+
+    def self.from_env(provider:, kind:)
+      val = ENV["PLATFORM_#{provider.to_s.upcase}_KEY"].to_s
+      return nil if val.strip.empty?
+      new(provider: provider, kind: kind, value: val.strip)
+    end
+
+    def initialize(provider:, kind:, value:)
+      @provider = provider.to_s
+      @kind = kind.to_s
+      @value = value
+    end
+
+    def id; nil; end
+    def organization_id; nil; end
+    def value; @value; end
+    def fields; { "value" => @value }; end
+    def name; "Double.md platform default (#{provider})"; end
+    def meta; {} ; end
+    def source; "platform_default"; end
+    def display_suffix
+      @value.to_s.length > 4 ? @value[-4..] : "—"
+    end
+    # No-op: nothing to bump for a virtual credential.
+    def use!; end
+    def respond_to_missing?(name, *)
+      %i[base_url usage_md].include?(name) || super
     end
   end
 

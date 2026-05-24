@@ -33,13 +33,14 @@ class Api::SecretsController < ApplicationController
     return render(json: { error: "not found" }, status: :not_found) unless cred
     return render(json: { error: "no access" }, status: :forbidden) unless allowed?(agent, cred)
 
+    source = resolve_source(agent, cred)
     cred.use!
     AuditLog.create!(
       organization_id: agent.organization_id,
       agent_id: agent.id,
       action: "secret_fetched",
       tool_name: "secrets.get",
-      input: { credential_id: cred.id, name: cred.name, provider: cred.provider, kind: cred.kind },
+      input: { credential_id: cred.id, name: cred.name, provider: cred.provider, kind: cred.kind, source: source },
       output: { suffix: cred.display_suffix, fields: cred.fields.keys },
       status: "success",
     )
@@ -54,14 +55,16 @@ class Api::SecretsController < ApplicationController
     # workspace owner pasted into the "Usage notes" textarea. Without this,
     # the agent gets a raw key and has no way to know it's an API token vs
     # a webhook secret vs something else.
+    meta = cred.respond_to?(:meta) ? cred.meta : nil
     render json: {
       value:     cred.value,
       fields:    cred.fields,
       kind:      cred.kind,
       provider:  cred.provider,
       name:      cred.name,
-      base_url:  cred.meta && cred.meta["base_url"].presence,
-      usage_md:  cred.meta && cred.meta["usage_md"].presence,
+      source:    source,
+      base_url:  meta && meta["base_url"].presence,
+      usage_md:  meta && meta["usage_md"].presence,
       requires_approval: requires_approval?(cred)
     }
   rescue ActiveRecord::RecordNotFound
@@ -84,6 +87,10 @@ class Api::SecretsController < ApplicationController
   end
 
   def allowed?(agent, cred)
+    # Platform-default fallback (Credential::PlatformDefault) has no
+    # organization_id and no grant rows. It's always allowed: by definition
+    # it was returned only because no org / agent credential exists.
+    return true if cred.is_a?(Credential::PlatformDefault)
     # Same-org rule — never cross-tenant.
     return false unless cred.organization_id == agent.organization_id
     # When the agent has any explicit grants, the credential must be in the
@@ -91,6 +98,15 @@ class Api::SecretsController < ApplicationController
     # in the org).
     return true unless agent.agent_credential_grants.exists?
     agent.agent_credential_grants.where(credential_id: cred.id).exists?
+  end
+
+  # Which tier resolved this credential — flows into the audit log + the
+  # JSON response so the engine can echo "running on Double.md platform key"
+  # in tool output.
+  def resolve_source(agent, cred)
+    return "platform_default" if cred.is_a?(Credential::PlatformDefault)
+    return "agent_grant" if agent.agent_credential_grants.where(credential_id: cred.id).exists?
+    "org_default"
   end
 
   def verify_engine_secret!

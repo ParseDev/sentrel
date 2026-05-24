@@ -1,4 +1,13 @@
-import type { Agent, Capabilities, Capability, KnowledgeBaseCapability } from "./types.js";
+import type {
+  Agent,
+  Capabilities,
+  Capability,
+  KnowledgeBaseCapability,
+  ImageGenerationCapability,
+  TtsCapability,
+  SttCapability,
+  BrowserCapability,
+} from "./types.js";
 
 type ResolvedCapabilities = {
   knowledge_base: Required<Pick<KnowledgeBaseCapability, "enabled">> & KnowledgeBaseCapability;
@@ -7,6 +16,10 @@ type ResolvedCapabilities = {
   integrations: Capability;
   recall:       Capability;
   send_media:   Capability;
+  image_generation: Required<Pick<ImageGenerationCapability, "enabled" | "provider">> & ImageGenerationCapability;
+  tts:          Required<Pick<TtsCapability, "enabled" | "provider">> & TtsCapability;
+  stt:          Required<Pick<SttCapability, "enabled" | "provider">> & SttCapability;
+  browser_access: Required<Pick<BrowserCapability, "enabled" | "provider">> & BrowserCapability;
 };
 
 const DEFAULTS: ResolvedCapabilities = {
@@ -21,6 +34,13 @@ const DEFAULTS: ResolvedCapabilities = {
   integrations: { enabled: true },
   recall:       { enabled: true },
   send_media:   { enabled: true },
+  // New multi-provider capabilities. All default-on with provider: "auto"
+  // so they Just Work as soon as either an org credential or platform
+  // ENV fallback is configured for at least one provider.
+  image_generation: { enabled: true, provider: "auto" },
+  tts:              { enabled: true, provider: "auto" },
+  stt:              { enabled: true, provider: "auto" },
+  browser_access:   { enabled: true, provider: "auto" },
 };
 
 function mergeCap<T extends Capability>(def: T, override: Partial<T> | undefined): T {
@@ -37,6 +57,10 @@ export function resolveCapabilities(agent: Agent): ResolvedCapabilities {
     integrations:   mergeCap(DEFAULTS.integrations,   caps.integrations),
     recall:         mergeCap(DEFAULTS.recall,         caps.recall),
     send_media:     mergeCap(DEFAULTS.send_media,     caps.send_media),
+    image_generation: mergeCap(DEFAULTS.image_generation, caps.image_generation),
+    tts:              mergeCap(DEFAULTS.tts,              caps.tts),
+    stt:              mergeCap(DEFAULTS.stt,              caps.stt),
+    browser_access:   mergeCap(DEFAULTS.browser_access,   caps.browser_access),
   };
 }
 
