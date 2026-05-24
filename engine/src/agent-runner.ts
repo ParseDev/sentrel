@@ -338,7 +338,7 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
     : (job.payload?.attachment_ids || []);
   const mediaSpan = spans.start("process_attachments", { count: attachmentInputs.length });
   const processedMedia = attachmentInputs.length > 0
-    ? await processAttachments(attachmentInputs)
+    ? await processAttachments(attachmentInputs, agent)
     : [];
   spans.end(mediaSpan, { count: processedMedia.length });
 

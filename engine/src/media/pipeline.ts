@@ -4,6 +4,8 @@ import { host } from "../host/index.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { transcribe } from "./providers/whisper.js";
+import { getActiveSttProvider } from "../capabilities/stt/registry.js";
+import type { Agent } from "../types.js";
 
 // A processed attachment is either inline text (voice transcript, extracted text)
 // or a file path the agent can Read (PDFs, images, office docs).
@@ -35,6 +37,7 @@ export interface AttachmentInput {
 // workspace so the agent can Read them.
 export async function processAttachments(
   attachments: Array<AttachmentInput | string>,
+  agent?: Agent,
 ): Promise<ProcessedAttachment[]> {
   if (!attachments || attachments.length === 0) return [];
 
@@ -46,8 +49,8 @@ export async function processAttachments(
     const signedId = typeof att === "string" ? att : att.signed_id;
     try {
       const result = typeof att === "string"
-        ? await processViaRails(att, inboxDir)
-        : await processViaUrl(att, inboxDir);
+        ? await processViaRails(att, inboxDir, agent)
+        : await processViaUrl(att, inboxDir, agent);
       if (result) results.push(result);
     } catch (err) {
       logger.error(`Media pipeline failed for ${signedId}`, {
@@ -63,22 +66,24 @@ export async function processAttachments(
 async function processViaUrl(
   att: AttachmentInput,
   inboxDir: string,
+  agent?: Agent,
 ): Promise<ProcessedAttachment | null> {
   const res = await fetch(att.url, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) {
     throw new Error(`presigned URL fetch failed: ${res.status}`);
   }
   const bytes = Buffer.from(await res.arrayBuffer());
-  return processBytes(att.signed_id, att.filename, att.content_type, bytes, inboxDir);
+  return processBytes(att.signed_id, att.filename, att.content_type, bytes, inboxDir, agent);
 }
 
 // Legacy path: ask Rails for the bytes via the /api/blobs proxy.
 async function processViaRails(
   signedId: string,
   inboxDir: string,
+  agent?: Agent,
 ): Promise<ProcessedAttachment | null> {
   const { bytes, filename, contentType } = await host.loadBlob(signedId);
-  return processBytes(signedId, filename, contentType, bytes, inboxDir);
+  return processBytes(signedId, filename, contentType, bytes, inboxDir, agent);
 }
 
 async function processBytes(
@@ -87,13 +92,25 @@ async function processBytes(
   contentType: string,
   bytes: Buffer,
   inboxDir: string,
+  agent?: Agent,
 ): Promise<ProcessedAttachment | null> {
   logger.info(`Media pipeline: processing ${filename} (${contentType}, ${bytes.length}b)`);
 
-  // ── Audio: transcribe via Whisper ──
+  // ── Audio: transcribe via Whisper / STT registry ──
   if (contentType.startsWith("audio/")) {
     try {
-      const text = await transcribe(bytes, contentType, filename);
+      // Prefer the capability-gated multi-provider STT registry — falls
+      // back to the env-based Whisper helper when no agent is in context
+      // (e.g. background jobs without per-agent secret resolution).
+      let text: string;
+      if (agent) {
+        const provider = await getActiveSttProvider(agent);
+        const out = await provider.transcribe({ bytes, contentType, filename }, agent.id);
+        text = out.text;
+        logger.info(`STT: transcribed ${filename} via ${provider.name} (${out.model}) — ${text.length} chars`);
+      } else {
+        text = await transcribe(bytes, contentType, filename);
+      }
       return {
         signedId,
         filename,
