@@ -245,14 +245,36 @@ export function buildSystemPrompt(
       `- send_image({ file_path }) — sends an image from your workspace (screenshots, charts, etc.)\n` +
       `- send_file({ file_path }) — sends a document from your workspace (PDFs, CSVs, etc.)\n` +
       `The channel routing is automatic — files go to wherever the conversation is happening (Telegram, WhatsApp, email, web).\n\n` +
-      `When taking screenshots with the Browser tool:\n` +
-      `- Always set the viewport to 1920x1080 before capturing\n` +
-      `- For full-page screenshots, scroll down and capture multiple sections\n` +
-      `- Save screenshots to workspace/screenshots/ with descriptive names\n\n` +
       `File organization:\n` +
       `- Create all projects inside workspace/ (e.g. workspace/sonic-monolith/)\n` +
       `- Never create files or folders at the root level\n` +
       `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
+    );
+  }
+
+  if (caps.browser_access.enabled) {
+    parts.push(
+      `# Browser\n` +
+      `You have a stealth browser (Camoufox) for sites that block automated access (LinkedIn, X, gated docs) or workflows that need interaction. Two tool sets are available:\n\n` +
+      `**mcp__browser__** — the recommended interface. Stateless wrapper around the sidecar, returns small accessibility-style snapshots instead of raw HTML so you can act without burning context.\n` +
+      `- open_page({ url }) → returns session_id. Reuse it for follow-up calls.\n` +
+      `- snapshot({ session_id }) — read the current page. Includes element refs (e1, e2, …) for clicking and typing.\n` +
+      `- click({ session_id, ref }) — click an element by ref from the latest snapshot.\n` +
+      `- type({ session_id, ref, text, submit? }) — fill an input. submit:true presses Enter after.\n` +
+      `- screenshot({ session_id, filename?, full_page? }) — saves to workspace/screenshots/<filename>. Pass the returned file_path to send_image to deliver it to the user.\n` +
+      `- close({ session_id }) — close the tab when done. Free memory.\n\n` +
+      `**Browser** (built-in SDK tool) — CDP-style direct control. Use when you need fine-grained DOM access the snapshot can't express.\n\n` +
+      `## When to use which tool\n` +
+      `- "What's on this page?" / "Read the latest post" → mcp__browser__ (open_page → snapshot). Cheaper than WebFetch for JS-rendered pages.\n` +
+      `- "Fill this form and submit" → mcp__browser__ (open_page → snapshot → type → click submit). The snapshot tells you the refs.\n` +
+      `- "Screenshot apple.com" → mcp__browser__ (open_page → screenshot → send_image with the returned file_path).\n` +
+      `- Public static pages with no JS / no anti-bot → prefer WebFetch (faster, no browser overhead).\n` +
+      `- Search the open web for an answer → WebSearch first; only open a page when you need the actual rendered content.\n\n` +
+      `## Tips\n` +
+      `- Always create a session via open_page first, then reuse its session_id for snapshot/click/type/screenshot until you close.\n` +
+      `- Use snapshot, not screenshot, for reading content — it's text and includes element refs you can act on.\n` +
+      `- Close sessions when done so the sidecar reclaims memory.\n` +
+      `- For LinkedIn searches: use Google with site:linkedin.com instead of browsing LinkedIn directly — fewer auth walls.`
     );
   }
 

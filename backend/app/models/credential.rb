@@ -21,7 +21,7 @@ class Credential < ApplicationRecord
   # unique key, not a check constraint) — extend here as we add more.
   LLM_PROVIDERS    = %w[anthropic openai openrouter google_ai groq mistral together xai].freeze
   CLOUD_PROVIDERS  = %w[aws gcp azure heroku hetzner vercel digitalocean fly cloudflare].freeze
-  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear].freeze
+  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear browserbase].freeze
 
   # Per-provider field schema. The UI uses this to render the right form
   # inputs; secrets.get returns the full fields map; AgentProvisioner reads
@@ -99,6 +99,16 @@ class Credential < ApplicationRecord
     ],
     "generic:gitlab" => [
       { key: "token", label: "Personal Access Token", sensitive: true, primary: true }
+    ],
+
+    # Capability-provider keys: image_generation, tts, stt, browser_access.
+    # The engine resolves these via secrets.get + the PLATFORM_*_KEY env
+    # fallback. Each provider's "auto" mode walks the capability registry
+    # in cost-cheapest order, so adding a key for any one provider here
+    # enables the capability for the org without further wiring.
+    "generic:browserbase" => [
+      { key: "api_key",    label: "Browserbase API Key", sensitive: true, primary: true },
+      { key: "project_id", label: "Project ID",          sensitive: false }
     ]
   }.freeze
 

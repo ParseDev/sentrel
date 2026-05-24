@@ -1463,6 +1463,16 @@ async function buildQueryOptions(
   mcpServers["share-file"] = shareFileServer;
   baseMcpServers["share-file"] = shareFileServer;
 
+  // Browser capability — gated by agent.capabilities.browser_access.
+  // Provider routing (camoufox sidecar vs browserbase) happens inside
+  // the MCP, driven by capabilities.browser_access.provider.
+  if (caps.browser_access.enabled) {
+    const { buildBrowserMcpServer } = await import("./capabilities/browser/mcp.js");
+    const browserServer = buildBrowserMcpServer(agent);
+    mcpServers.browser = browserServer;
+    baseMcpServers.browser = browserServer;
+  }
+
   // Slack-as-channel outbound. Gated on whether this agent has a connected
   // Slack ChannelConfig — without one, the tool would always 404 so we skip
   // registering it. The bot_token lives only in Rails; engine never sees it.
@@ -1576,7 +1586,12 @@ async function buildQueryOptions(
       "Bash",
       "WebSearch",
       "WebFetch",
-      "Browser",
+      // SDK's built-in Browser tool only when the capability is on. We also
+      // expose our own mcp__browser__* tools when enabled (those route to
+      // Camoufox/Browserbase via secrets.get); both can coexist — the SDK's
+      // Browser is a CDP-style controller, our MCP wraps the sidecar HTTP
+      // API which the SDK tool doesn't know about.
+      ...(caps.browser_access.enabled ? ["Browser"] : []),
     ];
 
   const options: Record<string, unknown> = {
@@ -1602,6 +1617,14 @@ async function buildQueryOptions(
         "mcp__send-media__send_voice",
         "mcp__send-media__send_image",
         "mcp__send-media__send_file",
+      ] : []),
+      ...(caps.browser_access.enabled ? [
+        "mcp__browser__open_page",
+        "mcp__browser__snapshot",
+        "mcp__browser__click",
+        "mcp__browser__type",
+        "mcp__browser__screenshot",
+        "mcp__browser__close",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
         "mcp__integrations__search_integrations",
