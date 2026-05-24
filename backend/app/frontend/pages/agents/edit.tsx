@@ -77,15 +77,48 @@ interface AgentApprovalRule {
   predicate: Record<string, unknown>
 }
 
+type ResolutionTier = "agent_owned" | "agent_grant" | "org_default" | "platform_default" | "missing"
+
+interface CapabilityProviderRow {
+  provider: string
+  label: string
+  note: string
+  kind: string | null
+  resolution: {
+    tier: ResolutionTier
+    credential_id: number | null
+    credential_name: string | null
+  }
+}
+
+interface CapabilityOverview {
+  key: string
+  label: string
+  blurb: string
+  enabled: boolean
+  provider: string
+  available_providers: string[]
+  providers: CapabilityProviderRow[]
+  active_provider: string | null
+}
+
 interface Props {
   agent: Agent
   agents: AgentSummary[]
   org_credentials?: OrgCredential[]
   granted_credential_ids?: number[]
   approval_rules?: AgentApprovalRule[]
+  capabilities_overview?: CapabilityOverview[]
 }
 
-export default function AgentEdit({ agent, agents = [], org_credentials = [], granted_credential_ids = [], approval_rules = [] }: Props) {
+export default function AgentEdit({
+  agent,
+  agents = [],
+  org_credentials = [],
+  granted_credential_ids = [],
+  approval_rules = [],
+  capabilities_overview = [],
+}: Props) {
   const currentManagerId = (agent as any).manager?.id
     ? (typeof (agent as any).manager.id === "string" ? (agent as any).manager.id : String((agent as any).manager.id))
     : "none"
@@ -158,12 +191,13 @@ export default function AgentEdit({ agent, agents = [], org_credentials = [], gr
   )
 
   function EditTabs({ onSubmit, processing, agentId }: { onSubmit: (e: React.FormEvent) => void; processing: boolean; agentId: number }) {
-    const [tab, setTab] = useState<"identity" | "behavior" | "permissions" | "approvals">("identity")
-    const TABS: Array<{ key: "identity" | "behavior" | "permissions" | "approvals"; label: string }> = [
-      { key: "identity",    label: "Identity" },
-      { key: "behavior",    label: "Behavior" },
-      { key: "permissions", label: "Permissions" },
-      { key: "approvals",   label: "Approvals" },
+    const [tab, setTab] = useState<"identity" | "behavior" | "permissions" | "capabilities" | "approvals">("identity")
+    const TABS: Array<{ key: "identity" | "behavior" | "permissions" | "capabilities" | "approvals"; label: string }> = [
+      { key: "identity",     label: "Identity" },
+      { key: "behavior",     label: "Behavior" },
+      { key: "permissions",  label: "Permissions" },
+      { key: "capabilities", label: "Capabilities" },
+      { key: "approvals",    label: "Approvals" },
     ]
     return (
       <form onSubmit={onSubmit} className="max-w-2xl space-y-6">
@@ -442,6 +476,16 @@ export default function AgentEdit({ agent, agents = [], org_credentials = [], gr
         </section>
         </>)}
 
+        {tab === "capabilities" && (
+          <CapabilitiesTab
+            agentId={agentId}
+            agentSlug={agent.slug}
+            overview={capabilities_overview}
+            current={data.capabilities as Record<string, { enabled?: boolean; provider?: string }>}
+            onChange={(key, patch) => setCap(key, patch)}
+          />
+        )}
+
         {tab === "approvals" && (
           <ApprovalRulesTab agentId={agentId} rules={approval_rules} />
         )}
@@ -710,5 +754,147 @@ function RuleRow({ rule }: { rule: AgentApprovalRule }) {
       </span>
       {!rule.enabled && <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">disabled</span>}
     </div>
+  )
+}
+
+// ── Capabilities tab ────────────────────────────────────────────────────
+//
+// Per-agent view of the multi-provider capabilities (image gen, TTS, STT,
+// browser, search, doc parse, video gen, code sandbox). For each one:
+//   - Enabled toggle
+//   - Provider select (Auto | each vendor)
+//   - Per-provider key status: agent-owned / agent-grant / org-default / missing
+//   - One-click "Add key for this agent" or "Add key for the whole org"
+//     CTAs that deep-link to /settings/credentials with the right prefill.
+
+const TIER_PILL: Record<ResolutionTier, { label: string; tone: string }> = {
+  agent_owned:      { label: "agent-only",  tone: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30" },
+  agent_grant:      { label: "granted",     tone: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30" },
+  org_default:      { label: "org-shared",  tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" },
+  platform_default: { label: "platform",    tone: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/30" },
+  missing:          { label: "no key",      tone: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" },
+}
+
+function CapabilitiesTab({
+  agentId,
+  agentSlug,
+  overview,
+  current,
+  onChange,
+}: {
+  agentId: number
+  agentSlug: string
+  overview: CapabilityOverview[]
+  current: Record<string, { enabled?: boolean; provider?: string }>
+  onChange: (key: string, patch: Record<string, unknown>) => void
+}) {
+  if (overview.length === 0) {
+    return (
+      <section>
+        <Overline className="mb-3">Capabilities</Overline>
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          No capabilities to configure yet. Add keys at /settings/credentials.
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <Overline className="mb-1">Capabilities</Overline>
+        <p className="text-xs text-muted-foreground">
+          Each capability uses the first provider whose key resolves. Add a key just for this agent — or pull from the org's shared keys. Click "agent-only" on Add to lock a key to this agent so no sibling sees it.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {overview.map((cap) => {
+          const local = current[cap.key] || {}
+          const enabled = local.enabled !== false
+          const provider = local.provider || cap.provider || "auto"
+          return (
+            <div key={cap.key} className="rounded-lg border bg-card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-sm">{cap.label}</h3>
+                    {!enabled && (
+                      <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">disabled</span>
+                    )}
+                    {enabled && cap.active_provider && (
+                      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-400">
+                        using {cap.active_provider}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{cap.blurb}</p>
+                </div>
+                <label className="flex shrink-0 items-center gap-2 text-xs">
+                  <Checkbox checked={enabled} onCheckedChange={(v) => onChange(cap.key, { enabled: v === true })} />
+                  Enabled
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label className="text-[11px]">Provider</Label>
+                <Select value={provider} onValueChange={(v) => onChange(cap.key, { provider: v })}>
+                  <SelectTrigger className="h-7 w-44 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cap.available_providers.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p === "auto" ? "Auto (cheapest available)" : p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <ul className="space-y-1 border-t pt-2">
+                {cap.providers.map((p) => {
+                  const pill = TIER_PILL[p.resolution.tier]
+                  const isActive = enabled && cap.active_provider === p.provider
+                  return (
+                    <li key={p.provider} className="flex items-center gap-2 text-[11px]">
+                      <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] ${pill.tone}`}>
+                        {pill.label}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className={`font-medium ${isActive ? "text-foreground" : "text-foreground/80"}`}>{p.label}</span>
+                        {p.resolution.credential_name && (
+                          <span className="text-muted-foreground"> · {p.resolution.credential_name}</span>
+                        )}
+                      </span>
+                      {p.resolution.tier === "missing" && p.kind && (
+                        <span className="flex shrink-0 gap-1">
+                          <a
+                            href={`/settings/credentials?add_kind=${encodeURIComponent(p.kind)}&add_provider=${encodeURIComponent(p.provider)}&add_agent=${encodeURIComponent(agentSlug)}`}
+                            className="rounded border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted"
+                            title="Create a key visible only to this agent"
+                          >
+                            Add agent-only
+                          </a>
+                          <a
+                            href={`/settings/credentials?add_kind=${encodeURIComponent(p.kind)}&add_provider=${encodeURIComponent(p.provider)}`}
+                            className="rounded border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted"
+                            title="Create a key shared across the whole org"
+                          >
+                            Add org-wide
+                          </a>
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )
+        })}
+      </div>
+      {/* Suppress unused warning until we wire agentId-bound actions */}
+      <span className="hidden">{agentId}</span>
+    </section>
   )
 }

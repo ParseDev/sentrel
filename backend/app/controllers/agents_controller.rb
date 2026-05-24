@@ -430,11 +430,16 @@ class AgentsController < ApplicationController
       agents: current_tenant.agents.where.not(id: @agent.id).select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
-      org_credentials: current_tenant.credentials
+      org_credentials: current_tenant.credentials.where(agent_id: nil)
         .order(kind: :asc, provider: :asc, name: :asc)
         .map { |c| { id: c.id, kind: c.kind, provider: c.provider, name: c.name } },
       granted_credential_ids: @agent.credentials.pluck(:id),
       approval_rules: approval_rules,
+      # Capability resolution preview — for each multi-provider capability,
+      # show how it'd resolve for THIS agent. The frontend uses this to
+      # render the Capabilities tab with one-click "add key" actions
+      # pre-scoped to either this agent or the whole org.
+      capabilities_overview: build_agent_capabilities_overview(@agent),
     }
   end
 
@@ -498,8 +503,84 @@ class AgentsController < ApplicationController
     tasks:        [ :enabled ],
     integrations: [ :enabled ],
     recall:       [ :enabled ],
-    send_media:   [ :enabled ]
+    send_media:   [ :enabled ],
+    # New multi-provider capabilities. provider="auto" walks the engine
+    # registry; or pin to a specific vendor name.
+    image_generation: [ :enabled, :provider ],
+    tts:              [ :enabled, :provider ],
+    stt:              [ :enabled, :provider ],
+    browser_access:   [ :enabled, :provider ],
+    web_search:       [ :enabled, :provider ],
+    doc_parse:        [ :enabled, :provider ],
+    video_generation: [ :enabled, :provider ],
+    code_sandbox:     [ :enabled, :provider ]
   }.freeze
+
+  # Per-agent capability resolution preview. Mirrors Credential.find_for
+  # without actually fetching the secret value — just reports the tier
+  # each provider would resolve to for this agent ("agent_owned" |
+  # "agent_grant" | "org_default" | "missing"). The frontend renders this
+  # into the Capabilities tab so users can see exactly what's wired and
+  # add agent-scoped or org-scoped keys per-provider.
+  def build_agent_capabilities_overview(agent)
+    effective = agent.effective_capabilities
+    CredentialsController::CAPABILITY_PROVIDERS.map do |cap_key, cfg|
+      providers = cfg[:providers].map do |p|
+        resolution = if p[:always_available]
+          { tier: "platform_default", credential_id: nil, credential_name: cfg[:label] }
+        else
+          resolve_provider_tier(agent, p)
+        end
+        {
+          provider: p[:provider],
+          label: p[:label],
+          note: p[:note],
+          kind: p[:kind],
+          resolution: resolution
+        }
+      end
+      cap_cfg = effective.dig(cap_key.to_s) || {}
+      {
+        key: cap_key,
+        label: cfg[:label],
+        blurb: cfg[:blurb],
+        enabled: cap_cfg["enabled"] != false,
+        provider: cap_cfg["provider"] || "auto",
+        available_providers: [ "auto" ] + cfg[:providers].map { |p| p[:provider] },
+        providers: providers,
+        # Effective resolution: which provider actually fires for this agent
+        # given its current capability config. Mirrors the engine registry's
+        # `provider: "auto"` walk (first available wins). When pinned, this
+        # is the pinned provider's resolution.
+        active_provider: pick_active_provider(cap_cfg, providers)
+      }
+    end
+  end
+
+  def resolve_provider_tier(agent, p)
+    kinds = [ p[:kind], *(p[:also] || []) ].compact
+    # Agent-owned first.
+    owned = current_tenant.credentials.where(agent_id: agent.id, provider: p[:provider], kind: kinds).first
+    return { tier: "agent_owned", credential_id: owned.id, credential_name: owned.name } if owned
+    # Then agent grants on org credentials.
+    granted = agent.credentials.where(provider: p[:provider], kind: kinds).first
+    return { tier: "agent_grant", credential_id: granted.id, credential_name: granted.name } if granted
+    # Then org default.
+    org_default = current_tenant.credentials.where(agent_id: nil, provider: p[:provider], kind: kinds).first
+    return { tier: "org_default", credential_id: org_default.id, credential_name: org_default.name } if org_default
+    { tier: "missing", credential_id: nil, credential_name: nil }
+  end
+
+  def pick_active_provider(cap_cfg, providers)
+    pinned = cap_cfg["provider"]
+    if pinned.present? && pinned != "auto"
+      match = providers.find { |pp| pp[:provider] == pinned }
+      return match && match[:resolution][:tier] != "missing" ? pinned : nil
+    end
+    # "auto" — first provider whose resolution isn't "missing".
+    hit = providers.find { |pp| pp[:resolution][:tier] != "missing" }
+    hit && hit[:provider]
+  end
 
   def agent_params
     permitted = params.require(:agent).permit(

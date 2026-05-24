@@ -227,13 +227,34 @@ function lookupSchema(schemas: Record<string, FieldDef[]>, kind: Kind, provider:
 export default function CredentialsPage({ credentials, kinds, providers, field_schemas, capabilities }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Credential | null>(null)
-  // When the user clicks "Add key" on a capability card, we prefill the
-  // modal's kind+provider and jump straight to the form step.
-  const [prefill, setPrefill] = useState<{ kind: Kind; provider: string } | null>(null)
-  function openWithPrefill(kind: Kind, provider: string) {
-    setPrefill({ kind, provider })
+  // When the user clicks "Add key" on a capability card OR follows a
+  // deep-link from the agent edit Capabilities tab, prefill kind+provider
+  // (and optionally agentSlug) and jump straight to the form step.
+  const [prefill, setPrefill] = useState<{ kind: Kind; provider: string; agentSlug?: string } | null>(null)
+  function openWithPrefill(kind: Kind, provider: string, agentSlug?: string) {
+    setPrefill({ kind, provider, agentSlug })
     setAddOpen(true)
   }
+
+  // Deep-link: /settings/credentials?add_kind=generic&add_provider=replicate&add_agent=agt_…
+  // opens the modal pre-filled. Strips the query on close so a refresh
+  // doesn't reopen it.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    const k = url.searchParams.get("add_kind") as Kind | null
+    const p = url.searchParams.get("add_provider")
+    const a = url.searchParams.get("add_agent") ?? undefined
+    if (k && p) {
+      setPrefill({ kind: k, provider: p, agentSlug: a })
+      setAddOpen(true)
+      url.searchParams.delete("add_kind")
+      url.searchParams.delete("add_provider")
+      url.searchParams.delete("add_agent")
+      window.history.replaceState({}, "", url.toString())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const grouped = useMemo(() => {
     const g: Record<Kind, Credential[]> = { llm_api_key: [], cloud_provider: [], generic: [] }
     for (const c of credentials) g[c.kind].push(c)
@@ -327,6 +348,7 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
           mode="create"
           prefillKind={prefill?.kind}
           prefillProvider={prefill?.provider}
+          prefillAgentSlug={prefill?.agentSlug}
         />
       )}
       {editing && (
@@ -403,6 +425,7 @@ function CredentialModal({
   cred,
   prefillKind,
   prefillProvider,
+  prefillAgentSlug,
 }: {
   providers: Record<Kind, string[]>
   fieldSchemas: Record<string, FieldDef[]>
@@ -411,6 +434,7 @@ function CredentialModal({
   cred?: Credential
   prefillKind?: Kind
   prefillProvider?: string
+  prefillAgentSlug?: string
 }) {
   // Two-step flow on create: pick provider, then fill the form. When a
   // capability card prefills kind+provider, skip the pick step and jump
@@ -463,7 +487,18 @@ function CredentialModal({
     const meta: Record<string, string> = {}
     if (baseUrl.trim()) meta.base_url = baseUrl.trim()
     if (usageMd.trim()) meta.usage_md = usageMd.trim()
-    const payload = { credential: { kind, provider, name, fields, meta } }
+    // agent_id pinned via deep-link → backend resolves the slug and
+    // restricts the credential to that agent only.
+    const payload = {
+      credential: {
+        kind,
+        provider,
+        name,
+        fields,
+        meta,
+        ...(prefillAgentSlug ? { agent_id: prefillAgentSlug } : {}),
+      },
+    }
     if (mode === "create") {
       router.post("/settings/credentials", payload, {
         headers: { "X-CSRF-Token": csrf() },
@@ -506,18 +541,25 @@ function CredentialModal({
               </div>
             )}
             <div className="min-w-0">
-              <DialogTitle className="text-base">
+              <DialogTitle className="text-base flex items-center gap-2">
                 {mode === "create"
                   ? step === "pick"
                     ? "Add credential"
                     : `Add ${providerLabel(provider)} credential`
                   : `Rotate ${cred?.name}`}
+                {prefillAgentSlug && (
+                  <span className="rounded-md border border-purple-500/40 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                    agent-only
+                  </span>
+                )}
               </DialogTitle>
               <DialogDescription className="text-xs mt-0.5">
                 {mode === "create"
                   ? step === "pick"
                     ? "Pick the service first. We'll show the right fields."
-                    : "Stored encrypted at rest. Agents read via env or secrets.get."
+                    : prefillAgentSlug
+                      ? `Locked to agent ${prefillAgentSlug} — no other agent in this workspace will see this key.`
+                      : "Stored encrypted at rest. Agents read via env or secrets.get."
                   : "Leave a field blank to keep its current value."}
               </DialogDescription>
             </div>
