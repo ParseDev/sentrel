@@ -69,6 +69,10 @@ class CredentialsController < ApplicationController
       fields = { primary => legacy_value }
     end
 
+    # agent_id may arrive as a PrefixedIds string ("agt_…") or an integer.
+    # Resolve + validate it belongs to this org. Nil/empty → org-scoped.
+    attrs["agent_id"] = resolve_agent_id_for_cred(attrs["agent_id"])
+
     cred = current_tenant.credentials.new(attrs)
     cred.created_by_user_id = current_user.id
     cred.meta = sanitize_meta(meta_input)
@@ -93,6 +97,8 @@ class CredentialsController < ApplicationController
     legacy_value = attrs.delete("value")
     new_fields[cred.primary_field_name] ||= legacy_value if legacy_value.present?
     meta_input = attrs.delete("meta")
+    # agent_id can be moved between agents OR cleared back to org-scoped.
+    attrs["agent_id"] = resolve_agent_id_for_cred(attrs["agent_id"]) if attrs.key?("agent_id")
 
     # Merge — rotating just one field shouldn't wipe the rest. Blank values
     # in the submitted hash are ignored (Credential#fields= drops them).
@@ -128,7 +134,22 @@ class CredentialsController < ApplicationController
   private
 
   def credential_params
-    params.require(:credential).permit(:kind, :provider, :name, :value, meta: {}, fields: {})
+    params.require(:credential).permit(:kind, :provider, :name, :value, :agent_id, meta: {}, fields: {})
+  end
+
+  # Coerce an agent_id param into a real integer pointing to an agent
+  # in the current org. Accepts the PrefixedIds slug ("agt_abc") or an
+  # integer; returns nil for blank/empty input (= org-scoped credential).
+  # Raises ActiveRecord::RecordNotFound if the agent doesn't belong to
+  # the current org so we never silently leak a credential to a stranger.
+  def resolve_agent_id_for_cred(raw)
+    return nil if raw.blank?
+    raw_s = raw.to_s
+    agent = current_tenant.agents.find_by(slug: raw_s)
+    agent ||= current_tenant.agents.find_by(id: Agent.find_by_prefix_id(raw_s)&.id)
+    agent ||= current_tenant.agents.find_by(id: raw_s.to_i) if raw_s.match?(/\A\d+\z/)
+    raise ActiveRecord::RecordNotFound, "agent #{raw_s} not in this org" unless agent
+    agent.id
   end
 
   # Hash-ify whatever shape the fields param arrived as (Hash,

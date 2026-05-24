@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_21_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_24_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -287,6 +287,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_21_000000) do
   end
 
   create_table "credentials", force: :cascade do |t|
+    t.bigint "agent_id"
     t.datetime "created_at", null: false
     t.bigint "created_by_user_id"
     t.string "kind", null: false
@@ -297,8 +298,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_21_000000) do
     t.string "provider", null: false
     t.datetime "updated_at", null: false
     t.text "value_ciphertext"
+    t.index ["agent_id", "provider", "kind"], name: "index_credentials_on_agent_id_and_provider_and_kind", where: "(agent_id IS NOT NULL)"
+    t.index ["agent_id"], name: "index_credentials_on_agent_id"
     t.index ["created_by_user_id"], name: "index_credentials_on_created_by_user_id"
     t.index ["kind"], name: "index_credentials_on_kind"
+    t.index ["organization_id", "agent_id", "provider", "name"], name: "index_credentials_on_org_agent_provider_name", unique: true
     t.index ["organization_id", "provider", "name"], name: "index_credentials_uniq_per_org", unique: true
     t.index ["organization_id"], name: "index_credentials_on_organization_id"
   end
@@ -656,6 +660,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_21_000000) do
   add_foreign_key "conversations", "conversations", column: "unified_conversation_id"
   add_foreign_key "conversations", "organizations"
   add_foreign_key "conversations", "users"
+  add_foreign_key "credentials", "agents", on_delete: :cascade
   add_foreign_key "credentials", "organizations"
   add_foreign_key "credentials", "users", column: "created_by_user_id"
   add_foreign_key "email_events", "agents"

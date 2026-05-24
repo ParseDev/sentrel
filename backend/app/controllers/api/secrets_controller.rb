@@ -93,18 +93,22 @@ class Api::SecretsController < ApplicationController
     return true if cred.is_a?(Credential::PlatformDefault)
     # Same-org rule — never cross-tenant.
     return false unless cred.organization_id == agent.organization_id
-    # When the agent has any explicit grants, the credential must be in the
-    # grant set. With no grants the agent uses org defaults (any credential
-    # in the org).
+    # Agent-owned credential: locked to that one agent. Other agents in
+    # the same org can't see it.
+    return cred.agent_id == agent.id if cred.agent_id.present?
+    # Org-scoped credential: when the agent has any explicit grants, the
+    # credential must be in the grant set. With no grants the agent uses
+    # org defaults (any org-scoped credential in the org).
     return true unless agent.agent_credential_grants.exists?
     agent.agent_credential_grants.where(credential_id: cred.id).exists?
   end
 
   # Which tier resolved this credential — flows into the audit log + the
   # JSON response so the engine can echo "running on Double.md platform key"
-  # in tool output.
+  # / "running on this agent's own key" in tool output.
   def resolve_source(agent, cred)
     return "platform_default" if cred.is_a?(Credential::PlatformDefault)
+    return "agent_owned" if cred.agent_id == agent.id
     return "agent_grant" if agent.agent_credential_grants.where(credential_id: cred.id).exists?
     "org_default"
   end

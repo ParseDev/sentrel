@@ -32,9 +32,14 @@ import type { Origin } from "../channels/origin-delivery.js";
 import { railsInternalUrl } from "../host/rails-url.js";
 
 // Where the key came from. Capability MCP tools surface this so we can show
-// "running on Double.md platform key" in audit / UI when the org hasn't
-// BYOK'd. Rails resolves: agent grant → org default → platform default ENV.
-export type CredentialSource = "agent_grant" | "org_default" | "platform_default";
+// "running on Double.md platform key" / "running on this agent's own key" in
+// audit / UI. Rails resolves in order:
+//   agent_owned → agent_grant → org_default → platform_default
+export type CredentialSource =
+  | "agent_owned"
+  | "agent_grant"
+  | "org_default"
+  | "platform_default";
 
 export interface SecretResponse {
   value: string;

@@ -160,6 +160,10 @@ class Credential < ApplicationRecord
 
   acts_as_tenant :organization
   belongs_to :organization
+  # When set, this credential is locked to a single agent — only that
+  # agent's runs can read it via secrets.get. When nil, the credential
+  # is org-scoped and AgentCredentialGrant rows gate visibility.
+  belongs_to :agent, optional: true
   belongs_to :created_by_user, class_name: "User", optional: true
   has_many :agent_credential_grants, dependent: :destroy
   has_many :agents, through: :agent_credential_grants
@@ -168,8 +172,14 @@ class Credential < ApplicationRecord
 
   validates :kind,     presence: true, inclusion: { in: KINDS }
   validates :provider, presence: true
-  validates :name,     presence: true, uniqueness: { scope: [ :organization_id, :provider ], case_sensitive: false }
+  # Unique within (org, agent, provider). Two agents can each have their
+  # own "Default openai key"; the org can also have its own. NULL agent_id
+  # is treated as a distinct value here.
+  validates :name,     presence: true, uniqueness: { scope: [ :organization_id, :agent_id, :provider ], case_sensitive: false }
   validate  :primary_field_present
+
+  scope :org_scoped,    -> { where(agent_id: nil) }
+  scope :agent_scoped,  ->(agent) { where(agent_id: agent.is_a?(Agent) ? agent.id : agent) }
 
   def self.field_schema_for(kind, provider)
     FIELD_SCHEMAS["#{kind}:#{provider}"] || FIELD_SCHEMAS["#{kind}:*"] || DEFAULT_FIELDS
@@ -235,35 +245,40 @@ class Credential < ApplicationRecord
   # Resolves the credential an agent should use for a given (provider, kind).
   # Resolution order:
   #
-  #   1. Per-agent grant — when an agent has any agent_credential_grants
-  #      rows of this kind/provider, only those count (lets owners
-  #      pre-pick which key a particular agent may use).
-  #   2. Org default — when no grant rows of this kind/provider exist for
-  #      the agent, use the org's first credential of that kind+provider.
-  #   3. Platform default — falls through to ENV["PLATFORM_#{PROVIDER}_KEY"]
-  #      so Double.md-provided fallback keys make capabilities work on day
-  #      1 without forcing every org to BYOK. The returned object is a
-  #      PlatformDefault (duck-types like a Credential) with `source:
-  #      "platform_default"` so the audit log + UI can flag it.
+  #   1. Agent-owned — a Credential row with agent_id = this agent. Locked
+  #      to one agent; never visible to siblings in the same org.
+  #   2. Per-agent grant — when the agent has any agent_credential_grants
+  #      rows of this kind/provider, only those org credentials count.
+  #   3. Org default — first org-scoped (agent_id IS NULL) credential of
+  #      that kind+provider with no agent grants applying.
+  #   4. Platform default — ENV["PLATFORM_#{PROVIDER}_KEY"] when set.
+  #      Returned as a Credential::PlatformDefault stub.
   #
   # Tenant-safe: scoped to the agent's organization.
   def self.find_for(agent, provider:, kind:)
     return nil unless agent&.organization_id
 
     db_match = ActsAsTenant.with_tenant(agent.organization) do
-      grants = agent.credentials.where(provider: provider, kind: kind).order(:id)
-      next grants.first if grants.exists?
-      where(provider: provider, kind: kind).order(:id).first
+      # 1. Agent-owned row wins.
+      owned = where(agent_id: agent.id, provider: provider, kind: kind).order(:id).first
+      next owned if owned
+
+      # 2. Explicit grant on an org credential.
+      granted = agent.credentials.where(provider: provider, kind: kind).order(:id).first
+      next granted if granted
+
+      # 3. Org default — only an org-scoped (agent_id IS NULL) credential counts.
+      where(agent_id: nil, provider: provider, kind: kind).order(:id).first
     end
     return db_match if db_match
 
     PlatformDefault.from_env(provider: provider, kind: kind)
   end
 
-  # Reads from this row. Real Credentials are "org_default" unless an agent
-  # explicitly grants them — the controller fills in "agent_grant" then.
+  # Tier this credential occupies on its own. The secrets controller
+  # refines this with grant-awareness ("agent_grant" vs raw "org_default").
   def source
-    "org_default"
+    agent_id.present? ? "agent_owned" : "org_default"
   end
 
   # Quack-alike for Credential read paths when no DB row exists for a
