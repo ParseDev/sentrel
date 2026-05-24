@@ -1388,7 +1388,7 @@ async function buildQueryOptions(
       from: job.payload?.from,
       bot_number: waConfig?.config?.phone_number || process.env.WHATSAPP_BOT_NUMBER || "",
     };
-    const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
+    const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta, agent);
     mcpServers["send-media"] = sendMediaServer;
     baseMcpServers["send-media"] = sendMediaServer;
   }

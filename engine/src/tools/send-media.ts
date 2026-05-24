@@ -3,16 +3,20 @@ import path from "path";
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config.js";
-import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 import { synthesize } from "../media/providers/tts.js";
+import { getActiveTtsProvider } from "../capabilities/tts/registry.js";
 import { sendMedia } from "../media/channel-sender.js";
+import type { Agent } from "../types.js";
 
 // Build the send-media MCP server. The current job's channel + metadata are
 // baked into the closure so the agent doesn't need to specify routing.
+// `agent` is threaded so send_voice can route through the multi-provider
+// TTS registry (capability-gated, BYOK + platform-default).
 export function buildSendMediaMcpServer(
   channel: string,
   metadata: Record<string, unknown>,
+  agent?: Agent,
 ) {
   const sendVoiceTool = tool(
     "send_voice",
@@ -25,7 +29,23 @@ export function buildSendMediaMcpServer(
     },
     async (args) => {
       try {
-        const { bytes, contentType, filename } = await synthesize(args.text, args.voice);
+        let bytes: Buffer, contentType: string, filename: string;
+        // Prefer the new registry (per-agent BYOK + platform-default
+        // fallback). Fall back to env-based synthesize when no agent is
+        // in context — keeps legacy enqueue paths working.
+        if (agent) {
+          const provider = await getActiveTtsProvider(agent);
+          const out = await provider.synthesize({ text: args.text, voice: args.voice }, agent.id);
+          bytes = out.bytes;
+          contentType = out.contentType;
+          filename = out.filename;
+          logger.info(`send_voice: synthesized via ${provider.name} (${out.model}, ${args.text.length} chars)`);
+        } else {
+          const out = await synthesize(args.text, args.voice);
+          bytes = out.bytes;
+          contentType = out.contentType;
+          filename = out.filename;
+        }
         await sendMedia({
           channel,
           bytes,
@@ -33,10 +53,10 @@ export function buildSendMediaMcpServer(
           contentType,
           metadata,
         });
-        return { content: [{ type: "text", text: `Voice message sent (${args.text.length} chars)` }] };
+        return { content: [{ type: "text" as const, text: `Voice message sent (${args.text.length} chars)` }] };
       } catch (err) {
         logger.error("send_voice failed", { error: (err as Error).message });
-        return { content: [{ type: "text", text: `Failed to send voice: ${(err as Error).message}` }], isError: true };
+        return { content: [{ type: "text" as const, text: `Failed to send voice: ${(err as Error).message}` }], isError: true };
       }
     },
   );
