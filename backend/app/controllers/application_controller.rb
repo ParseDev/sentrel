@@ -58,13 +58,18 @@ class ApplicationController < ActionController::Base
                             .select(:id, :name, :slug, :role, :status, :manager_id)
                             .order(:name)
                             .to_a
-    # Only count RECENT pending approvals — a long-dead approval from a
-    # paused agent shouldn't keep nagging in the sidebar forever. 7 days
-    # is the same staleness window the inbox uses for "active" conversations.
+    # Every pending approval counts — old ones are MORE urgent (waiting
+    # longer), not less. Earlier "7-day staleness window" hid the signal
+    # we most want to surface (real users let approvals sit for weeks).
+    # Oldest-pending tracked separately so the badge can shift color
+    # based on age (>3d amber, >7d red) without a second query.
     pending_counts = current_tenant.pending_approvals
                                     .where(status: "pending")
-                                    .where("created_at >= ?", 7.days.ago)
                                     .group(:agent_id).count
+    pending_oldest = current_tenant.pending_approvals
+                                     .where(status: "pending")
+                                     .group(:agent_id)
+                                     .minimum(:created_at)
     # "External" conversations with at least one inbound message in the last
     # 7 days approximate "unread inbox" cheaply — without a per-user read
     # state migration, this is the closest signal.
@@ -74,6 +79,7 @@ class ApplicationController < ActionController::Base
     by_manager = agents.group_by(&:manager_id)
     rows = []
     build_node = ->(agent, depth) {
+      oldest = pending_oldest[agent.id]
       rows << {
         id: agent.to_param,
         name: agent.name,
@@ -83,6 +89,8 @@ class ApplicationController < ActionController::Base
         depth: depth,
         has_children: by_manager[agent.id]&.any? == true,
         pending_approvals: pending_counts[agent.id] || 0,
+        # Frontend uses this to color the badge by age — older = redder.
+        oldest_pending_age_hours: oldest ? ((Time.current - oldest) / 3600).to_i : nil,
         active_conversations: inbox_counts[agent.id] || 0,
       }
       (by_manager[agent.id] || []).each { |child| build_node.call(child, depth + 1) }

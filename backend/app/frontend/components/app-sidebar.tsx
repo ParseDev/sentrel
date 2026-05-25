@@ -62,6 +62,7 @@ interface AgentNode {
   depth: number
   has_children: boolean
   pending_approvals: number
+  oldest_pending_age_hours: number | null
   active_conversations: number
 }
 
@@ -308,15 +309,25 @@ function AgentRow({
         {node.status === "running" && (
           <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" title="Running" />
         )}
-        {node.pending_approvals > 0 && (
-          <span
-            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-px text-[9px] font-semibold tabular-nums text-amber-600 dark:text-amber-400"
-            title={`${node.pending_approvals} approval${node.pending_approvals === 1 ? "" : "s"} waiting on your decision (last 7 days)`}
-          >
-            <AlertCircle className="size-2.5" />
-            {node.pending_approvals}
-          </span>
-        )}
+        {node.pending_approvals > 0 && (() => {
+          // Color shifts with age — fresh stays amber, >3d brightens, >7d
+          // turns red so stuck approvals are visually loud.
+          const ageH = node.oldest_pending_age_hours ?? 0
+          const tone =
+            ageH >= 24 * 7 ? "bg-red-500/15 text-red-600 dark:text-red-400" :
+            ageH >= 24 * 3 ? "bg-orange-500/15 text-orange-600 dark:text-orange-400" :
+                             "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          const ageLabel = ageH >= 24 ? `${Math.floor(ageH / 24)}d` : `${Math.max(1, ageH)}h`
+          return (
+            <span
+              className={`inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-px text-[9px] font-semibold tabular-nums ${tone}`}
+              title={`${node.pending_approvals} approval${node.pending_approvals === 1 ? "" : "s"} pending — oldest is ${ageLabel} old`}
+            >
+              <AlertCircle className="size-2.5" />
+              {node.pending_approvals}
+            </span>
+          )
+        })()}
       </Link>
     </div>
   )

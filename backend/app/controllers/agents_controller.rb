@@ -501,8 +501,7 @@ class AgentsController < ApplicationController
       # preview as fallbacks.
       pending_approvals: agent.pending_approvals
         .where(status: "pending")
-        .where("created_at >= ?", 7.days.ago)
-        .order(created_at: :desc)
+        .order(created_at: :asc) # oldest-first — those have been waiting longest
         .limit(8)
         .map { |a|
           input_preview = if a.tool_input.is_a?(Hash) && a.tool_input.any?
