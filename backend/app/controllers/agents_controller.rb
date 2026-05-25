@@ -495,17 +495,32 @@ class AgentsController < ApplicationController
   # the rail is glanceable without N follow-up fetches.
   def build_rail_payload(agent)
     {
+      # Rail wants enough context per approval to actually be useful — older
+      # generic approvals don't have `summary`/`payload_type` populated (only
+      # action approvals do), so we ship `tool_name` + a brief tool_input
+      # preview as fallbacks.
       pending_approvals: agent.pending_approvals
         .where(status: "pending")
         .where("created_at >= ?", 7.days.ago)
         .order(created_at: :desc)
         .limit(8)
         .map { |a|
+          input_preview = if a.tool_input.is_a?(Hash) && a.tool_input.any?
+            # Pick the first 2-3 meaningful keys (skip underscored internals).
+            a.tool_input
+              .reject { |k, _| k.to_s.start_with?("_") }
+              .first(3)
+              .map { |k, v| "#{k}: #{v.to_s.truncate(60)}" }
+              .join(" · ")
+              .presence
+          end
           {
             id: a.id,
-            summary: a.summary || a.tool_name,
+            summary: a.summary,
+            tool_name: a.tool_name,
             payload_type: a.payload_type,
             risk_tier: a.risk_tier,
+            input_preview: input_preview,
             created_at: a.created_at,
           }
         },

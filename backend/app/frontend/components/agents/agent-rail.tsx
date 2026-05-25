@@ -22,8 +22,10 @@ import type { Agent } from "@/types"
 interface PendingApproval {
   id: number
   summary: string | null
+  tool_name: string | null
   payload_type: string | null
   risk_tier: string | null
+  input_preview: string | null
   created_at: string
 }
 
@@ -201,14 +203,24 @@ function ApprovalsCard({ agent, approvals }: { agent: Agent; approvals: PendingA
         <p className="text-[11px] text-muted-foreground">Nothing waiting on you.</p>
       ) : (
         <ul className="space-y-1.5">
-          {approvals.slice(0, 5).map((a) => (
-            <li key={a.id} className="rounded border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
-              <p className="text-[11px] text-foreground line-clamp-2">{a.summary || a.payload_type || "Approval requested"}</p>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">
-                {a.payload_type || "generic"} · {timeAgo(a.created_at)}
-              </p>
-            </li>
-          ))}
+          {approvals.slice(0, 5).map((a) => {
+            // Pick the best primary label. Older generic approvals only
+            // have tool_name; newer action approvals carry a summary +
+            // payload_type. Show every signal we have.
+            const primary = a.summary?.trim() || a.tool_name?.trim() || a.payload_type || "Approval requested"
+            const meta = [ a.payload_type, a.risk_tier ].filter(Boolean).join(" · ")
+            return (
+              <li key={a.id} className="rounded border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
+                <p className="text-[11px] font-medium text-foreground line-clamp-2">{primary}</p>
+                {a.input_preview && (
+                  <p className="mt-0.5 text-[10px] text-muted-foreground line-clamp-1 font-mono">{a.input_preview}</p>
+                )}
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {meta || "generic"} · {timeAgo(a.created_at)}
+                </p>
+              </li>
+            )
+          })}
           {approvals.length > 5 && (
             <li>
               <Link href={`/agents/${agent.id}?tab=approvals`} className="text-[11px] text-foreground/80 hover:underline">
