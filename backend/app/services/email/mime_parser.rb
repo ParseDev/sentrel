@@ -4,7 +4,7 @@ module Email
   # Parses raw email content and SES SNS notifications.
   # Returns a normalized hash with body, headers, attachments.
   class MimeParser
-    Result = Struct.new(:body_text, :attachments, :message_id, :in_reply_to, :references, keyword_init: true)
+    Result = Struct.new(:body_text, :attachments, :message_id, :in_reply_to, :references, :conversation_id_header, keyword_init: true)
 
     # Parse a SES SNS notification (Hash) into a normalized result
     def self.parse_ses_notification(ses_notification)
@@ -17,6 +17,11 @@ module Email
         message_id: header(headers, "Message-ID") || mail_info["messageId"],
         in_reply_to: header(headers, "In-Reply-To"),
         references: header(headers, "References"),
+        # Our outbound emails include this header with the conversation's
+        # public id; the inbound reply (any modern email client) preserves
+        # it verbatim, giving us a deterministic thread anchor independent
+        # of Message-ID rewriting.
+        conversation_id_header: header(headers, "X-Doublemd-Conversation-Id"),
       )
     end
 

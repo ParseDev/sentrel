@@ -144,9 +144,19 @@ module Email
       in_reply_to = last_inbound&.metadata&.dig("message_id")
       prev_references = last_inbound&.metadata&.dig("references")
       references = [ prev_references, in_reply_to ].compact.join(" ").strip.presence
-      new_message_id = "<#{SecureRandom.uuid}@#{@from_domain}>"
+      # Encode the conversation's public id directly into the Message-ID
+      # so any reply's In-Reply-To carries it back to us — instant O(1)
+      # thread routing without grepping JSON metadata. Same trick Discourse
+      # uses for topic IDs. Format: <conv-<cnv_id>.<uuid>@<from_domain>>.
+      conv_token = conversation.respond_to?(:to_param) ? conversation.to_param : "id-#{conversation.id}"
+      new_message_id = "<conv-#{conv_token}.#{SecureRandom.uuid}@#{@from_domain}>"
 
-      { in_reply_to: in_reply_to, references: references, new_message_id: new_message_id }
+      {
+        in_reply_to: in_reply_to,
+        references: references,
+        new_message_id: new_message_id,
+        conversation_id_header: conv_token
+      }
     end
 
     def build_mail(threading_headers)
@@ -165,6 +175,8 @@ module Email
       new_message_id = threading_headers[:new_message_id]
       attachment_blobs = load_attachment_blobs
 
+      conv_id_header = threading_headers[:conversation_id_header]
+
       mail = Mail.new do
         from       "#{from_name} <#{from_addr}>"
         to         to_array
@@ -177,6 +189,11 @@ module Email
           header["In-Reply-To"] = in_reply_to
           header["References"] = references || in_reply_to
         end
+
+        # Custom thread anchor — belt-and-suspenders alongside the encoded
+        # Message-ID. Some clients normalize Message-ID; this header is
+        # preserved verbatim across replies on every modern client.
+        header["X-Doublemd-Conversation-Id"] = conv_id_header if conv_id_header
 
         text_part { body text_body }
         html_part do

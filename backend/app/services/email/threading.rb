@@ -1,20 +1,50 @@
 module Email
-  # Single source of truth for email thread lookup.
-  # Tries: in_reply_to → contact + clean subject → subject only → create new.
+  # Single source of truth for email thread lookup. Header-based ONLY —
+  # subject matching used to merge unrelated threads (a new email with
+  # subject "hi" would splice into someone else's old "hi" conversation).
+  # Modern email clients all preserve References on Reply/Reply-All, so
+  # header-based threading is reliable for the 99% case; the rare
+  # "different sender starts a new email with the same subject" case
+  # correctly produces a new conversation, matching user intent.
+  #
+  # Resolution order:
+  #   1. X-Doublemd-Conversation-Id custom header (set by OutboundSender,
+  #      preserved verbatim across all modern email clients)
+  #   2. Message-ID prefix "conv-<cnv_id>." encoded into outbound messages
+  #      (Discourse-style — caught via In-Reply-To even if the custom
+  #      header gets stripped)
+  #   3. Match In-Reply-To against any of our stored messages.metadata.message_id
+  #   4. Walk References chain for any ancestor match
+  #   5. Create a new conversation
   module Threading
     module_function
 
-    # Find an existing email thread or create a new one for the agent.
-    #
-    # `references` is the raw References header value (RFC 5322) — a
-    # space-separated list of all ancestor Message-IDs. Passing it in is
-    # what rescues the thread when the immediate In-Reply-To points at a
-    # message we never received (e.g. the user forwarded from a personal
-    # account, or replied via a side address that isn't the agent).
-    def find_or_create(agent:, contact_email:, contact_name:, subject:, in_reply_to: nil, references: nil)
+    # `conversation_id_header` is the X-Doublemd-Conversation-Id value from
+    # the inbound email (passed through MimeParser). When present it's the
+    # most reliable thread anchor — set by our own OutboundSender so any
+    # reply to one of our emails carries it back.
+    def find_or_create(agent:, contact_email:, contact_name:, subject:,
+                       in_reply_to: nil, references: nil, conversation_id_header: nil)
       clean_name = contact_name&.gsub(/<[^>]+>/, "")&.strip || contact_email
 
-      # 1. Match by In-Reply-To header (most reliable, RFC 5322)
+      # 1. Custom header — our own thread anchor. Bulletproof when present.
+      if conversation_id_header.present?
+        existing = lookup_by_public_id(agent, conversation_id_header.strip)
+        return existing if existing
+      end
+
+      # 2. Encoded Message-ID. Our outbound mints
+      #    <conv-<cnv_id>.<uuid>@<domain>> so the recipient's In-Reply-To
+      #    contains "conv-<cnv_id>." even if the custom header was stripped.
+      [ in_reply_to, references ].compact.each do |hdr|
+        hdr.scan(/conv-(cnv_[a-z0-9]+)\./i).flatten.each do |cnv_id|
+          existing = lookup_by_public_id(agent, cnv_id)
+          return existing if existing
+        end
+      end
+
+      # 3. Direct In-Reply-To match (covers the case where THEY started the
+      # thread, our agent replied, and now they're replying again).
       if in_reply_to.present?
         existing = agent.conversations.joins(:messages)
           .where(kind: "external")
@@ -23,10 +53,8 @@ module Email
         return existing if existing
       end
 
-      # 2. Walk the References chain. Earlier IDs in the chain anchor to
-      # ancestors deeper in the thread; matching any one of them is enough
-      # to splice this email into the existing conversation. Critical when
-      # the direct In-Reply-To target wasn't routed through this agent.
+      # 4. Walk References chain. Earlier IDs anchor to thread ancestors;
+      # matching any one is enough to splice into the existing thread.
       if references.present?
         ref_ids = references.scan(/<[^>]+>/).uniq
         ref_ids.reverse_each do |ref_id|
@@ -38,33 +66,10 @@ module Email
         end
       end
 
-      # 3. Match by clean subject + contact
-      clean_subject = subject&.gsub(/^(Re|Fwd|Fw):\s*/i, "")&.strip
-      if clean_subject.present?
-        existing = agent.conversations
-          .where(kind: "external")
-          .where("contact_identifier = ? OR contact_email = ?", contact_email, contact_email)
-          .where("subject ILIKE ?", "%#{clean_subject}%")
-          .order(updated_at: :desc)
-          .first
-        return existing if existing
-
-        # 4. Subject-only match (handles CC chains where the new sender
-        # has no contact_email match on the existing conversation). Only
-        # safe for distinctive subjects — short ones like "hi", "thanks",
-        # "ok" used to merge unrelated threads into one and mislabel the
-        # sender. Require ≥10 characters of meaningful subject.
-        if clean_subject.length >= 10
-          existing = agent.conversations
-            .where(kind: "external")
-            .where("subject ILIKE ?", clean_subject)
-            .order(updated_at: :desc)
-            .first
-          return existing if existing
-        end
-      end
-
-      # 5. Create new
+      # 5. Create new — no subject fallback. If the headers don't link, it's
+      # a new conversation. Better an occasional split (recoverable via the
+      # inbox UI) than the previous behavior of falsely merging unrelated
+      # topics from the same sender.
       agent.conversations.create!(
         organization: agent.organization,
         kind: "external",
@@ -74,6 +79,16 @@ module Email
         subject: subject,
         status: "active",
       )
+    end
+
+    # Resolve a Conversation public id ("cnv_abc123") to a row scoped to
+    # the agent. Returns nil for unknown ids — never raises so a bogus
+    # header (forged or stale) falls through to the next strategy.
+    def lookup_by_public_id(agent, public_id)
+      return nil if public_id.blank?
+      real_id = Conversation.find_by_prefix_id(public_id)&.id
+      return nil unless real_id
+      agent.conversations.where(kind: "external").find_by(id: real_id)
     end
   end
 end
