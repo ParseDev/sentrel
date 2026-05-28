@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react"
 
 import { AuthLayout } from "@/layouts/auth/auth-layout"
 import { Button } from "@/components/ui/button"
+import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { userRegistrationPath, newUserSessionPath } from "@/routes"
@@ -42,7 +43,16 @@ export default function RegistrationNew() {
           </>
         }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
+          <GoogleSignInButton label="Sign up with Google" />
+          <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
+            <div className="h-px flex-1 bg-border" />
+            <span>or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div className="space-y-2">
             <Label htmlFor="organization_name">Organization</Label>
             <Input

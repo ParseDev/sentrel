@@ -3,7 +3,8 @@ class User < ApplicationRecord
   include PublicIdSerialization
 
   devise :database_authenticatable, :registerable,
-         :recoverable, :rememberable, :validatable
+         :recoverable, :rememberable, :validatable,
+         :omniauthable, omniauth_providers: [ :google_oauth2 ]
 
   belongs_to :organization
   has_many :user_identities, dependent: :destroy

@@ -2,7 +2,7 @@
 # reached on. Lookups happen at inbound time: webhooks_controller#telegram
 # resolves chat_id → user_identity → user → user.organization → agent.
 class UserIdentity < ApplicationRecord
-  CHANNELS = %w[web telegram whatsapp email sms slack].freeze
+  CHANNELS = %w[web telegram whatsapp email sms slack google].freeze
 
   acts_as_tenant :organization
   belongs_to :organization
