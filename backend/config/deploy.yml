@@ -71,6 +71,8 @@ env:
     - ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
     - CLOUDFLARE_API_KEY
     - CLOUDFLARE_ACCOUNT_ID
+    - GOOGLE_OAUTH_CLIENT_ID
+    - GOOGLE_OAUTH_CLIENT_SECRET
 
 # Aliases are triggered with "bin/kamal <alias>".
 aliases:
