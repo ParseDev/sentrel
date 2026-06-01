@@ -73,6 +73,7 @@ env:
     - CLOUDFLARE_ACCOUNT_ID
     - GOOGLE_OAUTH_CLIENT_ID
     - GOOGLE_OAUTH_CLIENT_SECRET
+    - PLAUSIBLE_SCRIPT_ID
 
 # Aliases are triggered with "bin/kamal <alias>".
 aliases:

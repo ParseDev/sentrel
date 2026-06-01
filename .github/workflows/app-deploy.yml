@@ -24,6 +24,7 @@ name: app-deploy
 #   ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
 #   ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
 #   SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET
+#   PLAUSIBLE_SCRIPT_ID                           — public Plausible site script id
 
 on:
   push:
@@ -121,6 +122,7 @@ jobs:
           ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${{ secrets.ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT }}
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          PLAUSIBLE_SCRIPT_ID: ${{ secrets.PLAUSIBLE_SCRIPT_ID }}
         run: |
           mkdir -p .kamal
           # backend/config/master.key needs to be a file for the secrets-file
@@ -168,6 +170,7 @@ jobs:
           ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
           GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID
           GOOGLE_OAUTH_CLIENT_SECRET=$GOOGLE_OAUTH_CLIENT_SECRET
+          PLAUSIBLE_SCRIPT_ID=$PLAUSIBLE_SCRIPT_ID
           EOF
 
       - name: kamal deploy
