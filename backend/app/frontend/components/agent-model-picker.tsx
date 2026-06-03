@@ -17,50 +17,39 @@ import { router } from "@inertiajs/react"
 // ANTHROPIC_API_KEY so Claude-direct models work even without a user key.
 const KEY_REQUIRED_PROVIDERS = new Set(["openrouter"])
 
-// Curated model list — same shape as the picker on /agents/new. Grouped
-// by provider so users see at a glance what each model is. OpenRouter
-// entries include the high-signal "agentic" models (Kimi, MiniMax) up
-// top because they're the point of this surface.
+// Curated, user-facing model list — same shape as the picker on /agents/new.
+// We deliberately surface only three brands — OpenAI, Anthropic, Google —
+// each with their latest models, so picking a "brain" is a one-glance
+// decision. The underlying `provider` used for routing is an implementation
+// detail (GPT + Gemini resolve through OpenRouter, Claude is direct) and is
+// intentionally NOT shown to users. Non-Anthropic models resolve via the
+// ANTHROPIC_DEFAULT_*_MODEL env vars set by Rails agent_provisioner, so the
+// engine never passes the raw slug to the SDK.
 const MODELS: Array<{
   group: string
   options: Array<{ provider: string; model_id: string; label: string; hint?: string }>
 }> = [
   {
-    group: "Anthropic (direct)",
+    group: "OpenAI",
     options: [
-      { provider: "anthropic", model_id: "claude-opus-4-8",           label: "Claude Opus 4.8",   hint: "newest Opus — strongest reasoning" },
-      { provider: "anthropic", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7",   hint: "previous Opus, still excellent" },
-      { provider: "anthropic", model_id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
-      { provider: "anthropic", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  hint: "fastest + cheapest" },
-    ],
-  },
-  // Subscription auth (anthropic_account / openai_account) — temporarily
-  // hidden from the picker. Backend routing in agent_provisioner stays in
-  // place; flip these back on once the OAuth flow is registered.
-  {
-    // Non-Anthropic OR models resolve via ANTHROPIC_DEFAULT_*_MODEL env vars
-    // (set by Rails agent_provisioner) — the engine doesn't pass the slug to
-    // the SDK directly, so client-side validation is bypassed.
-    group: "OpenRouter — specialty",
-    options: [
-      { provider: "openrouter", model_id: "moonshotai/kimi-k2.6",       label: "Kimi K2.6 (Moonshot)", hint: "top agentic tool use" },
-      { provider: "openrouter", model_id: "minimax/minimax-m2.7",       label: "MiniMax M2.7",         hint: "long-context reasoning" },
-      { provider: "openrouter", model_id: "minimax/minimax-m2.5",       label: "MiniMax M2.5",         hint: "cheaper MiniMax" },
-      { provider: "openrouter", model_id: "deepseek/deepseek-v4-pro",   label: "DeepSeek V4 Pro",      hint: "strong reasoning" },
-      { provider: "openrouter", model_id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash",    hint: "cheap + fast" },
-      { provider: "openrouter", model_id: "qwen/qwen3-max-thinking",    label: "Qwen 3 Max (thinking)", hint: "open reasoning generalist" },
+      { provider: "openrouter", model_id: "openai/gpt-5.5-pro",  label: "GPT-5.5", hint: "flagship — strongest reasoning" },
+      { provider: "openrouter", model_id: "openai/gpt-5.4-mini", label: "GPT-5.4", hint: "faster + cheaper" },
     ],
   },
   {
-    group: "OpenRouter — frontier",
+    group: "Anthropic",
     options: [
-      { provider: "openrouter", model_id: "anthropic/claude-opus-4-7",            label: "Claude Opus 4.7 (via OR)" },
-      { provider: "openrouter", model_id: "anthropic/claude-sonnet-4-6",          label: "Claude Sonnet 4.6 (via OR)" },
-      { provider: "openrouter", model_id: "openai/gpt-5.5-pro",                   label: "GPT-5.5 Pro",       hint: "OpenAI flagship" },
-      { provider: "openrouter", model_id: "openai/gpt-5.4-mini",                  label: "GPT-5.4 mini",      hint: "cheap OpenAI" },
-      { provider: "openrouter", model_id: "google/gemini-3.1-pro-preview",        label: "Gemini 3.1 Pro",    hint: "huge context" },
-      { provider: "openrouter", model_id: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash-Lite", hint: "cheap + fast Google" },
-      { provider: "openrouter", model_id: "x-ai/grok-4.20",                       label: "Grok 4.20",         hint: "xAI flagship" },
+      { provider: "anthropic", model_id: "claude-opus-4-8",   label: "Claude Opus 4.8",   hint: "flagship — strongest reasoning" },
+      { provider: "anthropic", model_id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
+    ],
+  },
+  {
+    group: "Google",
+    options: [
+      { provider: "openrouter", model_id: "google/gemini-3.1-pro-preview",        label: "Gemini 3.1 Pro",        hint: "flagship — huge context" },
+      { provider: "openrouter", model_id: "google/gemini-2.5-pro",                label: "Gemini 2.5 Pro",        hint: "previous Pro" },
+      { provider: "openrouter", model_id: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash-Lite", hint: "fastest + cheapest" },
+      { provider: "openrouter", model_id: "google/gemini-2.5-flash",              label: "Gemini 2.5 Flash",      hint: "fast + cheap" },
     ],
   },
 ]

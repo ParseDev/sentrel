@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { agentsPath } from "@/routes"
 import { randomAgentName, slugify } from "@/lib/random-names"
 
@@ -63,28 +63,45 @@ interface ChannelChoice {
   config: Record<string, string>
 }
 
-const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; hint?: string }>> = {
-  anthropic: [
-    { value: "claude-opus-4-7",            label: "Claude Opus 4.7",   hint: "strongest reasoning, slowest + priciest" },
-    { value: "claude-opus-4-6",            label: "Claude Opus 4.6",   hint: "previous Opus, still excellent" },
-    { value: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
-    { value: "claude-sonnet-4-20250514",   label: "Claude Sonnet 4",   hint: "stable earlier Sonnet" },
-    { value: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  hint: "fastest + cheapest, good for background tasks" },
-  ],
-  openrouter: [
-    { value: "moonshotai/kimi-k2.6",            label: "Kimi K2.6 (Moonshot)", hint: "top agentic tool use" },
-    { value: "minimax/minimax-m2.7",            label: "MiniMax M2.7",         hint: "long-context reasoning" },
-    { value: "minimax/minimax-m2.5",            label: "MiniMax M2.5",         hint: "cheaper MiniMax" },
-    { value: "deepseek/deepseek-v4-pro",        label: "DeepSeek V4 Pro",      hint: "strong reasoning" },
-    { value: "deepseek/deepseek-v4-flash",      label: "DeepSeek V4 Flash",    hint: "cheap + fast" },
-    { value: "qwen/qwen3-max-thinking",         label: "Qwen 3 Max (thinking)", hint: "open reasoning generalist" },
-    { value: "anthropic/claude-opus-4-7",       label: "Claude Opus 4.7 (via OR)" },
-    { value: "anthropic/claude-sonnet-4-6",     label: "Claude Sonnet 4.6 (via OR)" },
-    { value: "openai/gpt-5.5-pro",              label: "GPT-5.5 Pro (via OR)" },
-    { value: "google/gemini-3.1-pro-preview",   label: "Gemini 3.1 Pro (via OR)" },
-    { value: "x-ai/grok-4.20",                  label: "Grok 4.20 (via OR)" },
-  ],
-}
+// Curated, user-facing model catalog. Users pick from three brands — OpenAI,
+// Anthropic, Google — each with their latest models. The underlying `provider`
+// used for routing is an implementation detail carried on each entry (GPT +
+// Gemini resolve through OpenRouter, Claude is direct) and is never surfaced
+// in the UI. Keep this in sync with components/agent-model-picker.tsx.
+const MODEL_BRANDS: Array<{
+  brand: string
+  models: Array<{ provider: string; value: string; label: string; hint?: string }>
+}> = [
+  {
+    brand: "OpenAI",
+    models: [
+      { provider: "openrouter", value: "openai/gpt-5.5-pro",  label: "GPT-5.5", hint: "flagship — strongest reasoning" },
+      { provider: "openrouter", value: "openai/gpt-5.4-mini", label: "GPT-5.4", hint: "faster + cheaper" },
+    ],
+  },
+  {
+    brand: "Anthropic",
+    models: [
+      { provider: "anthropic", value: "claude-opus-4-8",   label: "Claude Opus 4.8",   hint: "flagship — strongest reasoning" },
+      { provider: "anthropic", value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
+    ],
+  },
+  {
+    brand: "Google",
+    models: [
+      { provider: "openrouter", value: "google/gemini-3.1-pro-preview",        label: "Gemini 3.1 Pro",        hint: "flagship — huge context" },
+      { provider: "openrouter", value: "google/gemini-2.5-pro",                label: "Gemini 2.5 Pro",        hint: "previous Pro" },
+      { provider: "openrouter", value: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash-Lite", hint: "fastest + cheapest" },
+      { provider: "openrouter", value: "google/gemini-2.5-flash",              label: "Gemini 2.5 Flash",      hint: "fast + cheap" },
+    ],
+  },
+]
+
+// model_id -> provider lookup, so choosing a model also sets the routing
+// provider (and a template's suggested_model resolves to the right provider).
+const PROVIDER_BY_MODEL: Record<string, string> = Object.fromEntries(
+  MODEL_BRANDS.flatMap((b) => b.models.map((m) => [m.value, m.provider])),
+)
 
 const CAPABILITIES: Array<{ key: string; label: string; description: string }> = [
   {
@@ -182,7 +199,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     template_slug: "",
     ai_config: {
       provider: "anthropic",
-      model_id: "claude-sonnet-4-20250514",
+      model_id: "claude-sonnet-4-6",
       temperature: 0.7,
       max_tokens: 8192,
       thinking_level: "none",
@@ -830,47 +847,38 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         <section>
           <Overline className="mb-3">Model</Overline>
           <div className="rounded-lg border bg-card p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Provider</Label>
-                <Select
-                  value={data.ai_config.provider}
-                  onValueChange={(v) => {
-                    const defaultModel = MODELS_BY_PROVIDER[v]?.[0]?.value || ""
-                    setData("ai_config", { ...data.ai_config, provider: v, model_id: defaultModel })
-                  }}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="google">Google</SelectItem>
-                    <SelectItem value="openrouter">OpenRouter</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 min-w-0">
-                <Label>Model</Label>
-                <Select
-                  value={data.ai_config.model_id}
-                  onValueChange={(v) => setData("ai_config", { ...data.ai_config, model_id: v })}
-                >
-                  <SelectTrigger className="w-full min-w-0 [&>span]:truncate"><SelectValue placeholder="Pick a model" /></SelectTrigger>
-                  <SelectContent>
-                    {(MODELS_BY_PROVIDER[data.ai_config.provider] || []).map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        <span className="font-medium">{m.label}</span>
-                        {m.hint && <span className="text-muted-foreground"> — {m.hint}</span>}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2 min-w-0">
+              <Label>Model</Label>
+              <Select
+                value={data.ai_config.model_id}
+                onValueChange={(v) =>
+                  setData("ai_config", {
+                    ...data.ai_config,
+                    model_id: v,
+                    provider: PROVIDER_BY_MODEL[v] || data.ai_config.provider,
+                  })
+                }
+              >
+                <SelectTrigger className="w-full min-w-0 [&>span]:truncate"><SelectValue placeholder="Pick a model" /></SelectTrigger>
+                <SelectContent>
+                  {MODEL_BRANDS.map((b) => (
+                    <SelectGroup key={b.brand}>
+                      <SelectLabel>{b.brand}</SelectLabel>
+                      {b.models.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          <span className="font-medium">{m.label}</span>
+                          {m.hint && <span className="text-muted-foreground"> — {m.hint}</span>}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <p className="text-[10px] text-muted-foreground">
               {picked.suggested_model
                 ? <>Template recommends <span className="font-mono">{picked.suggested_model}</span> for this role. Override if you want.</>
-                : "Sonnet is the daily driver. Opus for heavy reasoning / long tasks. Haiku for cheap + fast background work."}
+                : "Sonnet is the daily driver. Flagship models (GPT-5.5, Opus 4.8, Gemini 3.1 Pro) for heavy reasoning. Flash/mini for cheap + fast work."}
             </p>
           </div>
         </section>
