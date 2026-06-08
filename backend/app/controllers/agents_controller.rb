@@ -479,7 +479,7 @@ class AgentsController < ApplicationController
   end
 
   def destroy
-    AgentProvisioner.terminate_for(@agent)
+    # Fly teardown is handled by Agent's before_destroy :terminate_infrastructure.
     @agent.destroy
     redirect_to agents_path, notice: "Agent deleted"
   end

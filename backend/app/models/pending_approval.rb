@@ -2,6 +2,11 @@ class PendingApproval < ApplicationRecord
   acts_as_tenant :organization
   belongs_to :organization
   belongs_to :agent
+  # Optional: the inbound message that triggered this approval. The FK uses
+  # ON DELETE SET NULL so destroying the message (e.g. via the agent's
+  # conversations cascade) nulls this pointer instead of raising a
+  # ForeignKeyViolation mid-cascade.
+  belongs_to :message, optional: true
   belongs_to :reviewed_by, class_name: "User", optional: true
 
   validates :tool_name, presence: true

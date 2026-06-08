@@ -23,6 +23,13 @@ class Agent < ApplicationRecord
   has_many :credentials, through: :agent_credential_grants
   has_many :agent_summaries, dependent: :destroy
 
+  # Tear down the agent's Fly machine/app/volume BEFORE the dependent: :destroy
+  # associations run. Without this, destroying an Agent only deletes the
+  # `instances` DB row (has_one :instance, dependent: :destroy) and leaves the
+  # real Fly machine + 10GB volume running and billing with nothing in the DB
+  # pointing at it. prepend: true so it runs before the instance row is gone.
+  before_destroy :terminate_infrastructure, prepend: true
+
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: { scope: :organization_id }
   validates :role, presence: true
@@ -94,5 +101,14 @@ class Agent < ApplicationRecord
       .first
       &.config
       &.dig("address")
+  end
+
+  private
+
+  # Best-effort Fly teardown. AgentProvisioner.terminate_for rescues + logs
+  # its own errors and is a no-op when the provisioner is unconfigured
+  # (NullBackend), so this never blocks the destroy.
+  def terminate_infrastructure
+    AgentProvisioner.terminate_for(self)
   end
 end

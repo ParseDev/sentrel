@@ -41,4 +41,28 @@ RSpec.describe Agent, type: :model do
         .and change(Message, :count).by(-1)
     end
   end
+
+  # Regression: destroying an agent used to raise PG::ForeignKeyViolation when a
+  # pending_approval referenced a message, because the conversations cascade
+  # deletes messages before the pending_approvals cascade runs and the FK had no
+  # ON DELETE rule. The FK is now ON DELETE SET NULL.
+  it "destroys cleanly when a pending_approval references a message" do
+    with_tenant(org) do
+      agent = create_agent(org)
+      conv = create_conversation(agent)
+      msg = create_message(conv)
+      PendingApproval.create!(
+        organization: org,
+        agent: agent,
+        message: msg,
+        tool_name: "send_email",
+        status: "pending"
+      )
+
+      expect { agent.destroy }.not_to raise_error
+      expect(agent.destroyed?).to be(true)
+      expect(PendingApproval.count).to eq(0)
+      expect(Message.count).to eq(0)
+    end
+  end
 end

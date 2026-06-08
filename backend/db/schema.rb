@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_29_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_08_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -691,7 +691,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_29_120000) do
   add_foreign_key "oauth_credentials", "organizations"
   add_foreign_key "organizations", "agents", column: "default_slack_agent_id", on_delete: :nullify
   add_foreign_key "pending_approvals", "agents"
-  add_foreign_key "pending_approvals", "messages"
+  add_foreign_key "pending_approvals", "messages", on_delete: :nullify
   add_foreign_key "pending_approvals", "organizations"
   add_foreign_key "pending_approvals", "users", column: "reviewed_by_id"
   add_foreign_key "scheduled_work", "agents"
