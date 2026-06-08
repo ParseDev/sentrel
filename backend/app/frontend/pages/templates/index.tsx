@@ -1,12 +1,13 @@
 import { Head, Link } from "@inertiajs/react"
 import { useMemo, useState } from "react"
-import { Bot, Search, Sparkles, Users } from "lucide-react"
+import { Bot, Search, Sparkles, Upload, Users } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 
 type Source = "all" | "system" | "community" | "mine"
 
@@ -85,6 +86,14 @@ export default function TemplatesIndex({ templates, categories }: Props) {
         eyebrow="Library"
         title="Agent templates"
         description="Pre-built roles you can hire in one click — and your own templates saved from existing agents."
+        action={
+          <Link href="/agent_templates/import">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5">
+              <Upload className="size-3.5" />
+              Import from JSON
+            </Button>
+          </Link>
+        }
       />
 
       <div className="max-w-5xl space-y-6">

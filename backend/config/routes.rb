@@ -209,7 +209,8 @@ Rails.application.routes.draw do
         post :publish   # new version from { agent_id, ... }
       end
       collection do
-        post :import    # paste / file / URL → new template + v1
+        get  "import", to: "agent_templates#new_import"  # Inertia import form
+        post :import                                       # paste / file / URL → new template + v1
       end
       # Browse + fetch any historical version of a template.
       resources :versions, only: [ :index, :show ], controller: "agent_template_versions"

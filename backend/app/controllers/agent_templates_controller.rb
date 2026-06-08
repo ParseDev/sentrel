@@ -81,22 +81,25 @@ class AgentTemplatesController < ApplicationController
     end
   end
 
-  # POST /agent_templates  — legacy "Save as template" snapshots an agent into
-  # a new community template. Kept for backward compat with the existing
-  # SaveAsTemplateButton; new code paths should use #publish (versioned).
+  # POST /agent_templates — "Publish to community" for the first time.
+  # Routes through AgentTemplates::Publisher so v1 is created immediately
+  # with the embedded skill bundles + capability config + approval rules —
+  # not the legacy flat snapshot. (Re-publish on an existing template goes
+  # through #publish below.)
   def create
     agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
 
-    template = AgentTemplate.snapshot_from(
-      agent,
+    template = AgentTemplates::Publisher.new(
+      agent: agent,
       user: current_user,
       name: params[:name].to_s.presence || "#{agent.name} (saved)",
       category: params[:category],
       description: params[:description],
-      published: ActiveModel::Type::Boolean.new.cast(params[:published]),
-    )
+      license: params[:license],
+      changelog: params[:changelog].presence || "Initial publish",
+    ).call
 
-    redirect_to agent_template_path(template.slug), notice: "Template “#{template.name}” saved"
+    redirect_to agent_template_path(template.slug), notice: "Published “#{template.name}” v#{template.current_version&.version_number || 1}"
   rescue ActiveRecord::RecordInvalid => e
     redirect_back fallback_location: agent_path(agent), alert: e.message
   end
@@ -124,6 +127,14 @@ class AgentTemplatesController < ApplicationController
     redirect_to agent_template_path(template.slug), notice: "Published v#{template.reload.current_version.version_number}"
   rescue ActiveRecord::RecordInvalid => e
     redirect_back fallback_location: agent_template_path(template.slug), alert: e.message
+  end
+
+  # GET /agent_templates/import — renders the Inertia import form.
+  # The form posts back to #import with one of {definition, json, url}.
+  def new_import
+    render inertia: "templates/import", props: {
+      supported_spec_versions: AgentTemplates::Importer::SUPPORTED_SPEC_VERSIONS,
+    }
   end
 
   # POST /agent_templates/import

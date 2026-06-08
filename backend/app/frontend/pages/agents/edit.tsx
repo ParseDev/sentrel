@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Head, Link, router, useForm } from "@inertiajs/react"
-import { BookMarked, ShieldCheck, CheckCircle2, XCircle, Building2, Plus } from "lucide-react"
+import { BookMarked, ShieldCheck, CheckCircle2, XCircle, Building2, Plus, Download, FileJson, Eye, EyeOff } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -222,7 +222,12 @@ export default function AgentEdit({
         eyebrow="Configure"
         title={`Edit ${agent.name}`}
         description="Tune the agent's identity, model, permissions, and capabilities."
-        action={<SaveAsTemplateButton agentId={agent.id} agentName={agent.name} />}
+        action={
+          <div className="flex items-center gap-2">
+            <ExportAgentJsonButton agentId={agent.id} agentSlug={agent.slug} />
+            <PublishToCommunityButton agentId={agent.id} agentName={agent.name} />
+          </div>
+        }
       />
 
       <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
@@ -597,15 +602,28 @@ function CredentialsGrantSection({
 }
 
 // Snapshots the current agent's identity/personality/instructions/capabilities/
-// skills into a new AgentTemplate row owned by the current user. Opens a small
-// dialog for a name + category + public toggle. Successful save redirects to
-// the new template's detail page (server handles that).
-function SaveAsTemplateButton({ agentId, agentName }: { agentId: string | number; agentName: string }) {
+// Publishes this agent as v1 of a new community template. Successful save
+// hits the server's AgentTemplates::Publisher → creates a versioned
+// AgentTemplate with embedded skill bundles, capability config, approval
+// rules, and the persona markdown. Server-side stripping handles
+// credentials + channel tokens so nothing private leaks.
+const LICENSES = [
+  { value: "CC-BY-4.0", label: "CC-BY-4.0 (Attribution, recommended)" },
+  { value: "CC0-1.0", label: "CC0-1.0 (Public domain)" },
+  { value: "MIT", label: "MIT" },
+  { value: "Apache-2.0", label: "Apache-2.0" },
+  { value: "All rights reserved", label: "All rights reserved (no redistribution)" },
+]
+
+function PublishToCommunityButton({ agentId, agentName }: { agentId: string | number; agentName: string }) {
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState(`${agentName} (saved)`)
+  const [name, setName] = useState(`${agentName} (community)`)
   const [category, setCategory] = useState("starter")
   const [published, setPublished] = useState(true)
   const [description, setDescription] = useState("")
+  const [license, setLicense] = useState("CC-BY-4.0")
+  const [changelog, setChangelog] = useState("Initial publish")
+  const [showStripped, setShowStripped] = useState(false)
   const [busy, setBusy] = useState(false)
 
   function csrf(): string {
@@ -618,13 +636,13 @@ function SaveAsTemplateButton({ agentId, agentName }: { agentId: string | number
     fetch(`/agent_templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
-      body: JSON.stringify({ agent_id: agentId, name, category, published, description }),
+      body: JSON.stringify({ agent_id: agentId, name, category, published, description, license, changelog }),
     })
       .then((res) => {
         if (res.redirected) window.location.href = res.url
         else if (!res.ok) throw new Error(`HTTP ${res.status}`)
       })
-      .catch((err) => alert(`Save failed: ${(err as Error).message}`))
+      .catch((err) => alert(`Publish failed: ${(err as Error).message}`))
       .finally(() => setBusy(false))
   }
 
@@ -632,25 +650,28 @@ function SaveAsTemplateButton({ agentId, agentName }: { agentId: string | number
     <>
       <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setOpen(true)}>
         <BookMarked className="size-3.5" />
-        Save as template
+        Publish to community
       </Button>
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
           onClick={() => !busy && setOpen(false)}
         >
           <form
             onSubmit={submit}
             onClick={(e) => e.stopPropagation()}
-            className="bg-background rounded-lg border border-border max-w-md w-full p-5 space-y-3"
+            className="bg-background rounded-lg border border-border max-w-lg w-full p-5 space-y-3 max-h-[90vh] overflow-y-auto"
           >
-            <h2 className="text-base font-semibold">Save as template</h2>
-            <p className="text-xs text-muted-foreground">
-              Snapshots this agent's identity, personality, instructions, capabilities, and skill
-              list into a new template. Teammates in your workspace can install it from /templates
-              when "Publish" is on.
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold">Publish to community</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Snapshots this agent as v1 of a portable <code className="text-[10.5px]">agent.json</code> template — persona,
+                  capabilities, approval rules, and full skill bundles included.
+                </p>
+              </div>
+            </div>
 
             <div className="space-y-2">
               <Label className="text-xs">Name</Label>
@@ -671,32 +692,93 @@ function SaveAsTemplateButton({ agentId, agentName }: { agentId: string | number
                 </select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Visibility</Label>
-                <label className="flex items-center gap-2 text-xs py-1.5">
-                  <input
-                    type="checkbox"
-                    className="size-3.5"
-                    checked={published}
-                    onChange={(e) => setPublished(e.target.checked)}
-                  />
-                  Publish to workspace
-                </label>
+                <Label className="text-xs">License</Label>
+                <select
+                  value={license}
+                  onChange={(e) => setLicense(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                >
+                  {LICENSES.map((l) => (
+                    <option key={l.value} value={l.value}>{l.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs">Description (optional)</Label>
+              <Label className="text-xs">Short description</Label>
               <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this template is good for" />
             </div>
 
+            <div className="space-y-2">
+              <Label className="text-xs">Changelog (this version)</Label>
+              <textarea
+                value={changelog}
+                onChange={(e) => setChangelog(e.target.value)}
+                rows={2}
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                placeholder="What changed since the last version? (e.g. 'Tightened tone, added Stripe skill')"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-xs py-1">
+              <input
+                type="checkbox"
+                className="size-3.5"
+                checked={published}
+                onChange={(e) => setPublished(e.target.checked)}
+              />
+              Visible to other workspaces (uncheck to keep private to yours)
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setShowStripped((v) => !v)}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {showStripped ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+              {showStripped ? "Hide" : "What's stripped before publishing?"}
+            </button>
+            {showStripped && (
+              <div className="rounded-md border border-border bg-muted/30 p-2.5 text-[11px] text-muted-foreground space-y-1">
+                <p>The exporter strips anything secret or instance-specific before the JSON leaves your workspace:</p>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  <li>Encrypted credentials — only the credential name + provider is kept, never the secret itself</li>
+                  <li>Channel tokens (email auth, Telegram bot tokens, Slack webhooks)</li>
+                  <li>Conversation history, memory, audit log, spend counters</li>
+                  <li>Org-wide approval rules (only this agent's per-agent rules are templated)</li>
+                </ul>
+                <p>Importers see <code className="text-[10.5px]">credentials_required</code> / <code className="text-[10.5px]">channels_required</code> hints and ask the user to wire up their own.</p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
-              <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save template"}</Button>
+              <Button type="submit" disabled={busy}>{busy ? "Publishing…" : "Publish v1"}</Button>
             </div>
           </form>
         </div>
       )}
     </>
+  )
+}
+
+// Triggers a browser download of the agent's current state as a portable
+// agent.json file. Server returns the same Exporter payload that
+// PublishToCommunityButton would persist — handy for sharing one-offs
+// without creating a community template.
+function ExportAgentJsonButton({ agentId, agentSlug }: { agentId: string | number; agentSlug?: string }) {
+  const href = `/agents/${agentId}/export`
+  return (
+    <a
+      href={href}
+      download={agentSlug ? `${agentSlug}.agent.json` : "agent.json"}
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-background text-xs hover:bg-muted"
+      title="Download this agent as a portable agent.json file"
+    >
+      <FileJson className="size-3.5" /> agent.json
+      <Download className="size-3" />
+    </a>
   )
 }
 
