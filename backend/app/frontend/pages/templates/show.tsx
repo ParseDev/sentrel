@@ -66,6 +66,8 @@ interface VersionSummary {
 interface SkillBundle {
   slug: string
   name?: string
+  source?: "platform" | "custom"
+  version?: number
   description?: string
   category?: string
   icon?: string
@@ -470,6 +472,7 @@ function SkillRow({ skill }: { skill: SkillBundle }) {
   const [open, setOpen] = useState(false)
   const md = skill.files?.find((f) => f.path?.toLowerCase() === "skill.md")?.content
   const extras = (skill.files || []).filter((f) => f.path?.toLowerCase() !== "skill.md")
+  const isPlatform = skill.source === "platform"
   return (
     <div className="rounded border border-border bg-card/50">
       <button
@@ -480,6 +483,16 @@ function SkillRow({ skill }: { skill: SkillBundle }) {
         {open ? <ChevronDown className="size-3 text-muted-foreground" /> : <ChevronRight className="size-3 text-muted-foreground" />}
         <span className="font-medium">{skill.name || skill.slug}</span>
         <span className="font-mono text-[10px] text-muted-foreground">{skill.slug}</span>
+        {isPlatform ? (
+          <Badge variant="secondary" className="text-[10px] gap-1">
+            <Sparkles className="size-2.5" />
+            Platform{skill.version ? ` · v${skill.version}` : ""}
+          </Badge>
+        ) : skill.source === "custom" ? (
+          <Badge variant="outline" className="text-[10px]">
+            Custom · {extras.length + (md ? 1 : 0)} file{(extras.length + (md ? 1 : 0)) === 1 ? "" : "s"}
+          </Badge>
+        ) : null}
         {skill.category && (
           <span className="ml-auto text-[10px] text-muted-foreground">{skill.category}</span>
         )}
@@ -497,15 +510,20 @@ function SkillRow({ skill }: { skill: SkillBundle }) {
               ))}
             </div>
           ) : null}
-          {md && (
+          {isPlatform ? (
+            <p className="text-[11px] text-muted-foreground italic">
+              Platform skill — content not embedded. The importer links to this instance's
+              built-in copy at install time.
+            </p>
+          ) : md ? (
             <details className="text-[11px]" open>
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground py-1">SKILL.md</summary>
               <article className="prose prose-sm dark:prose-invert max-w-none mt-2">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{md}</ReactMarkdown>
               </article>
             </details>
-          )}
-          {extras.length > 0 && (
+          ) : null}
+          {!isPlatform && extras.length > 0 && (
             <details className="text-[11px]">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground py-1">
                 {extras.length} supporting file{extras.length === 1 ? "" : "s"}

@@ -12,7 +12,7 @@ module AgentTemplates
   # Doesn't touch the DB; pure read. Caller (Publisher) wraps in a
   # transaction when persisting the result as an AgentTemplateVersion row.
   class Exporter
-    SPEC_VERSION = "1.0".freeze
+    SPEC_VERSION = "1.1".freeze
 
     def initialize(agent, exported_by: nil)
       @agent = agent
@@ -116,30 +116,73 @@ module AgentTemplates
       end
     end
 
-    # Full skill bundle for every installed skill: metadata + all files.
-    # This is the self-contained part — recipients don't need to fetch the
-    # skill from a remote registry; the bundle ships with the template.
+    # Skill entries are emitted in one of two shapes depending on origin:
+    #
+    #   - PLATFORM skill (source: "built_in", seeded into every Alchemy
+    #     install with organization_id IS NULL) → thin REFERENCE: just slug
+    #     + metadata. No file bytes, no SKILL.md. Every importer instance
+    #     already has the skill by the same slug, so embedding it would
+    #     just inflate the template + risk staleness as the seed evolves.
+    #
+    #   - CUSTOM skill (org-owned or user-made) → full embedded BUNDLE
+    #     with every SkillFile inline. Self-contained: the importer can
+    #     reconstruct the skill end-to-end without any registry lookup.
+    #
+    # The `source` field on each entry tells the Importer/Installer which
+    # path to take. Backward-compat: 1.0 importers see `source` as an
+    # unknown key (ignored) and platform refs as bundles with empty files
+    # — they'd silently create an empty SkillDefinition. That's why we
+    # bump spec_version to "1.1" so old importers reject the file rather
+    # than half-import it.
     def skills
       @agent.skill_definitions.includes(:skill_files).map do |s|
-        {
-          "slug"                  => s.slug,
-          "name"                  => s.name,
-          "description"           => s.description,
-          "category"              => s.category,
-          "icon"                  => s.icon,
-          "system_prompt_fragment" => s.try(:system_prompt_fragment),
-          "requires_connections"  => Array(s.requires_connections),
-          "required_capabilities" => Array(s.required_capabilities),
-          "required_integrations" => Array(s.try(:required_integrations)),
-          "files"                 => s.skill_files.order(:position).map { |f|
-            {
-              "path"      => f.path,
-              "content"   => f.content,
-              "file_type" => f.file_type,
-            }
-          },
-        }.compact
+        s.system? ? platform_skill_reference(s) : custom_skill_bundle(s)
       end
+    end
+
+    def platform_skill_reference(s)
+      {
+        "slug"                  => s.slug,
+        "name"                  => s.name,
+        "source"                => "platform",
+        "version"               => s.version,
+        "description"           => s.description,
+        "category"              => s.category,
+        "icon"                  => s.icon,
+        "requires_connections"  => Array(s.requires_connections),
+        "required_capabilities" => Array(s.required_capabilities),
+        "required_integrations" => Array(s.try(:required_integrations)),
+      }.compact
+    end
+
+    def custom_skill_bundle(s)
+      {
+        "slug"                  => s.slug,
+        "name"                  => s.name,
+        "source"                => "custom",
+        "description"           => s.description,
+        "category"              => s.category,
+        "icon"                  => s.icon,
+        "system_prompt_fragment" => s.try(:system_prompt_fragment),
+        "requires_connections"  => Array(s.requires_connections),
+        "required_capabilities" => Array(s.required_capabilities),
+        "required_integrations" => Array(s.try(:required_integrations)),
+        "files"                 => skill_files_for(s),
+      }.compact
+    end
+
+    # Returns the skill's files for embedding. Falls back to synthesizing a
+    # SKILL.md from the legacy `skill_md` column when the skill predates the
+    # multi-file editor (no SkillFile rows). Without this fallback, importing
+    # those skills back fails the "must include SKILL.md content" validation.
+    def skill_files_for(s)
+      rows = s.skill_files.order(:position).map do |f|
+        { "path" => f.path, "content" => f.content, "file_type" => f.file_type }
+      end
+      return rows if rows.any?
+      legacy = s.skill_md.to_s
+      return [] if legacy.strip.empty?
+      [{ "path" => "SKILL.md", "content" => legacy, "file_type" => "md" }]
     end
 
     # Distinct integrations any embedded skill depends on — recipient

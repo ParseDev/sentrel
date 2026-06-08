@@ -6,7 +6,8 @@ capabilities, approval rules, model settings, and the full skill bundles
 (every `SKILL.md` + supporting files embedded inline). No remote fetches at
 install time — what you import is what you get.
 
-Spec version covered here: **`1.0`**.
+Spec version covered here: **`1.1`**. The Importer also accepts `1.0`
+files (legacy "everything embedded" shape).
 
 ---
 
@@ -102,12 +103,46 @@ matches before committing to it.
 | `channels_required[]`    | array  | no   | Hint: channel types (`email`, `telegram`, `slack`, …) the agent expects. |
 | `runtime_hints`          | object | no   | Open-ended namespace for runtime-specific hints. Unknown keys are ignored. |
 
-### Embedded skill bundle
+### Skill entries — platform vs. custom
+
+Every skill in `skills[]` carries a `source` field that picks one of two
+shapes:
+
+**Platform skill — thin reference** (no file bytes, no SKILL.md):
+
+```jsonc
+{
+  "slug": "search-web",
+  "name": "Search web",
+  "source": "platform",
+  "version": 3,
+  "description": "Run a web search and return the top results",
+  "category": "research",
+  "icon": "search",
+  "requires_connections": [],
+  "required_capabilities": []
+}
+```
+
+Platform skills are seeded into every Alchemy install (`source: "built_in"`,
+`organization_id IS NULL`). Embedding them in templates would inflate the
+payload and freeze a stale copy of a seed that may evolve. The Importer
+looks up the matching seed by slug; the Installer links to it as-is.
+
+If the importing instance is missing the platform seed (older build, custom
+deployment), the slug is recorded under
+`metadata.missing_platform_skills` so the UI can show "this template
+expects skill X which isn't installed on this instance." Imports still
+succeed — the missing skill simply isn't installed on the resulting agent.
+A future seed rollout would heal the link without needing to re-import.
+
+**Custom skill — full embedded bundle** (org-owned or user-made):
 
 ```jsonc
 {
   "slug": "send-stripe-invoice",
   "name": "Send Stripe invoice",
+  "source": "custom",
   "description": "Draft and send a Stripe invoice from a brief description",
   "category": "finance",
   "icon": "receipt",
@@ -120,12 +155,16 @@ matches before committing to it.
 }
 ```
 
-Every file referenced by the skill is embedded verbatim. The Importer upserts
-the bundle into the new org as a `SkillDefinition` + `SkillFile` rows. If a
-skill with the same slug already exists in the org but with different content,
-the imported version is silently forked to `<slug>-imported-<n>` and the
-template's `skills[].slug` is rewritten to match. The org's existing skill is
-never modified.
+Every file referenced by a custom skill is embedded verbatim. The Importer
+upserts the bundle into the new org as a `SkillDefinition` + `SkillFile`
+rows. If a skill with the same slug already exists in the org but with
+different content, the imported version is silently forked to
+`<slug>-imported-<n>` and the template's `skills[].slug` is rewritten to
+match. The org's existing skill is never modified.
+
+**Legacy 1.0 files**: entries without a `source` field are treated as
+custom bundles (the only shape 1.0 supported). The Importer accepts them
+unchanged.
 
 ### Approval rules
 
@@ -181,12 +220,17 @@ Without `version=`, the template's `current_version` is installed.
 
 - **1.x is additive.** Adding new optional top-level keys (`spend_caps`,
   `runtime_hints`) is a `1.x` change — old importers ignore unknown keys, new
-  importers gain new capabilities. We bump the patch number in
-  `SUPPORTED_SPEC_VERSIONS` documentation but the on-wire `spec_version`
-  stays `"1.0"` until a breaking change.
+  importers gain new capabilities.
+- **Bumps for shape changes inside an existing field**: when an additive
+  change would cause an old importer to silently mis-handle the data, the
+  on-wire `spec_version` bumps to the next minor. Example: `1.0 → 1.1`
+  introduced the `source` field on skill entries. A 1.0 importer reading
+  a 1.1 file would see `files: []` on platform entries and create empty
+  skills — so the version was bumped and old importers reject the file
+  instead of half-importing it.
 - **A breaking change → 2.0.** Renaming, removing, or changing the
   semantics of an existing field requires `spec_version = "2.0"` and an
-  Importer migration shim that can read 1.0 files into the 2.0 shape. We
+  Importer migration shim that can read 1.x files into the 2.0 shape. We
   won't ship 2.0 until at least one real consumer asks for the breaking
   change.
 - **Unknown keys are ignored.** Importers should accept unknown top-level

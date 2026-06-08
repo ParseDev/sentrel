@@ -109,10 +109,18 @@ module AgentTemplates
       agent.create_ai_config!(cfg)
     end
 
-    # Install every skill the definition references. Skills are either
-    # embedded full bundles (preferred — self-contained) or bare slugs
-    # (legacy/backfilled rows). For bare slugs, resolve by org-visible
-    # SkillDefinition and install; if missing, log + skip.
+    # Install every skill the definition references. Three entry shapes:
+    #
+    #   - source: "platform" → look up the seeded built-in by slug; link
+    #     to it. If missing on this instance (e.g. older Alchemy build),
+    #     log + skip; no embed-fallback because platform skills are
+    #     intentionally not bundled in the definition.
+    #
+    #   - source: "custom" with files → upsert the embedded bundle into
+    #     the org (idempotent on slug) and link.
+    #
+    #   - Bare slug (legacy 1.0 / backfilled rows) → resolve by org-visible
+    #     SkillDefinition, fall back to embed if files present, else skip.
     def install_skills!(agent)
       Array(@definition["skills"]).each do |entry|
         slug = entry["slug"]
@@ -129,6 +137,15 @@ module AgentTemplates
                                  .where("organization_id = ? OR organization_id IS NULL", @organization.id)
                                  .first
       return existing if existing
+
+      # Platform reference with no matching seed — this instance's catalog
+      # is out of date relative to the template's origin. Skip with a
+      # warning; surface via a follow-up notification rather than failing.
+      if entry["source"] == "platform"
+        Rails.logger.warn "[AgentTemplates::Installer] Platform skill #{slug} not seeded on this instance — skipping"
+        return nil
+      end
+
       # Bundle had no embedded files → can't reconstruct, skip with a log.
       if Array(entry["files"]).empty?
         Rails.logger.warn "[AgentTemplates::Installer] Skill #{slug} not in org and no embedded bundle — skipping"

@@ -14,7 +14,7 @@ module AgentTemplates
     class UnsupportedSpec < StandardError; end
     class InvalidDefinition < StandardError; end
 
-    SUPPORTED_SPEC_VERSIONS = %w[1.0].freeze
+    SUPPORTED_SPEC_VERSIONS = %w[1.0 1.1].freeze
 
     def initialize(definition, user:, organization:)
       @definition   = normalize(definition)
@@ -94,20 +94,36 @@ module AgentTemplates
       raise InvalidDefinition, "missing 'role'" if @definition["role"].blank?
     end
 
-    # For each embedded skill bundle:
-    #   - If no SkillDefinition with that slug exists in the org, create one
-    #     verbatim (with files).
-    #   - If a SkillDefinition exists with the same slug AND the same content
-    #     hash (skill_md + files), reuse it as-is.
-    #   - Otherwise FORK: create the bundle under `<slug>-imported-<n>`,
-    #     update the definition's skills[].slug + suggested_skill_slugs to
-    #     match. Original org skill is untouched.
+    # Per-entry handling depends on the entry's `source`:
+    #
+    #   - "platform" → REFERENCE: look up the seeded built-in SkillDefinition
+    #     by slug (organization_id IS NULL, source: "built_in"). If found,
+    #     leave the entry alone — Installer links the existing seed. If
+    #     missing on this instance, record it under
+    #     metadata.missing_platform_skills so the template UI can surface
+    #     the gap; the entry stays so a later seed rollout would heal it.
+    #     Never fork a platform skill — that would create a frozen copy of
+    #     a seed that may evolve upstream.
+    #
+    #   - "custom" or absent (legacy 1.0) → BUNDLE: same upsert/fork
+    #     handling as before. Original org skills are never mutated; a
+    #     content-conflicting import gets `<slug>-imported-<n>`.
     #
     # Returns the (possibly rewritten) definition.
     def upsert_skills_and_rewrite!
       working = @definition.deep_dup
-      skill_map = {} # original_slug => effective_slug
+      missing_platform = []
+
       Array(working["skills"]).each_with_index do |skill, idx|
+        if skill["source"] == "platform"
+          if SkillDefinition.where(source: "built_in", slug: skill["slug"]).none?
+            Rails.logger.warn "[AgentTemplates::Importer] platform skill #{skill["slug"].inspect} not seeded on this instance"
+            missing_platform << skill["slug"]
+          end
+          # Platform refs stay as-is — Installer resolves them at hire-time.
+          next
+        end
+
         original_slug = skill["slug"]
         existing = SkillDefinition.where(slug: original_slug)
                                    .where("organization_id = ? OR organization_id IS NULL", @organization.id)
@@ -123,10 +139,13 @@ module AgentTemplates
             install_skill!(skill, forked)
             forked
           end
-        skill_map[original_slug] = effective_slug
         working["skills"][idx]["slug"] = effective_slug
       end
+
       working["suggested_skill_slugs"] = Array(working["skills"]).map { |s| s["slug"] }
+      if missing_platform.any?
+        (working["metadata"] ||= {})["missing_platform_skills"] = missing_platform
+      end
       working
     end
 
