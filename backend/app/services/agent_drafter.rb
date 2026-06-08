@@ -79,8 +79,14 @@ class AgentDrafter
   end
 
   def prompt
-    template_lines = @templates.map { |t|
-      "- #{t.slug} (#{t.role}): #{t.description.to_s.truncate(120)}"
+    # Sort system seeds first so [SYS] candidates appear at the top of
+    # the list — Claude's preference correlates with order, and we
+    # actively want it to lean on the curated seeds over community-
+    # contributed templates that may be lower quality.
+    sorted_templates = @templates.sort_by { |t| [t.system_template ? 0 : 1, t.slug] }
+    template_lines = sorted_templates.map { |t|
+      tag = t.system_template ? "[SYS]" : "[COM]"
+      "- #{tag} #{t.slug} (#{t.role}): #{t.description.to_s.truncate(120)}"
     }.join("\n")
     skill_lines = @skills.map { |s|
       "- #{s.slug} (#{s.category}): #{s.description.to_s.truncate(100)}"
@@ -130,6 +136,11 @@ class AgentDrafter
 
       Rules:
       - template_slug MUST be one of the listed slugs or null. Do not invent slugs.
+      - **Strongly prefer [SYS] (system) templates** when they reasonably fit the
+        user's description. [SYS] templates are curated and quality-checked.
+        [COM] templates are community contributions — pick them only when no
+        [SYS] template fits the role at all. When a [SYS] and [COM] template
+        both plausibly match, the [SYS] one wins.
       - skill_slugs MUST be a subset of the listed skill slugs (use [] if none fit).
       - Pick claude-haiku-4-5-20251001 for simple/fast tasks (support, SDR triage),
         claude-sonnet-4-6 as the default, claude-opus-4-7 for heavy reasoning

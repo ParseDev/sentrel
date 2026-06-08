@@ -106,4 +106,44 @@ namespace :agent_templates do
       puts scrubbed.zero? ? "\nClean — no templates needed scrubbing." : "\nScrubbed #{scrubbed} template(s)."
     end
   end
+
+  desc "Delete a non-system template by slug (e.g. bdr). Safe — system seeds are refused."
+  task :delete, [:slug] => :environment do |_, args|
+    slug = args[:slug].to_s.strip
+    if slug.empty?
+      puts "Usage: bin/rails agent_templates:delete[the-slug]"
+      next
+    end
+    ActsAsTenant.without_tenant do
+      t = AgentTemplate.find_by(slug: slug)
+      unless t
+        puts "No template with slug #{slug.inspect}"
+        next
+      end
+      if t.system_template
+        puts "Refusing to delete system seed #{slug.inspect}. If you really need to, edit the row by hand."
+        next
+      end
+      puts "Deleting #{t.slug}  name=#{t.name}  org=#{t.organization_id}  versions=#{t.versions.count}"
+      t.destroy
+      puts "Deleted."
+    end
+  end
+
+  desc "List Forge-generated SkillDefinitions that look like hallucinations (no SkillFile rows, source 'generated')"
+  task list_suspicious_skills: :environment do
+    suspicious = SkillDefinition
+      .where(source: ["generated", "ai_generated", "forge"])
+      .left_joins(:skill_files)
+      .group("skill_definitions.id")
+      .having("COUNT(skill_files.id) = 0")
+      .pluck(:slug, :name, :source, :created_at)
+    if suspicious.empty?
+      puts "No suspicious skills (every generated skill has at least one SkillFile)."
+    else
+      puts "Suspicious skills (#{suspicious.length}) — generated but have no SkillFile rows:"
+      suspicious.each { |slug, name, src, t| puts "  #{slug.ljust(40)}  #{src.ljust(12)}  created=#{t}  name=#{name}" }
+      puts "\nDelete with: SkillDefinition.where(slug: 'the-slug').destroy_all  in a Rails console."
+    end
+  end
 end
