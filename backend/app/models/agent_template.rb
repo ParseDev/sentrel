@@ -2,6 +2,10 @@ class AgentTemplate < ApplicationRecord
   acts_as_tenant :organization, optional: true
   belongs_to :organization, optional: true
   belongs_to :created_by_user, class_name: "User", optional: true
+  # Immutable snapshots — every Publish creates a new one. current_version
+  # is the head used by the install flow and the show page by default.
+  has_many   :versions, -> { ordered }, class_name: "AgentTemplateVersion", dependent: :destroy
+  belongs_to :current_version, class_name: "AgentTemplateVersion", optional: true
 
   validates :slug, presence: true, uniqueness: true
   validates :name, presence: true

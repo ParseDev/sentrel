@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_08_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -85,17 +85,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_000000) do
     t.index ["organization_id"], name: "index_agent_summaries_on_organization_id"
   end
 
+  create_table "agent_template_versions", force: :cascade do |t|
+    t.bigint "agent_template_id", null: false
+    t.text "changelog"
+    t.datetime "created_at", null: false
+    t.bigint "created_by_user_id"
+    t.jsonb "definition", default: {}, null: false
+    t.string "license"
+    t.boolean "published", default: true, null: false
+    t.string "spec_version", default: "1.0", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version_number", null: false
+    t.index ["agent_template_id", "created_at"], name: "idx_agent_template_versions_history", order: { created_at: :desc }
+    t.index ["agent_template_id", "version_number"], name: "idx_agent_template_versions_unique_per_template", unique: true
+    t.index ["agent_template_id"], name: "index_agent_template_versions_on_agent_template_id"
+    t.index ["created_by_user_id"], name: "index_agent_template_versions_on_created_by_user_id"
+  end
+
   create_table "agent_templates", force: :cascade do |t|
     t.jsonb "capabilities", default: {}, null: false
     t.string "category"
     t.datetime "created_at", null: false
     t.bigint "created_by_user_id"
+    t.bigint "current_version_id"
     t.text "description"
     t.text "email_signature_md"
     t.string "icon"
     t.text "identity_md"
     t.integer "install_count", default: 0, null: false
     t.text "instructions_md"
+    t.string "license", default: "CC-BY-4.0", null: false
     t.string "name", null: false
     t.bigint "organization_id"
     t.text "personality_md"
@@ -111,6 +130,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_000000) do
     t.datetime "updated_at", null: false
     t.jsonb "variables", default: [], null: false
     t.index ["category"], name: "index_agent_templates_on_category"
+    t.index ["current_version_id"], name: "index_agent_templates_on_current_version_id"
     t.index ["organization_id"], name: "index_agent_templates_on_organization_id"
     t.index ["published"], name: "index_agent_templates_on_published"
     t.index ["role"], name: "index_agent_templates_on_role"
@@ -652,6 +672,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_000000) do
   add_foreign_key "agent_skills", "skill_definitions"
   add_foreign_key "agent_summaries", "agents"
   add_foreign_key "agent_summaries", "organizations"
+  add_foreign_key "agent_template_versions", "agent_templates"
+  add_foreign_key "agent_template_versions", "users", column: "created_by_user_id"
+  add_foreign_key "agent_templates", "agent_template_versions", column: "current_version_id", on_delete: :nullify
   add_foreign_key "agent_templates", "organizations", validate: false
   add_foreign_key "agent_templates", "users", column: "created_by_user_id", validate: false
   add_foreign_key "agent_tool_policies", "agents"
