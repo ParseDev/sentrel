@@ -53,3 +53,4 @@ node_modules
 *.local
 
 .DS_Store
+backend/db/development.sqlite3
