@@ -350,64 +350,86 @@ class AgentsController < ApplicationController
       ActsAsTenant.without_tenant { AgentTemplate.visible_to(tenant).find_by(slug: params[:template_slug]) }
     end
 
-    @agent = current_tenant.agents.build(agent_params)
-
     if template
-      rendered = template.render(
-        agent_name: @agent.name,
-        company_name: current_tenant.name,
-        user_name: current_user.name,
-        role: @agent.role.presence || template.role,
-      )
-      @agent.identity_md       ||= rendered[:identity_md]
-      @agent.personality_md    ||= rendered[:personality_md]
-      @agent.instructions_md   ||= rendered[:instructions_md]
-      @agent.email_signature_md ||= template.email_signature_md if template.respond_to?(:email_signature_md)
-      @agent.role = template.role if @agent.role.blank?
-      @agent.capabilities = template.capabilities.deep_merge(@agent.capabilities || {})
+      # Template install path — funnel through AgentTemplates::Installer so
+      # one code path handles both "install from saved version" and (later)
+      # "install from raw JSON paste". Picks a specific version when
+      # params[:version_number] is present; otherwise current_version.
+      version = if params[:version_number].present?
+        template.versions.find_by(version_number: params[:version_number].to_i)
+      end || template.current_version
+      definition = version&.definition || legacy_definition_from(template)
+
+      @agent = begin
+        AgentTemplates::Installer.new(
+          definition: definition,
+          agent_attrs: agent_params.to_h.symbolize_keys.slice(:name, :slug, :role, :manager_id),
+          ai_config_attrs: ai_config_params.to_h,
+          user: current_user,
+          organization: current_tenant,
+          prefer_anthropic_oauth: org_has_anthropic_oauth?,
+        ).call
+      rescue AgentTemplates::Installer::InvalidDefinition, ActiveRecord::RecordInvalid => e
+        return redirect_back fallback_location: new_agent_path, alert: e.message
+      end
+
+      apply_initial_channels!(@agent)
+      EngineSync.trigger(@agent)
+      ProvisionAgentJob.perform_later(@agent.id)
+
+      missing = template.respond_to?(:missing_integrations_for) ? template.missing_integrations_for(current_tenant) : []
+      template.respond_to?(:increment_installs!) && template.increment_installs!
+      msg = "Agent created — machine provisioning in background"
+      msg += ". Connect these integrations to fully enable: #{missing.map(&:titleize).join(', ')}" if missing.any?
+      return redirect_to agent_path(@agent), notice: msg
     end
 
+    # Direct-create (no template) — unchanged.
+    @agent = current_tenant.agents.build(agent_params)
     if @agent.save
-      # Use template's suggested model if the form didn't override it.
       ai_cfg = ai_config_params.to_h
-      if template
-        ai_cfg[:provider] = template.suggested_provider if ai_cfg[:provider].blank? && template.suggested_provider.present?
-        ai_cfg[:model_id] = template.suggested_model    if ai_cfg[:model_id].blank?    && template.suggested_model.present?
-      end
-      # Prefer the org's connected Claude OAuth (Pro/Max/Team) over the
-      # platform API key. Without this, every new agent burns through the
-      # platform's ANTHROPIC_API_KEY credit pool instead of the org's
-      # subscription. Only applies when the chosen provider is the bare
-      # "anthropic" API path; explicit "openrouter" / "openai_account"
-      # selections are respected.
       if ai_cfg[:provider].to_s == "anthropic" && org_has_anthropic_oauth?
         ai_cfg[:provider] = "anthropic_account"
       end
       @agent.create_ai_config!(ai_cfg)
-
-      # Install the template's suggested skills (if any).
-      if template && template.suggested_skill_slugs.any?
-        defs = SkillDefinition.where(slug: template.suggested_skill_slugs)
-        defs.each { |d| @agent.agent_skills.find_or_create_by!(skill_definition: d).update!(enabled: true) }
-      end
-
       apply_initial_channels!(@agent)
-
       EngineSync.trigger(@agent)
-      # Spawn the agent's machine (Fly / Hetzner / local depending on
-      # AGENT_PROVISIONER). Runs in background so the UI doesn't block on
-      # Hetzner's 60s boot. Instance row flips to "running" when the engine
-      # pings /api/agent_instances/ready after boot.
       ProvisionAgentJob.perform_later(@agent.id)
-
-      missing = template&.respond_to?(:missing_integrations_for) ? template.missing_integrations_for(current_tenant) : []
-      template.respond_to?(:increment_installs!) && template&.increment_installs!
-      msg = "Agent created — machine provisioning in background"
-      msg += ". Connect these integrations to fully enable: #{missing.map(&:titleize).join(', ')}" if missing.any?
-      redirect_to agent_path(@agent), notice: msg
+      redirect_to agent_path(@agent), notice: "Agent created — machine provisioning in background"
     else
       redirect_back fallback_location: new_agent_path, alert: @agent.errors.full_messages.join(", ")
     end
+  end
+
+  # Build a minimal v1-shaped definition from a legacy template row that
+  # was created before the agent_template_versions migration ran (and that
+  # the backfill rake hasn't been run for yet). Mirrors what the backfill
+  # task would emit. Last-resort fallback so the install path never breaks
+  # on a non-backfilled template.
+  def legacy_definition_from(template)
+    {
+      "spec_version" => "1.0",
+      "kind"         => "agent",
+      "name"         => template.name,
+      "role"         => template.role,
+      "description"  => template.description,
+      "category"     => template.category,
+      "icon"         => template.icon,
+      "persona" => {
+        "identity_md"        => template.identity_md,
+        "personality_md"     => template.personality_md,
+        "instructions_md"    => template.instructions_md,
+        "email_signature_md" => template.email_signature_md,
+      },
+      "model" => {
+        "provider" => template.suggested_provider,
+        "model_id" => template.suggested_model,
+      }.compact,
+      "capabilities" => template.capabilities || {},
+      "skills"       => Array(template.suggested_skill_slugs).map { |s| { "slug" => s } },
+      "integrations_required" => Array(template.suggested_integrations).map { |s| { "service" => s } },
+      "approval_rules" => [],
+    }
   end
 
   def edit
