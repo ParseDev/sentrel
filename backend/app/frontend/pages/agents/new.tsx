@@ -270,6 +270,19 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     }
     setPicked(fallback)
 
+    // Frontend-side capability defaults — backstop in case the backend
+    // returns {} or omits keys. Mirrors AgentDrafter::CAPABILITY_DEFAULTS;
+    // the user can still flip anything off before clicking Create.
+    const FRONTEND_CAP_DEFAULTS: Record<string, { enabled: boolean }> = {
+      knowledge_base: { enabled: true },
+      scheduling:     { enabled: true },
+      tasks:          { enabled: true },
+      integrations:   { enabled: true },
+      recall:         { enabled: true },
+      send_media:     { enabled: false },
+    }
+    const mergedCaps = { ...FRONTEND_CAP_DEFAULTS, ...(draft.capabilities || {}) }
+
     setData({
       ...data,
       name,
@@ -277,7 +290,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       role: draft.role || fallback.role,
       template_slug: "",  // fresh agent → no template
       manager_id: "none",
-      capabilities: draft.capabilities || {},
+      capabilities: mergedCaps,
       ai_config: {
         ...data.ai_config,
         provider: draft.provider || data.ai_config.provider,
@@ -940,7 +953,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         <section>
           <Overline className="mb-3">Capabilities</Overline>
           <p className="text-xs text-muted-foreground mb-3 max-w-lg">
-            Toggles for what this agent can do. The template pre-selects what makes sense for the role — adjust as needed.
+            Toggles for what this agent can do. {picked.slug ? "The template pre-selects what makes sense for the role" : "Sensible defaults pre-selected based on your description"} — adjust as needed.
           </p>
           <div className="rounded-lg border bg-card divide-y">
             {CAPABILITIES.map((cap) => {
