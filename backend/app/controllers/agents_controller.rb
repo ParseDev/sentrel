@@ -346,6 +346,14 @@ class AgentsController < ApplicationController
       tools_description: params[:tools_description],
       templates: drafter_templates,
       skills: drafter_skills,
+      # generate_fallback: false — without this, when no template matches
+      # AgentDrafter calls Forge::TemplateGenerator which is a SECOND
+      # synchronous Anthropic call. Worst case: 25s pick + 25s generate
+      # = 50s, well past the gateway timeout → 504. The new-agent wizard
+      # handles a null template_slug via blankTemplate on the frontend,
+      # so we don't need a fresh-generated template; if the [SYS] pool
+      # has nothing for the role, the user just builds from scratch.
+      generate_fallback: false,
       # `regenerate` is plumbed through but a no-op today — AgentDrafter is
       # stateless. Reserved for future cache-busting when we add memoization
       # of the underlying Claude responses.

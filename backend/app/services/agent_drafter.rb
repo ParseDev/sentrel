@@ -69,7 +69,12 @@ class AgentDrafter
 
     http = Net::HTTP.new(ANTHROPIC_URL.host, ANTHROPIC_URL.port)
     http.use_ssl = true
-    http.read_timeout = 25
+    # Tight budget so a slow Anthropic call falls back to the heuristic
+    # match (synchronous, instant) before the gateway 504s us. Frontend
+    # caps at 35s; we leave ~10s of headroom for TLS + heuristic +
+    # render.
+    http.open_timeout = 5
+    http.read_timeout = 20
 
     request = Net::HTTP::Post.new(ANTHROPIC_URL.path)
     request["Content-Type"] = "application/json"
