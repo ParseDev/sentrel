@@ -66,10 +66,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # is here for the small set of agent tools that explicitly require it
 # (HyperFrames + other Puppeteer-driven renderers, MCP servers shipped
 # as Node-only npm packages). `npx` and `node --version` both work.
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && node --version && npm --version
+#
+# Installed from the official prebuilt tarball, NOT via apt. The
+# NodeSource apt repo's post-install scripts trigger a libc-bin
+# reconfigure that segfaults under QEMU when building linux/arm64 on
+# an amd64 CI host (Debian 11's glibc 2.31 vs QEMU's user-mode emulator).
+# Tarball install skips the package manager entirely → no segfault.
+ARG NODE_VERSION=22.22.3
+RUN ARCH="$(dpkg --print-architecture)" && \
+    case "$ARCH" in \
+      amd64) NODE_ARCH=x64 ;; \
+      arm64) NODE_ARCH=arm64 ;; \
+      *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+      | tar -xJ -C /usr/local --strip-components=1 \
+        --exclude="*/CHANGELOG.md" --exclude="*/LICENSE" --exclude="*/README.md" && \
+    node --version && npm --version
 
 # Non-root user. Everything persistent lives in /data, which the provisioner
 # mounts as a volume. Agent state survives restarts because /data does.
