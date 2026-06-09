@@ -135,7 +135,7 @@ class AgentDrafter
 
       === RESPONSE SHAPE ===
       {
-        "role": "<short job title>",
+        "role": "<REQUIRED — 2–4 word job title, e.g. 'Sales Development Rep', 'Customer Support Agent', 'Marketing Lead'>",
         "skill_slugs": ["<slug>", "..."],
         "capabilities": {
           "knowledge_base": true, "scheduling": true, "tasks": true,
@@ -152,12 +152,21 @@ class AgentDrafter
 
       === RULES ===
 
+      Role: REQUIRED. Never leave blank or default to "Custom". Extract
+      from the user's description — if they wrote "SDR for ScribeMD",
+      the role is "Sales Development Rep". If "customer support agent for
+      a SaaS", it's "Customer Support Agent". 2–4 words, title-cased.
+
       Skills:
-      - 5–10 skills covering what the role actually does.
-      - INCLUDE the skill for every tool the user mentioned. HubSpot → hubspot-crm,
-        Slack → slack-communication, Google Calendar → calendar-booking,
-        Apollo → apollo-prospecting, Gmail → gmail-management. Don't mirror the
-        template's narrow list — augment.
+      - 7–10 skills. Lean toward MORE, not fewer — a real role uses many.
+      - INCLUDE the skill for every tool the user mentioned. HubSpot →
+        hubspot-crm, Slack → slack-communication, Google Calendar →
+        calendar-booking, Apollo → apollo-prospecting, Gmail →
+        gmail-management.
+      - INCLUDE role-essential skills even if not explicitly named. For an
+        SDR: sdr-outreach + sdr-prospecting + send-email + web-search are
+        all role-essential. For a writer: content-writing. For an
+        engineer: code-review. Pick what the role actually needs.
       - MUST be a subset of AVAILABLE SKILLS slugs.
 
       Model:
@@ -218,20 +227,20 @@ class AgentDrafter
     "googledrive"    => /\bgoogle\s+drive\b/i,
   }.freeze
 
-  # Walk every available skill's requires_connections list, find any
-  # integration the user mentioned in @description or @tools_description,
-  # and add ONE skill per matched integration. Picks the first
-  # alphabetical skill that requires that integration — deterministic
-  # and avoids the "every gmail-related skill got added" failure mode
-  # when the catalog has multiple skills sharing a requires_connections
-  # value (a fingerprint of Forge-generated noise).
+  # Walk the canonical seed data for any integration the user mentioned
+  # in @description or @tools_description, and add ONE skill per matched
+  # integration. Source of truth: db/seeds/skills frontmatter, not the
+  # polluted DB rows. Picks the alphabetically first canonical skill
+  # that requires that integration.
   def augment_skills_from_description(picked_slugs, template)
     haystack = "#{@description} #{@tools_description} #{template&.description}".downcase
     return picked_slugs if haystack.strip.empty?
 
     by_integration = Hash.new { |h, k| h[k] = [] }
-    @skills.each do |s|
-      Array(s.requires_connections).each { |c| by_integration[c.to_s.downcase] << s.slug }
+    available = @skills.map(&:slug).to_set
+    SkillDefinition.canonical_seed_data.each do |slug, data|
+      next unless available.include?(slug)
+      Array(data["requires_connections"]).each { |c| by_integration[c.to_s.downcase] << slug }
     end
     return picked_slugs if by_integration.empty?
 
@@ -247,12 +256,49 @@ class AgentDrafter
 
   MAX_INTEGRATIONS = 8
 
+  # Source of truth for what each canonical skill REALLY needs to be
+  # connected. The DB rows have been polluted on prod (Forge::Bootstrap
+  # added bogus requires_connections like [linkedin, calendly, zoom]
+  # to gmail-management), so we read from the immutable seed files
+  # instead. Org-owned skills (not in canonical_seed_data) fall back
+  # to whatever the DB row says.
+  # Cheap fallback when Claude omits the role field — common acronyms
+  # and role names extracted from the description. Title-cased. Better
+  # than showing "Custom" to the user when the description clearly
+  # names a role.
+  ROLE_PATTERNS = {
+    /\bSDR\b/i                         => "Sales Development Rep",
+    /\bBDR\b/i                         => "Business Development Rep",
+    /\bAE\b|\baccount executive\b/i    => "Account Executive",
+    /\bsales development\b/i           => "Sales Development Rep",
+    /\bcustomer success\b/i            => "Customer Success Manager",
+    /\bcustomer support\b/i            => "Customer Support Agent",
+    /\bmarketing (lead|manager)\b/i    => "Marketing Lead",
+    /\bcontent (writer|strategist)\b/i => "Content Writer",
+    /\bdata (analyst|scientist)\b/i    => "Data Analyst",
+    /\b(software|backend|frontend) engineer\b/i => "Engineer",
+    /\brecruiter\b/i                   => "Recruiter",
+    /\bdesigner\b/i                    => "Designer",
+    /\bresearcher\b/i                  => "Researcher",
+    /\bCEO\b/i                         => "CEO",
+    /\bCFO\b/i                         => "CFO",
+    /\bCTO\b/i                         => "CTO",
+  }.freeze
+
+  def derive_role_from_description
+    ROLE_PATTERNS.each { |pattern, role| return role if @description =~ pattern }
+    nil
+  end
+
   def integrations_for(skill_slugs)
     slugs = Array(skill_slugs)
     return [] if slugs.empty?
+    seed = SkillDefinition.canonical_seed_data
     skill_index = @skills.index_by(&:slug)
-    slugs
-      .flat_map { |slug| Array(skill_index[slug]&.requires_connections) }
+    slugs.flat_map { |slug|
+      seed[slug]&.dig("requires_connections") ||
+        Array(skill_index[slug]&.requires_connections)
+    }
       .map { |s| s.to_s.downcase.strip }
       .reject(&:blank?)
       .uniq
@@ -281,7 +327,7 @@ class AgentDrafter
 
     Result.new(
       template_slug:   nil,  # fresh agent — no template lineage
-      role:            parsed["role"].presence,
+      role:            parsed["role"].presence || derive_role_from_description,
       skill_slugs:     picked,
       capabilities:    caps,
       provider:        parsed["provider"].presence || "anthropic",

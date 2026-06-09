@@ -55,14 +55,61 @@ class SkillDefinition < ApplicationRecord
   # so a polluted catalog (e.g. Forge-generated junk from earlier runs)
   # can't sneak hallucinated slug names into a fresh agent.
   def self.canonical_seed_slugs
-    @canonical_seed_slugs ||= begin
+    canonical_seed_data.keys
+  end
+
+  # {slug => {requires_connections: [...]}} parsed from each seed file's
+  # YAML frontmatter. Used by the drafter to derive integration lists
+  # from the SEED FILES (source of truth), not from the DB rows — which
+  # Forge::Bootstrap mutated to add bogus extra requires_connections
+  # entries on prod (gmail-management with [gmail, googledrive,
+  # linkedin], etc.). The seed files are immutable; the rows aren't.
+  def self.canonical_seed_data
+    @canonical_seed_data ||= begin
       seed_dir = Rails.root.join("db/seeds/skills")
+      data = {}
       if seed_dir.directory?
-        Dir.glob(seed_dir.join("**/*.md")).map { |p| File.basename(p, ".md") }.uniq
-      else
-        []
+        Dir.glob(seed_dir.join("**/*.md")).each do |path|
+          frontmatter = parse_seed_frontmatter(path)
+          slug = frontmatter["slug"] || File.basename(path, ".md")
+          data[slug] = {
+            "requires_connections" => Array(frontmatter["requires_connections"]).map(&:to_s),
+          }
+        end
+      end
+      data
+    end
+  end
+
+  # Minimal YAML-frontmatter parser. Only pulls scalar string fields and
+  # bullet-list arrays — enough for slug + requires_connections. We
+  # don't pull in a YAML gem because rubysafe-YAML wrappers are fussy
+  # and the schema here is fixed + tiny.
+  def self.parse_seed_frontmatter(path)
+    body = File.read(path)
+    return {} unless body.start_with?("---")
+    fm_end = body.index("\n---", 4)
+    return {} unless fm_end
+    section = body[4...fm_end]
+    out = {}
+    current_array_key = nil
+    section.each_line do |line|
+      stripped = line.rstrip
+      next if stripped.empty?
+      if (m = stripped.match(/\A(\w+):\s*$/))
+        current_array_key = m[1]
+        out[current_array_key] = []
+      elsif (m = stripped.match(/\A(\w+):\s*\[\s*\]\s*\z/))
+        out[m[1]] = []
+        current_array_key = nil
+      elsif (m = stripped.match(/\A(\w+):\s*(.+)\z/))
+        out[m[1]] = m[2].strip.gsub(/\A["']|["']\z/, "")
+        current_array_key = nil
+      elsif current_array_key && (m = stripped.match(/\A\s*-\s*(.+)\z/))
+        out[current_array_key] << m[1].strip.gsub(/\A["']|["']\z/, "")
       end
     end
+    out
   end
 
   def system?
