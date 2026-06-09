@@ -73,14 +73,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # an amd64 CI host (Debian 11's glibc 2.31 vs QEMU's user-mode emulator).
 # Tarball install skips the package manager entirely → no segfault.
 ARG NODE_VERSION=22.22.3
+# .tar.gz (not .tar.xz) because the slim base doesn't ship the xz
+# binary and we don't want to apt-install xz-utils just for this.
+# Gzip is always present.
 RUN ARCH="$(dpkg --print-architecture)" && \
     case "$ARCH" in \
       amd64) NODE_ARCH=x64 ;; \
       arm64) NODE_ARCH=arm64 ;; \
       *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
     esac && \
-    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
-      | tar -xJ -C /usr/local --strip-components=1 \
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.gz" \
+      | tar -xz -C /usr/local --strip-components=1 \
         --exclude="*/CHANGELOG.md" --exclude="*/LICENSE" --exclude="*/README.md" && \
     node --version && npm --version
 
