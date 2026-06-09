@@ -1,11 +1,6 @@
 ---
-slug: apollo-prospecting
-name: Apollo Prospecting
-description: Find leads, enrich contacts, and enroll into sequences using Apollo via Composio
-category: sales
-icon: users
-requires_connections:
-  - apollo
+name: apollo-prospecting
+description: Use when searching for leads, enriching contacts, or enrolling prospects into sequences via Apollo. Apollo is wired via Composio OAuth — no separate API key.
 ---
 
 # Apollo Prospecting
