@@ -396,7 +396,14 @@ class AgentsController < ApplicationController
       @agent = begin
         AgentTemplates::Installer.new(
           definition: definition,
-          agent_attrs: agent_params.to_h.symbolize_keys.slice(:name, :slug, :role, :manager_id),
+          # Pass identity/personality/instructions through when the
+          # form has them filled in (from the drafter's fresh persona
+          # generation). Installer's apply_persona! is `||=`, so the
+          # form values win over the template's pre-baked markdown.
+          agent_attrs: agent_params.to_h.symbolize_keys.slice(
+            :name, :slug, :role, :manager_id,
+            :identity_md, :personality_md, :instructions_md,
+          ),
           ai_config_attrs: ai_config_params.to_h,
           user: current_user,
           organization: current_tenant,

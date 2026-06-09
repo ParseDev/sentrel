@@ -328,11 +328,12 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     }
   }
 
-  // Client-side ceiling on the fetch so we always surface SOMETHING
-  // even when the gateway times out (504) or drops the connection mid-
-  // flight (ERR_NETWORK_CHANGED). The backend's own Anthropic call has
-  // a 25s timeout; we add a 10s buffer for round-trip + gateway slack.
-  const DRAFT_TIMEOUT_MS = 35_000
+  // Client-side ceiling. The backend's Anthropic call is now budgeted
+  // at 27s (richer persona generation needs ~18-25s for Sonnet 4.6 to
+  // stream ~2500 tokens), so we leave ~13s of headroom for gateway +
+  // TLS + render. Anything beyond 40s is almost certainly a stuck
+  // request; abort and surface "took too long" instead of hanging.
+  const DRAFT_TIMEOUT_MS = 40_000
 
   async function fetchDraft(opts: { regenerate?: boolean } = {}): Promise<DraftResponse | null> {
     const csrfToken = document

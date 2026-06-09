@@ -9,7 +9,11 @@ require "json"
 class AgentDrafter
   ANTHROPIC_URL = URI.parse("https://api.anthropic.com/v1/messages").freeze
   MODEL = "claude-sonnet-4-6"
-  MAX_TOKENS = 1200
+  # Bumped from 1200 to fit identity_md (~100 words) + personality_md
+  # (~100 words) + instructions_md (~400 words structured playbook)
+  # + the rest of the JSON envelope. ~2500 tokens at Sonnet 4.6's
+  # ~80–120 tok/s lands ~20–25s — under the 35s frontend cap.
+  MAX_TOKENS = 2500
 
   Result = Struct.new(:template_slug, :role, :skill_slugs, :capabilities,
                       :provider, :model_id, :name_suggestion, :reasoning,
@@ -69,12 +73,12 @@ class AgentDrafter
 
     http = Net::HTTP.new(ANTHROPIC_URL.host, ANTHROPIC_URL.port)
     http.use_ssl = true
-    # Tight budget so a slow Anthropic call falls back to the heuristic
-    # match (synchronous, instant) before the gateway 504s us. Frontend
-    # caps at 35s; we leave ~10s of headroom for TLS + heuristic +
-    # render.
+    # 27s read timeout: enough for 2500 tokens of structured output from
+    # Sonnet 4.6 (~18-25s at 80-120 tok/s) with a small safety margin.
+    # Beyond 27s we abort and fall back to the heuristic — better to
+    # return a skills-only draft than block the user with a 504.
     http.open_timeout = 5
-    http.read_timeout = 20
+    http.read_timeout = 27
 
     request = Net::HTTP::Post.new(ANTHROPIC_URL.path)
     request["Content-Type"] = "application/json"
@@ -110,9 +114,19 @@ class AgentDrafter
     end
 
     <<~PROMPT
-      You are helping a user create an AI agent. Based on the user's description
-      below, pick the best-fit template, skills, and model. Return ONLY valid
-      JSON, no markdown fences, no extra text.
+      You are creating a brand-new AI agent for the user. You will:
+
+        (1) Pick a starting template — ONLY for skill defaults + category + model.
+            Templates are loose scaffolding; the persona below is what makes
+            this agent the right one for the user's situation.
+        (2) Pick the skills the role needs.
+        (3) WRITE a fresh, opinionated persona (identity / personality /
+            instructions) tuned to the SPECIFIC role the user described. NEVER
+            inherit another agent's persona. The user wants an agent built for
+            *their* company, *their* ICP, *their* anti-patterns — not a generic
+            template copy.
+
+      Return ONLY valid JSON, no markdown fences, no extra text.
 
       === USER DESCRIPTION ===
       #{@description}
@@ -128,43 +142,81 @@ class AgentDrafter
 
       === RESPONSE SHAPE ===
       {
-        "template_slug": "<slug from AVAILABLE TEMPLATES, or null if none fit>",
-        "role": "<short job title, e.g. 'Sales Development Rep'>",
-        "skill_slugs": ["<slug from AVAILABLE SKILLS>", "..."],
+        "template_slug": "<slug from AVAILABLE TEMPLATES, or null>",
+        "role": "<short job title>",
+        "skill_slugs": ["<slug>", "..."],
         "capabilities": {
-          "knowledge_base": true,
-          "scheduling": true,
-          "tasks": true,
-          "integrations": true,
-          "recall": true,
-          "send_media": false
+          "knowledge_base": true, "scheduling": true, "tasks": true,
+          "integrations": true,  "recall": true,    "send_media": false
         },
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-6",
-        "name_suggestion": "<single first name, e.g. 'Sarah'>",
-        "reasoning": "<one sentence on why this template + skills fit>"
+        "model_id": "<model id>",
+        "name_suggestion": "<single first name>",
+        "reasoning": "<one sentence on the template + skills pick>",
+        "identity_md": "<markdown — see rules>",
+        "personality_md": "<markdown — see rules>",
+        "instructions_md": "<markdown — see rules>"
       }
 
-      Rules:
-      - template_slug MUST be one of the listed slugs or null. Do not invent slugs.
-      - **Strongly prefer [SYS] (system) templates** when they reasonably fit the
-        user's description. [SYS] templates are curated and quality-checked.
-        [COM] templates are community contributions — pick them only when no
-        [SYS] template fits the role at all. When a [SYS] and [COM] template
-        both plausibly match, the [SYS] one wins.
-      - skill_slugs MUST be a subset of the listed skill slugs (use [] if none fit).
-      - skill_slugs should INCLUDE EVERY SKILL THE ROLE NEEDS TO DO ITS JOB —
-        including the ones implied by the tools the user mentioned. If the user
-        says they use HubSpot, include the HubSpot skill. If Slack, include the
-        Slack skill. If "Google Calendar to book," include the calendar-booking
-        skill. Don't be conservative — 5–10 skills is normal for a real role.
-        DON'T just mirror the picked template's existing skill list — augment it
-        with everything the user's description requires.
-      - Pick claude-haiku-4-5-20251001 for simple/fast tasks (support, SDR triage),
-        claude-sonnet-4-6 as the default, claude-opus-4-7 for heavy reasoning
-        (CEO, engineering, research).
-      - Enable capabilities only if the role plausibly needs them.
-      - name_suggestion: a single human first name that fits the role's vibe.
+      === RULES ===
+
+      Template pick:
+      - Pick the [SYS] template whose role FAMILY matches (sales, support,
+        marketing, engineering, etc.). Don't go hunting for the "most specific"
+        match — broad family is enough; the persona below makes it specific.
+      - Pick a [COM] template ONLY if literally no [SYS] template even loosely
+        fits the role family.
+      - template_slug MUST be one of the listed slugs or null. Never invent.
+
+      Skills:
+      - 5–10 skills covering what the role actually does.
+      - INCLUDE the skill for every tool the user mentioned. HubSpot → hubspot-crm,
+        Slack → slack-communication, Google Calendar → calendar-booking,
+        Apollo → apollo-prospecting, Gmail → gmail-management. Don't mirror the
+        template's narrow list — augment.
+      - MUST be a subset of AVAILABLE SKILLS slugs.
+
+      Model:
+      - claude-haiku-4-5-20251001 for high-volume / simple work.
+      - claude-sonnet-4-6 as the default.
+      - claude-opus-4-7 for deep reasoning, strategy, complex writing.
+
+      identity_md (~100 words, first person, markdown):
+      - Open with "I am {{agent_name}}, the <role> at {{company_name}}."
+      - 3–5 short sentences about WHO this agent is and what they care about.
+      - Reference specifics from the user's description: their company, their
+        ICP, their pain point, the values they signaled.
+      - End with one sentence about what this agent refuses to do (HIPAA
+        constraints, brand boundaries, etc.) if the user mentioned them.
+
+      personality_md (~100 words, first person, markdown):
+      - How this agent communicates: tone, verbosity, formality level.
+      - When this agent pushes back on a request vs. complies.
+      - How this agent handles ambiguity (asks vs. drafts vs. escalates).
+      - Quote the user's specific anti-patterns ("I never say 'just circling
+        back'", "I never claim 100% accuracy", etc.) when they listed them.
+
+      instructions_md (~400 words, markdown with H2 sections — all required):
+      - ## How I work — 2–3 sentences on overall approach + the user's success metric.
+      - ## Sequence / Workflow — the concrete steps for the typical task. For an
+        SDR: the touch cadence. For support: the triage flow. For an analyst:
+        the report-shipping rhythm. Be specific to the role described.
+      - ## Tools — which skill to use when. Reference skill_slugs by name and
+        explain when each fires ("for prospecting I use apollo-prospecting; for
+        booking I use calendar-booking; ...").
+      - ## When to escalate — explicit triggers. Quote the user's escalation
+        rules verbatim if they gave any ("if a reply is hostile or off-topic,
+        escalate to {{user_name}} on Slack instead of guessing").
+      - ## Anti-patterns — bulleted list of things to NEVER do or say. Pull
+        every "never" / "avoid" / "don't" from the user's description.
+      - ## Success looks like — 1–2 sentences with the user's success metric
+        verbatim if they gave one ("3–5 booked demos per week with ICP-fit
+        prospects").
+
+      Variables to USE LITERALLY (don't substitute): {{agent_name}},
+      {{company_name}}, {{user_name}}, {{role}}.
+
+      name_suggestion: a single human first name that fits the role's vibe.
     PROMPT
   end
 
@@ -253,7 +305,15 @@ class AgentDrafter
       model_id: parsed["model_id"].presence || template&.suggested_model || "claude-sonnet-4-6",
       name_suggestion: parsed["name_suggestion"].presence,
       reasoning: parsed["reasoning"].presence,
-      generated: false,
+      # Persona markdown comes straight from Claude every time now —
+      # it's tuned to THIS user's description, not inherited from the
+      # matched template. The controller passes these through to the
+      # Installer, which honors them over the template's pre-baked
+      # persona because Installer#apply_persona! uses `||=`.
+      identity_md:     parsed["identity_md"].presence,
+      personality_md:  parsed["personality_md"].presence,
+      instructions_md: parsed["instructions_md"].presence,
+      generated:       parsed["identity_md"].present?,
     )
   end
 
