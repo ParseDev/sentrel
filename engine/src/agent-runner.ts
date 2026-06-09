@@ -1300,6 +1300,25 @@ function buildToolProfile(
   const timeIntent = /\b(what time|current time|date today|what date|right now)\b/i.test(text);
   const confirmationIntent = /\b(approve|approval|confirm|confirmation|permission|ask me first|ask before|before you|ok to|okay to|should i|would you like|reply yes|yes\/no|send it|publish it|post it|delete it|spend)\b/i.test(text);
 
+  // Retry / continuation cues. "fixed lets try again", "try again", "now do
+  // it", "retry", "ready", "go", "done". These are short messages that
+  // almost always mean "do what we were just doing" — without this, the
+  // current-turn-only intent detection drops the conversation onto the
+  // fastChat path and the agent loses its integration / task / web tools
+  // mid-flow. When this fires AND recent history shows the assistant was
+  // using a specific tool category, we re-enable that category for the
+  // current turn.
+  const continuationIntent = /\b(try\s+again|retry|fixed|done|ready|let'?s\s+go|go\s+ahead|now\s+do|ok\s+now|okay\s+now|works?\s+now|that'?s\s+fixed|same\s+thing|same\s+request)\b/i.test(text);
+  const recentHistoryText = history.slice(-4).map((m) => {
+    const c = (m as { content?: unknown }).content;
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) return c.map((p) => (typeof p === "string" ? p : (p as { text?: string })?.text || "")).join(" ");
+    return "";
+  }).join(" ");
+  const historyMentionsIntegration = continuationIntent && /\b(apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin|composio|connect(ed|ion)?|integration)\b/i.test(recentHistoryText);
+  const historyMentionsTask = continuationIntent && /\b(task|delegate|assign|follow\s*up)\b/i.test(recentHistoryText);
+  const historyMentionsScheduling = continuationIntent && /\b(remind|schedul|calendar|meeting|appointment|book|availab)\b/i.test(recentHistoryText);
+
   const profile: ToolProfile = {
     // Always include recall when capability is enabled. Earlier we gated this
     // on a narrow regex ("remember", "previous", "last time", ...) which
@@ -1310,8 +1329,8 @@ function buildToolProfile(
     // messages the user can see in their inbox.
     recall: Boolean(caps.recall.enabled),
     sendMedia: Boolean(caps.send_media.enabled && (isTask || isScheduled || mediaIntent)),
-    scheduling: Boolean(caps.scheduling.enabled && (isTask || isScheduled || schedulingIntent)),
-    tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent)),
+    scheduling: Boolean(caps.scheduling.enabled && (isTask || isScheduled || schedulingIntent || historyMentionsScheduling)),
+    tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || historyMentionsTask)),
     approvals: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent || confirmationIntent)),
     knowledge: Boolean(caps.knowledge_base.enabled && (isTask || isScheduled || knowledgeIntent || (knowledgePrefetch?.passages?.length ?? 0) > 0)),
     // Scheduling intent (meeting/appointment/availability) implies we need
@@ -1319,7 +1338,7 @@ function buildToolProfile(
     // a calendar to answer "when can we meet?". Codex's prior heuristic gated
     // this on explicit toolkit names ("google calendar"), which missed the
     // common case of "find some time on google meet" / "book a slot".
-    integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent || schedulingIntent)),
+    integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent || schedulingIntent || historyMentionsIntegration)),
     fastChat: false,
   };
 
@@ -1334,7 +1353,8 @@ function buildToolProfile(
     !profile.integrations &&
     !webIntent &&
     !timeIntent &&
-    !confirmationIntent
+    !confirmationIntent &&
+    !continuationIntent
   );
 
   return profile;
