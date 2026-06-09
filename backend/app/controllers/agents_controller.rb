@@ -319,13 +319,25 @@ class AgentsController < ApplicationController
       return
     end
 
-    # AgentDrafter picks from the platform's full template catalog (system
-    # seeds + the org's own community templates). Bypass acts_as_tenant
-    # so NULL-org system seeds are in the candidate pool. Capture tenant
-    # outside — current_tenant is nil inside without_tenant.
+    # AgentDrafter picks from a TRIMMED catalog: curated system seeds
+    # (~16) + the user's own org templates + the user's own org skills +
+    # built-in (seeded) skills. We deliberately exclude community
+    # templates from OTHER orgs and Forge-generated skills from earlier
+    # bootstrap runs — those would otherwise inflate the prompt to ~50KB
+    # (109 templates × 150B + 265 skills × 120B), pushing Claude inference
+    # past the 30s gateway timeout and 504-ing the request.
     tenant = current_tenant
     drafter_templates = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(tenant).to_a
+      AgentTemplate
+        .where("system_template = TRUE OR organization_id = ?", tenant&.id)
+        .where(published: true)
+        .to_a
+    end
+    drafter_skills = ActsAsTenant.without_tenant do
+      SkillDefinition
+        .where("source = 'built_in' OR organization_id = ?", tenant&.id)
+        .where(published: true)
+        .to_a
     end
 
     drafter = AgentDrafter.new(
@@ -333,7 +345,7 @@ class AgentsController < ApplicationController
       tools_preference: params[:tools_preference],
       tools_description: params[:tools_description],
       templates: drafter_templates,
-      skills: SkillDefinition.all.to_a,
+      skills: drafter_skills,
       # `regenerate` is plumbed through but a no-op today — AgentDrafter is
       # stateless. Reserved for future cache-busting when we add memoization
       # of the underlying Claude responses.
