@@ -290,6 +290,60 @@ class AgentDrafter
     nil
   end
 
+  # Skills that any agent in this role family realistically needs, even
+  # when the user doesn't name them by slug. The augmentation pass
+  # before this only catches skills tied to an integration mention —
+  # skills like sdr-outreach + web-search + send-email have no
+  # requires_connections, so they only get added if Claude picks them
+  # OR if we inject them here. Pattern matches against the FULL
+  # description (not just role keywords), so users get the right
+  # baseline even when phrasing is loose.
+  ROLE_ESSENTIAL_SKILLS = {
+    /\b(SDR|sales development|BDR|business development|outbound sales)\b/i =>
+      %w[sdr-outreach sdr-prospecting send-email web-search],
+    /\bAE\b|\baccount executive\b/i =>
+      %w[sdr-outreach hubspot-crm calendar-booking web-search],
+    /\bcustomer (support|service)\b/i =>
+      %w[gmail-management slack-communication web-search],
+    /\bcustomer success\b/i =>
+      %w[gmail-management calendar-booking hubspot-crm web-search],
+    /\bmarketing (lead|manager|specialist)\b/i =>
+      %w[content-writing social-media send-email web-search],
+    /\bcontent (writer|strategist|specialist)\b/i =>
+      %w[content-writing web-search send-files],
+    /\brecruiter\b/i =>
+      %w[gmail-management calendar-booking web-search],
+    /\b(software|backend|frontend|web) (engineer|developer)\b/i =>
+      %w[code-review web-dev web-search],
+    /\bdesigner\b/i =>
+      %w[web-search send-files],
+    /\bresearcher\b/i =>
+      %w[web-search send-files],
+    /\bdata (analyst|scientist)\b/i =>
+      %w[web-search send-files],
+    /\bCEO\b|\bchief executive\b/i =>
+      %w[web-search send-email],
+    /\bCFO\b|\bchief financial\b/i =>
+      %w[expense-tracking web-search],
+    /\bCTO\b|\bchief technology\b/i =>
+      %w[code-review web-search],
+    /\bproduct manager\b|\bPM\b/i =>
+      %w[web-search send-files],
+  }.freeze
+
+  def inject_role_essentials(picked_slugs)
+    available = @skills.map(&:slug).to_set
+    out = picked_slugs.dup
+    ROLE_ESSENTIAL_SKILLS.each do |pattern, essentials|
+      next unless @description =~ pattern
+      essentials.each do |slug|
+        next unless available.include?(slug)
+        out << slug unless out.include?(slug)
+      end
+    end
+    out
+  end
+
   def integrations_for(skill_slugs)
     slugs = Array(skill_slugs)
     return [] if slugs.empty?
@@ -315,10 +369,15 @@ class AgentDrafter
 
   def build_result(parsed)
     picked = Array(parsed["skill_slugs"]).select { |s| @skills.any? { |sk| sk.slug == s } }
-    # Deterministic backstop for when Claude misses a skill the user's
-    # description clearly implies. Source of truth: each skill's own
-    # requires_connections column. No hardcoded slug names.
-    picked = augment_skills_from_description(picked, nil).first(12)
+    # Two-stage deterministic backstop:
+    #   (1) augment_skills_from_description — adds a skill for every
+    #       integration the user named (HubSpot → hubspot-crm, etc.)
+    #   (2) inject_role_essentials — adds the no-integration-tagged
+    #       role-essential skills (sdr-outreach, send-email, web-search
+    #       for an SDR) that the augmentation pass can't catch because
+    #       they have no requires_connections.
+    picked = augment_skills_from_description(picked, nil)
+    picked = inject_role_essentials(picked).first(12)
 
     caps = (parsed["capabilities"] || {}).each_with_object({}) do |(k, v), h|
       next unless %w[knowledge_base scheduling tasks integrations recall send_media].include?(k.to_s)
