@@ -1315,9 +1315,38 @@ function buildToolProfile(
     if (Array.isArray(c)) return c.map((p) => (typeof p === "string" ? p : (p as { text?: string })?.text || "")).join(" ");
     return "";
   }).join(" ");
-  const historyMentionsIntegration = continuationIntent && /\b(apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin|composio|connect(ed|ion)?|integration)\b/i.test(recentHistoryText);
-  const historyMentionsTask = continuationIntent && /\b(task|delegate|assign|follow\s*up)\b/i.test(recentHistoryText);
-  const historyMentionsScheduling = continuationIntent && /\b(remind|schedul|calendar|meeting|appointment|book|availab)\b/i.test(recentHistoryText);
+
+  // "Active topic" detection — distinct from continuationIntent.
+  // continuationIntent fires on "try again" / "retry" / "fixed" (short
+  // retry cues). activeTopic fires whenever the AGENT'S most recent
+  // assistant message used an integration toolkit AND the current user
+  // message is a follow-up ("more", "what about", "details on", "and
+  // their X", short referring questions). Without this, follow-up
+  // questions on Apollo results lose the Apollo MCP server because the
+  // current-turn text has no "apollo" keyword — and the entire
+  // composio/integrations/connections MCP block is skipped at line 1631.
+  const lastAssistantMessage = [...history].reverse().find((m) => (m as { role?: string }).role === "assistant");
+  const lastAssistantText = (() => {
+    if (!lastAssistantMessage) return "";
+    const c = (lastAssistantMessage as { content?: unknown }).content;
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) return c.map((p) => (typeof p === "string" ? p : (p as { text?: string })?.text || "")).join(" ");
+    return "";
+  })();
+  const followUpCues = /\b(more|details?|tell me about|what about|and (the|their|those|these)|give me|extra|additional|expand|elaborate|same|too)\b/i.test(text) && text.length < 250;
+  const lastAssistantUsedIntegration = /\b(apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin)\b/i.test(lastAssistantText);
+  const lastAssistantUsedScheduling = /\b(scheduled|calendar|meeting|appointment|booked|reminded|reminder)\b/i.test(lastAssistantText);
+  const lastAssistantUsedTask = /\b(task|delegated|assigned|created task|follow\s*up)\b/i.test(lastAssistantText);
+
+  const historyMentionsIntegration =
+    (continuationIntent && /\b(apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin|composio|connect(ed|ion)?|integration)\b/i.test(recentHistoryText)) ||
+    (followUpCues && lastAssistantUsedIntegration);
+  const historyMentionsTask =
+    (continuationIntent && /\b(task|delegate|assign|follow\s*up)\b/i.test(recentHistoryText)) ||
+    (followUpCues && lastAssistantUsedTask);
+  const historyMentionsScheduling =
+    (continuationIntent && /\b(remind|schedul|calendar|meeting|appointment|book|availab)\b/i.test(recentHistoryText)) ||
+    (followUpCues && lastAssistantUsedScheduling);
 
   const profile: ToolProfile = {
     // Always include recall when capability is enabled. Earlier we gated this
