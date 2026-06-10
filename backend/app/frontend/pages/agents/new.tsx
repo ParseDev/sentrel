@@ -637,8 +637,11 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           </div>
         </section>
 
-        <div className="flex justify-end pb-8 max-w-2xl">
-          <Button type="submit" disabled={processing || !data.name || !data.role}>
+        <div className="flex items-center justify-end gap-3 pb-8 max-w-2xl">
+          {!data.role.trim() && (
+            <span className="text-[11px] text-muted-foreground">Fill in the role above (e.g. "Sales Development Rep") to create.</span>
+          )}
+          <Button type="submit" disabled={processing}>
             {processing ? "Creating…" : "Create agent"}
           </Button>
         </div>
