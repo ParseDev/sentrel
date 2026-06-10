@@ -55,6 +55,8 @@ class AgentBundlesController < ApplicationController
       manifest: manifest,
       user: current_user,
       organization: current_tenant,
+      name: params[:agent_name],
+      slug: params[:agent_slug],
     ).call
 
     agent = result.agent

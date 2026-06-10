@@ -21,10 +21,12 @@ module AgentBundles
     # bundle verb → our permission level
     PERMISSION_MAP = { "ask" => "draft", "auto" => "auto", "block" => "never" }.freeze
 
-    def initialize(manifest:, user:, organization:)
+    def initialize(manifest:, user:, organization:, name: nil, slug: nil)
       @m = manifest
       @user = user
       @org = organization
+      @name_override = name.to_s.strip.presence
+      @slug_override = slug.to_s.strip.presence
       @notices = []
     end
 
@@ -47,17 +49,38 @@ module AgentBundles
     private
 
     def build_agent
-      slug = unique_agent_slug(@m.name)
+      name = @name_override || @m.name
+      slug = unique_agent_slug(@slug_override || name)
       goal_section = render_goal_section
+      ctx = substitution_context(name)
       @org.agents.build(
-        name: @m.name,
+        name: name,
         slug: slug,
         role: @m.role.presence || "Agent",
-        identity_md:     @m.persona_md("identity"),
-        personality_md:  @m.persona_md("personality"),
-        instructions_md: [@m.persona_md("instructions"), goal_section].compact.join("\n\n"),
+        identity_md:     substitute(@m.persona_md("identity"), ctx),
+        personality_md:  substitute(@m.persona_md("personality"), ctx),
+        instructions_md: substitute([@m.persona_md("instructions"), goal_section].compact.join("\n\n"), ctx),
         permissions: mapped_permissions,
       )
+    end
+
+    # Same {{token}} substitution AgentTemplates::Installer does, plus
+    # {{company_domain}} (bundles use it for email-address hints). Unknown
+    # tokens are LEFT IN PLACE — visible in the editor beats silently
+    # replaced with an empty string.
+    def substitution_context(agent_name)
+      {
+        "agent_name"     => agent_name,
+        "company_name"   => @org.name,
+        "user_name"      => @user.try(:name).presence || @user.try(:email),
+        "role"           => @m.role.presence || "Agent",
+        "company_domain" => @org.try(:email_domain).presence,
+      }.compact
+    end
+
+    def substitute(text, ctx)
+      return nil if text.blank?
+      text.gsub(/\{\{\s*(\w+)\s*\}\}/) { ctx.key?(Regexp.last_match(1)) ? ctx[Regexp.last_match(1)] : Regexp.last_match(0) }
     end
 
     # goal: {mission:, kpis: [{k => v}], definition_of_done:} → a markdown
@@ -173,10 +196,11 @@ module AgentBundles
       return if docs.empty?
       base = ENV.fetch("ENGINE_URL", "http://localhost:3300")
       secret = ENV["ENGINE_API_SECRET"].to_s
+      ctx = substitution_context(agent.name)
       docs.each do |doc|
         uri = URI.parse("#{base}/rag/ingest")
         req = Net::HTTP::Post.new(uri, { "Content-Type" => "application/json", "X-Engine-Secret" => secret })
-        req.body = { agent_id: agent.id, filename: doc[:path], text: doc[:content] }.to_json
+        req.body = { agent_id: agent.id, filename: doc[:path], text: substitute(doc[:content], ctx) }.to_json
         res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 2, read_timeout: 15) { |h| h.request(req) }
         raise "HTTP #{res.code}" unless res.is_a?(Net::HTTPSuccess)
       rescue => e

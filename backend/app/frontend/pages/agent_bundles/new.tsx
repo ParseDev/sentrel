@@ -9,8 +9,10 @@ import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { slugify } from "@/lib/random-names"
 
 // The shareable "Deploy to double.md" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
@@ -40,6 +42,8 @@ interface Props {
 
 export default function DeployAgent({ source, preview, error }: Props) {
   const [url, setUrl] = useState(source)
+  const [agentName, setAgentName] = useState(preview?.name || "")
+  const [agentSlug, setAgentSlug] = useState(preview ? slugify(preview.name) : "")
   const [saveAsTemplate, setSaveAsTemplate] = useState(true)
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
@@ -48,10 +52,20 @@ export default function DeployAgent({ source, preview, error }: Props) {
     router.get("/deploy-agent", { source: url.trim() }, { preserveState: false })
   }
 
+  function handleNameChange(name: string) {
+    setAgentName(name)
+    setAgentSlug(slugify(name))
+  }
+
   function deploy() {
     setDeployError(null)
     setDeploying(true)
-    router.post("/agent_bundles", { github_url: source, save_as_template: saveAsTemplate ? "1" : "0" }, {
+    router.post("/agent_bundles", {
+      github_url: source,
+      agent_name: agentName.trim(),
+      agent_slug: agentSlug.trim(),
+      save_as_template: saveAsTemplate ? "1" : "0",
+    }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
       onFinish: () => setDeploying(false),
     })
@@ -211,6 +225,21 @@ export default function DeployAgent({ source, preview, error }: Props) {
 
             {/* Deploy */}
             <section className="space-y-3 pb-8">
+              <div className="rounded-lg border bg-card p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="agent_name">Name</Label>
+                    <Input id="agent_name" value={agentName} onChange={(e) => handleNameChange(e.target.value)} placeholder={preview.name} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="agent_slug">Slug</Label>
+                    <Input id="agent_slug" value={agentSlug} onChange={(e) => setAgentSlug(e.target.value)} />
+                  </div>
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  Rename freely — a taken slug gets a numeric suffix automatically. Variables like <code className="font-mono">{"{{company_name}}"}</code> in the persona are filled in with your workspace's values at deploy.
+                </p>
+              </div>
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <Checkbox checked={saveAsTemplate} onCheckedChange={(v) => setSaveAsTemplate(!!v)} />
                 Also save to the template library (versioned, re-installable)
@@ -221,7 +250,7 @@ export default function DeployAgent({ source, preview, error }: Props) {
               <div className="flex justify-end">
                 <Button type="button" onClick={deploy} disabled={deploying}>
                   <Rocket className="size-4 mr-1.5" />
-                  {deploying ? "Deploying…" : `Deploy ${preview.name}`}
+                  {deploying ? "Deploying…" : `Deploy ${agentName.trim() || preview.name}`}
                 </Button>
               </div>
             </section>
