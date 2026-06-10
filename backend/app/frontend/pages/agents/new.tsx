@@ -159,6 +159,8 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
   const [preview, setPreview] = useState<PersonaPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [githubUrl, setGithubUrl] = useState("")
+  const [bundleFile, setBundleFile] = useState<File | null>(null)
+  const [saveAsTemplate, setSaveAsTemplate] = useState(true)
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
 
@@ -251,14 +253,19 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     choose(BLANK)
   }
 
-  // Deploy an agent-bundle/v1 straight from a public GitHub repo. The
-  // server fetches the tarball, validates against the spec, creates the
-  // agent, and redirects to its page — completely separate from the
-  // form below (the bundle IS the configuration).
-  function deployFromGithub() {
+  // Deploy an agent-bundle/v1 from a public GitHub repo OR an uploaded
+  // .tar.gz. The server validates against the spec, creates the agent,
+  // and redirects to its page — completely separate from the form below
+  // (the bundle IS the configuration). Inertia switches to FormData
+  // automatically when a File is in the payload.
+  function deployBundle() {
     setDeployError(null)
     setDeploying(true)
-    router.post("/agent_bundles", { github_url: githubUrl.trim() }, {
+    const payload: Record<string, unknown> = { save_as_template: saveAsTemplate ? "1" : "0" }
+    if (bundleFile) payload.bundle = bundleFile
+    else payload.github_url = githubUrl.trim()
+    router.post("/agent_bundles", payload, {
+      forceFormData: !!bundleFile,
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
       onFinish: () => setDeploying(false),
     })
@@ -383,6 +390,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
                   placeholder="https://github.com/owner/repo  or  …/tree/main/agents/sdr"
+                  disabled={!!bundleFile}
                 />
                 <p className="text-[10px] text-muted-foreground">
                   Public repo containing an <code className="font-mono">agent.yaml</code> bundle (agent-bundle/v1).
@@ -390,11 +398,30 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                   Secrets and integrations are connected after deploy.
                 </p>
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="bundle_file" className="text-xs text-muted-foreground">…or upload a bundle archive (.tar.gz)</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="bundle_file"
+                    type="file"
+                    accept=".tgz,.tar.gz,application/gzip"
+                    onChange={(e) => setBundleFile(e.target.files?.[0] || null)}
+                    className="text-xs file:mr-2 file:rounded-md file:border file:bg-background file:px-2 file:py-1 file:text-xs"
+                  />
+                  {bundleFile && (
+                    <button type="button" onClick={() => setBundleFile(null)} className="text-[11px] text-muted-foreground hover:text-foreground underline">clear</button>
+                  )}
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <Checkbox checked={saveAsTemplate} onCheckedChange={(v) => setSaveAsTemplate(!!v)} />
+                Also save to the template library (versioned, re-installable from /agent_templates)
+              </label>
               {deployError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
               )}
               <div className="flex justify-end">
-                <Button type="button" onClick={deployFromGithub} disabled={deploying || !githubUrl.trim()}>
+                <Button type="button" onClick={deployBundle} disabled={deploying || (!githubUrl.trim() && !bundleFile)}>
                   {deploying ? "Deploying…" : "Deploy bundle"}
                 </Button>
               </div>

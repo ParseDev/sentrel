@@ -33,6 +33,26 @@ class AgentBundlesController < ApplicationController
     EngineSync.trigger(agent)
     ProvisionAgentJob.perform_later(agent.id)
 
+    # Also catalogue the bundle in the org's template library (versioned,
+    # re-installable from /agent_templates) unless explicitly opted out.
+    # Publisher → Exporter snapshots the just-deployed agent, so the
+    # template carries the full persona + skill bundles + goal section.
+    if params[:save_as_template] != "0"
+      begin
+        template = AgentTemplates::Publisher.new(
+          agent: agent,
+          user: current_user,
+          name: "#{agent.name} (bundle)",
+          category: "starter",
+          description: manifest.description.presence || "Deployed from an agent-bundle/v1.",
+          changelog: params[:github_url].present? ? "Deployed from #{params[:github_url]}" : "Deployed from uploaded bundle",
+        ).call
+        result.notices << "Saved to the template library as “#{template.name}”."
+      rescue => e
+        Rails.logger.warn "[AgentBundles] save_as_template failed: #{e.message}"
+      end
+    end
+
     msg = "#{agent.name} deployed from bundle — machine provisioning in background"
     msg += ". Next: #{result.notices.join(' · ')}" if result.notices.any?
     respond_to do |format|
