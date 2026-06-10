@@ -42,7 +42,21 @@ jobs:
           OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
           echo "base=ghcr.io/${OWNER_LOWER}/alchemy-engine" >> $GITHUB_OUTPUT
 
-      - name: Set up Docker Buildx
+      # Set up Buildx with retries against Docker Hub flakes. We've seen
+      # registry-1.docker.io time out at builder-bootstrap time —
+      # "context deadline exceeded" — for no reason other than Docker
+      # Hub being slow. One retry handles the common case; if it's a
+      # sustained outage the second attempt fails the same way and we
+      # surface that to the user.
+      - name: Set up Docker Buildx (attempt 1)
+        id: buildx-1
+        uses: docker/setup-buildx-action@v3
+        continue-on-error: true
+      - name: Wait + retry on Docker Hub flake
+        if: steps.buildx-1.outcome == 'failure'
+        run: sleep 20
+      - name: Set up Docker Buildx (attempt 2)
+        if: steps.buildx-1.outcome == 'failure'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
