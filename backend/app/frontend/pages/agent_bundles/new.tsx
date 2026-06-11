@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MarkdownEditor } from "@/components/markdown-editor"
 import { slugify } from "@/lib/random-names"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
+import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe"
 
 // The shareable "Deploy to double.md" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
@@ -475,48 +476,78 @@ export default function DeployAgent({ source, preview, error, connected_services
                 Standing cron jobs the agent runs autonomously. Edit, remove, or add your own — created active at deploy.
               </p>
               <div className="space-y-3">
-                {schedules.map((s, i) => (
-                  <div key={i} className="rounded-lg border bg-card p-4 space-y-3">
-                    <div className="flex items-start gap-2">
-                      <Clock className="size-4 text-muted-foreground mt-2" />
-                      <div className="grid grid-cols-[1fr_10rem_7rem] gap-2 flex-1">
-                        <Input
-                          value={s.name}
-                          onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-                          placeholder="Schedule name"
-                        />
-                        <Input
-                          value={s.cron}
-                          onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, cron: e.target.value } : x)))}
-                          placeholder="30 8 * * 1-5"
-                          className="font-mono text-xs"
-                        />
-                        <Input
-                          value={s.timezone}
-                          onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, timezone: e.target.value } : x)))}
-                          placeholder="UTC"
-                          className="font-mono text-xs"
-                        />
+                {schedules.map((s, i) => {
+                  const cronText = describeCron(s.cron)
+                  const presetMatch = CRON_PRESETS.find((p) => p.cron === s.cron)
+                  return (
+                    <div key={i} className="rounded-lg border bg-card p-4 space-y-3">
+                      <div className="flex items-start gap-2">
+                        <Clock className="size-4 text-muted-foreground mt-2 shrink-0" />
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <Input
+                            value={s.name}
+                            onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                            placeholder="Schedule name"
+                          />
+                          <div className="grid grid-cols-[12rem_1fr_minmax(10rem,14rem)] gap-2">
+                            <Select
+                              value={presetMatch ? presetMatch.cron : "__custom__"}
+                              onValueChange={(v) => {
+                                if (v !== "__custom__") setSchedules(schedules.map((x, j) => (j === i ? { ...x, cron: v } : x)))
+                              }}
+                            >
+                              <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Preset" /></SelectTrigger>
+                              <SelectContent>
+                                {CRON_PRESETS.map((p) => (
+                                  <SelectItem key={p.cron} value={p.cron}>{p.label}</SelectItem>
+                                ))}
+                                <SelectItem value="__custom__">Custom…</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              value={s.cron}
+                              onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, cron: e.target.value } : x)))}
+                              placeholder="30 8 * * 1-5"
+                              className="font-mono text-xs"
+                            />
+                            <Select
+                              value={s.timezone}
+                              onValueChange={(v) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, timezone: v } : x)))}
+                            >
+                              <SelectTrigger className="h-9 text-xs [&>span]:truncate"><SelectValue placeholder="Timezone" /></SelectTrigger>
+                              <SelectContent className="max-h-64">
+                                {timezoneOptions().map((tz) => (
+                                  <SelectItem key={tz} value={tz}>{tz.replace(/_/g, " ")}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <p className={`text-[11px] ${cronText ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                            {cronText
+                              ? <>↻ {cronText} ({s.timezone || "UTC"})</>
+                              : "Custom cron — couldn't parse it into plain English. Double-check minute hour day month weekday."}
+                          </p>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => setSchedules(schedules.filter((_, j) => j !== i))} aria-label="Remove schedule">
+                          <Trash2 className="size-3.5" />
+                        </Button>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" onClick={() => setSchedules(schedules.filter((_, j) => j !== i))} aria-label="Remove schedule">
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      <textarea
+                        rows={3}
+                        value={s.instruction}
+                        onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, instruction: e.target.value } : x)))}
+                        placeholder="What the agent should do when this fires…"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
                     </div>
-                    <textarea
-                      rows={3}
-                      value={s.instruction}
-                      onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, instruction: e.target.value } : x)))}
-                      placeholder="What the agent should do when this fires…"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                ))}
+                  )
+                })}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="h-7 text-xs gap-1"
-                  onClick={() => setSchedules([...schedules, { name: "", cron: "0 9 * * 1-5", timezone: "UTC", instruction: "" }])}
+                  onClick={() => setSchedules([...schedules, { name: "", cron: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", instruction: "" }])}
                 >
                   <Plus className="size-3" /> Add schedule
                 </Button>
