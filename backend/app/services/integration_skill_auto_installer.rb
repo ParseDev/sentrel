@@ -30,10 +30,15 @@ class IntegrationSkillAutoInstaller
     return empty_result if service.blank?
 
     # PostgreSQL jsonb containment — finds skills whose
-    # requires_connections array contains the toolkit slug.
+    # requires_connections array contains the toolkit slug. Restricted
+    # to canonical platform seeds + skills the org itself owns: without
+    # this guard, a polluted catalog (Forge-generated junk tagged with
+    # popular services like googlecalendar) gets mass-installed onto
+    # every agent the moment the org connects that service.
     matching_skills = SkillDefinition
       .where(published: true)
       .where("requires_connections @> ?::jsonb", [service].to_json)
+      .where("slug IN (?) OR organization_id = ?", SkillDefinition.canonical_seed_slugs, @integration.organization_id)
       .to_a
 
     return empty_result(matching_skills) if matching_skills.empty?
