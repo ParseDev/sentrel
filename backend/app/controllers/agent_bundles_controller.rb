@@ -141,6 +141,7 @@ class AgentBundlesController < ApplicationController
       },
       knowledge: manifest.knowledge_docs.map { |d| { path: d[:path], why: d[:why], bytes: d[:content].to_s.bytesize } },
       channels: manifest.channels.map { |c| { type: c["type"], why: c["why"] } },
+      schedules: manifest.schedules.map { |s| { name: s["name"], cron: s["cron"], timezone: s["timezone"], why: s["why"] } },
       integrations: manifest.integrations.map { |i|
         { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", why: i["why"] }
       },

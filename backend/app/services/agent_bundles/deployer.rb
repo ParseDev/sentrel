@@ -48,6 +48,7 @@ module AgentBundles
           create_ai_config!(agent)
           install_skills!(agent)
           create_channels!(agent)
+          create_schedules!(agent)
         end
       end
       ingest_knowledge(agent) # outside the transaction — engine call, best-effort
@@ -190,6 +191,27 @@ module AgentBundles
         )
       end
       record
+    end
+
+    # Standing cron jobs declared in the bundle (schedules[]) become
+    # ScheduledWork rows — the agent wakes up and runs its routine
+    # (morning sweeps, weekly digests) from day one. Instructions get
+    # the same {{token}} substitution as persona text. Per-thread
+    # one-shot reminders are NOT bundled — the agent creates those at
+    # runtime via its scheduling tools.
+    def create_schedules!(agent)
+      ctx = substitution_context(agent.name)
+      @m.schedules.each do |sched|
+        agent.scheduled_work.create!(
+          organization: @org,
+          mode: "cron",
+          name: sched["name"],
+          instruction: substitute(sched["instruction"], ctx),
+          cron_expression: sched["cron"],
+          timezone: sched["timezone"].presence || "UTC",
+          active: true,
+        )
+      end
     end
 
     def create_channels!(agent)

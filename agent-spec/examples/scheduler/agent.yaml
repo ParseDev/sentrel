@@ -51,6 +51,36 @@ channels:
   - type: email
     why: Where meeting requests arrive and confirmations go out.
 
+# Standing cron jobs — created as scheduled work at deploy, so Rio runs
+# his routine from day one. Per-thread follow-up reminders are NOT
+# listed here: Rio creates those himself at runtime (one-shot, +2
+# business days) per the follow-up-protocol skill.
+schedules:
+  - name: Morning sweep
+    cron: "30 8 * * 1-5"
+    timezone: UTC
+    why: Day-before confirmations + ledger hygiene before the day starts.
+    instruction: >-
+      Run the morning sweep. 1) Day-before confirmations: for every
+      external meeting happening tomorrow, check attendee RSVPs — any
+      external attendee still pending gets ONE short confirmation note in
+      the original thread (never re-nudge a confirmation). 2) Ledger
+      hygiene: review the scheduling ledger in memory; verify every
+      PROPOSED thread has a future follow-up check scheduled (recreate
+      any that are missing), and remove BOOKED/DECLINED/COLD entries
+      older than 14 days. Report nothing unless something needed fixing —
+      then send {{user_name}} a one-line summary.
+  - name: Friday pipeline digest
+    cron: "0 16 * * 5"
+    timezone: UTC
+    why: Weekly visibility — open threads, cold threads, next week's meetings.
+    instruction: >-
+      Send {{user_name}} the weekly scheduling digest, one short message:
+      open PROPOSED threads (who, topic, follow-up count, next check),
+      threads marked COLD this week, and the list of meetings booked for
+      next week (day, time, name). If everything is empty, say exactly
+      that in one line.
+
 integrations:
   - service: googlecalendar
     why: Availability checks, event creation, travel blocks, attendee management.

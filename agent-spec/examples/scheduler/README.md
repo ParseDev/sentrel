@@ -47,6 +47,7 @@ the owner and goes quiet. The cap is an invariant, not a suggestion.
 | Reschedule / cancel / decline / OOO / revival | instructions + skill edge cases |
 | Day-before RSVP confirmation | instructions |
 | Auditable state | the memory ledger format |
+| Standing cron jobs from day one | `schedules:` in agent.yaml — morning sweep (weekdays 8:30) + Friday pipeline digest |
 
 ## Safety posture
 

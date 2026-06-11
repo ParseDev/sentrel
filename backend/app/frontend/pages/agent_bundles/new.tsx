@@ -1,7 +1,7 @@
 import { Head, router } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, Check, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Trash2, Wrench,
+  AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Trash2, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -34,6 +34,7 @@ interface Preview {
   skills: Array<{ slug: string; file_count: number; skill_md: string }>
   knowledge: Array<{ path: string; why: string | null; bytes: number }>
   channels: Array<{ type: string; why: string | null }>
+  schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null }>
   integrations: Array<{ service: string; kind: "composio" | "mcp"; why: string | null }>
   secrets: string[]
   permissions: Record<string, string>
@@ -392,6 +393,14 @@ export default function DeployAgent({ source, preview, error, connected_services
                     <span className="font-medium">{k.path}</span>
                     {k.why && <span className="text-[10px] text-muted-foreground truncate">— {k.why}</span>}
                     <span className="text-[10px] text-muted-foreground ml-auto">{Math.round(k.bytes / 1024)}KB</span>
+                  </div>
+                ))}
+                {(preview.schedules || []).map((s) => (
+                  <div key={s.name} className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                    <Clock className="size-3.5 text-muted-foreground" />
+                    <span className="font-medium">{s.name}</span>
+                    <Badge variant="outline" className="text-[9px] font-mono">{s.cron}{s.timezone ? ` ${s.timezone}` : ""}</Badge>
+                    {s.why && <span className="text-[10px] text-muted-foreground truncate">— {s.why}</span>}
                   </div>
                 ))}
               </div>
