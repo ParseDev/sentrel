@@ -26,7 +26,14 @@ module AgentBundles
       owner, repo, ref, subdir = m.captures
       ref = ref.presence || "HEAD"
 
-      tarball = http_get("https://codeload.github.com/#{owner}/#{repo}/tar.gz/#{ref}")
+      # Cache the repo tarball briefly: the wizard fetches once for the
+      # preview and again on Deploy, and repeated testing hammers
+      # codeload from one server IP — GitHub rate-limits that (429).
+      # 5 minutes is long enough to cover a preview→deploy round-trip,
+      # short enough that a pushed fix shows up quickly.
+      tarball = Rails.cache.fetch("agent_bundles:tarball:#{owner}/#{repo}@#{ref}", expires_in: 5.minutes) do
+        http_get("https://codeload.github.com/#{owner}/#{repo}/tar.gz/#{ref}")
+      end
       files = untar(StringIO.new(tarball))
 
       # codeload prefixes every path with "<repo>-<ref>/" — strip it, then
@@ -51,6 +58,9 @@ module AgentBundles
       end
       if res.is_a?(Net::HTTPRedirection) && redirects_left.positive?
         return http_get(res["location"], redirects_left: redirects_left - 1)
+      end
+      if res.code.to_i == 429
+        raise FetchError, "GitHub is rate-limiting us — wait a minute and retry, or upload the bundle as a .tar.gz instead"
       end
       raise FetchError, "GitHub fetch failed: HTTP #{res.code} (repo private or ref missing?)" unless res.is_a?(Net::HTTPSuccess)
       raise FetchError, "bundle too large (>#{MAX_BYTES / 1024 / 1024}MB compressed)" if res.body.bytesize > MAX_BYTES

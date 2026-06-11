@@ -107,15 +107,19 @@ class AgentBundlesController < ApplicationController
       format.html { redirect_to agent_path(agent), notice: msg }
       format.json { render json: { agent_id: agent.to_param, url: agent_path(agent), notices: result.notices }, status: :created }
     end
-  rescue AgentBundles::FetchError, AgentBundles::InvalidBundle => e
+  rescue AgentBundles::FetchError, AgentBundles::InvalidBundle, ActiveRecord::RecordInvalid => e
+    Rails.logger.warn "[AgentBundles#create] deploy failed: #{e.class}: #{e.message} (source=#{params[:github_url].presence || 'tarball'}) #{e.backtrace&.first}"
     respond_to do |format|
       format.html { redirect_back fallback_location: new_agent_path, alert: "Bundle deploy failed: #{e.message}" }
       format.json { render json: { error: e.message }, status: :unprocessable_entity }
     end
-  rescue ActiveRecord::RecordInvalid => e
+  rescue => e
+    # Anything unexpected: log loudly, still land the user back on the
+    # wizard with a real message instead of a 500 or a silent redirect.
+    Rails.logger.error "[AgentBundles#create] unexpected error: #{e.class}: #{e.message}\n#{e.backtrace&.first(8)&.join("\n")}"
     respond_to do |format|
-      format.html { redirect_back fallback_location: new_agent_path, alert: "Bundle deploy failed: #{e.message}" }
-      format.json { render json: { error: e.message }, status: :unprocessable_entity }
+      format.html { redirect_back fallback_location: new_agent_path, alert: "Bundle deploy failed unexpectedly: #{e.message.truncate(200)}" }
+      format.json { render json: { error: e.message }, status: :internal_server_error }
     end
   end
 
