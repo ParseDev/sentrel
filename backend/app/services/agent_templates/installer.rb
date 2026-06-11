@@ -64,15 +64,17 @@ module AgentTemplates
       @organization.agents.build(attrs)
     end
 
-    # Substitute {{agent_name}}, {{company_name}}, {{user_name}}, {{role}}
-    # in the persona md fields the same way AgentTemplate#render did.
+    # Substitute {{agent_name}}, {{company_name}}, {{user_name}},
+    # {{user_email}}, {{role}} in the persona md fields the same way
+    # AgentTemplate#render did.
     def apply_persona!(agent)
       ctx = {
         "agent_name"   => agent.name,
         "company_name" => @organization.name,
         "user_name"    => @user.name,
+        "user_email"   => @user.try(:email),
         "role"         => agent.role,
-      }
+      }.compact
       persona = @definition["persona"] || {}
       agent.identity_md       ||= substitute(persona["identity_md"], ctx)
       agent.personality_md    ||= substitute(persona["personality_md"], ctx)

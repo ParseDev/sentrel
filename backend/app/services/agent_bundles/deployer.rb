@@ -99,6 +99,7 @@ module AgentBundles
         "agent_name"     => agent_name,
         "company_name"   => @org.name,
         "user_name"      => @user.try(:name).presence || @user.try(:email),
+        "user_email"     => @user.try(:email).presence,
         "role"           => effective_role,
         "company_domain" => @org.try(:email_domain).presence,
       }.compact
