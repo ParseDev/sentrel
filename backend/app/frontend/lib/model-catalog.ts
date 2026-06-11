@@ -2,8 +2,10 @@
 // deploy wizard. One place to add a model when providers ship new ones.
 export const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; hint?: string }>> = {
   anthropic: [
-    { value: "claude-opus-4-7",            label: "Claude Opus 4.7",   hint: "strongest reasoning, slowest + priciest" },
-    { value: "claude-opus-4-6",            label: "Claude Opus 4.6",   hint: "previous Opus, still excellent" },
+    { value: "claude-fable-5",             label: "Claude Fable 5",    hint: "Anthropic's newest flagship — strongest overall" },
+    { value: "claude-opus-4-8",            label: "Claude Opus 4.8",   hint: "newest Opus — top reasoning" },
+    { value: "claude-opus-4-7",            label: "Claude Opus 4.7",   hint: "previous Opus, still excellent" },
+    { value: "claude-opus-4-6",            label: "Claude Opus 4.6",   hint: "older Opus" },
     { value: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
     { value: "claude-sonnet-4-20250514",   label: "Claude Sonnet 4",   hint: "stable earlier Sonnet" },
     { value: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  hint: "fastest + cheapest, good for background tasks" },

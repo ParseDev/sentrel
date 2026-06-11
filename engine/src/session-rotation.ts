@@ -22,7 +22,7 @@ import type { Agent } from "./types.js";
 // doubt — we'd rather rotate slightly early than blow up mid-turn.
 const MODEL_CONTEXT_WINDOWS: Array<{ match: (provider: string, model: string) => boolean; tokens: number }> = [
   // Anthropic — direct + via OpenRouter
-  { match: (p, m) => /claude-opus-4|claude-sonnet-4|claude-haiku-4/.test(m),                          tokens: 200_000 },
+  { match: (p, m) => /claude-fable-5|claude-opus-4|claude-sonnet-4|claude-haiku-4/.test(m),           tokens: 200_000 },
   { match: (p, m) => /anthropic\/claude/.test(m),                                                      tokens: 200_000 },
   // Subscription path (anthropic_account) reuses Claude direct caps
   { match: (p, m) => p === "anthropic_account",                                                        tokens: 200_000 },

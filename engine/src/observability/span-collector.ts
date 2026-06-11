@@ -109,6 +109,11 @@ export class SpanCollector {
 // Pricing per million tokens (Claude Sonnet 4 as of 2026-04).
 // Update as models/prices change.
 const PRICING: Record<string, { input: number; output: number; cache_read: number; cache_write: number }> = {
+  "claude-fable-5": { input: 5.0, output: 25.0, cache_read: 0.50, cache_write: 6.25 },
+  "claude-opus-4-8": { input: 5.0, output: 25.0, cache_read: 0.50, cache_write: 6.25 },
+  "claude-opus-4-7": { input: 5.0, output: 25.0, cache_read: 0.50, cache_write: 6.25 },
+  "claude-opus-4-6": { input: 5.0, output: 25.0, cache_read: 0.50, cache_write: 6.25 },
+  "claude-sonnet-4-6": { input: 3.0, output: 15.0, cache_read: 0.30, cache_write: 3.75 },
   "claude-sonnet-4-20250514": { input: 3.0, output: 15.0, cache_read: 0.30, cache_write: 3.75 },
   "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0, cache_read: 0.10, cache_write: 1.25 },
   // Fallback to Sonnet 4 pricing for unknown models
