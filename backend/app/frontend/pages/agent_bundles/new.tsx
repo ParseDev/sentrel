@@ -1,4 +1,4 @@
-import { Head, router } from "@inertiajs/react"
+import { Head, router, useForm } from "@inertiajs/react"
 import { useState } from "react"
 import {
   AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Terminal, Trash2, Wrench,
@@ -13,6 +13,9 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { GoogleSignInButton } from "@/components/google-sign-in-button"
+import { userSessionPath } from "@/routes"
 import { MarkdownEditor } from "@/components/markdown-editor"
 import { slugify } from "@/lib/random-names"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
@@ -84,6 +87,9 @@ interface Props {
   platform_skills: PlatformSkill[]
   agents: ExistingAgent[]
   agent_id: string | null
+  // false → anonymous visitor: full preview renders behind a sign-in
+  // overlay; Deploy/Connect open the overlay instead of acting.
+  authenticated?: boolean
 }
 
 // "APOLLO_API_KEY" / "apollo-token" → "apollo" — same normalization the
@@ -112,8 +118,11 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id }: Props) {
+export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true }: Props) {
   const [url, setUrl] = useState(source)
+  // Anonymous visitors get the sign-in overlay immediately (dismissible —
+  // they can read the whole template; Deploy/Connect reopen it).
+  const [authOpen, setAuthOpen] = useState(!authenticated)
   // Deploy target: create a fresh agent, or redeploy the bundle onto an
   // existing one (spec-owned fields update in place; the agent keeps its
   // name, slug, memory and anything added outside the bundle). An agent
@@ -223,6 +232,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 
   // Composio OAuth in a popup — same flow the inline chat card uses.
   async function connectIntegration(service: string) {
+    if (!authenticated) { setAuthOpen(true); return }
     setConnectBusy(service)
     setConnectError(null)
     try {
@@ -252,6 +262,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // Save a secret as an org-level generic credential. Provider derives
   // from the secret name so the agent's secrets.get resolves it later.
   async function saveSecret(name: string) {
+    if (!authenticated) { setAuthOpen(true); return }
     const value = (secretValues[name] || "").trim()
     if (!value) return
     setSecretBusy(name)
@@ -304,6 +315,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const missingInputs = bundleInputs.filter((i) => i.required && !(inputValues[i.key] || "").trim()).map((i) => i.label)
 
   function deploy() {
+    if (!authenticated) { setAuthOpen(true); return }
     setDeployError(null)
     setDeploying(true)
     router.post("/agent_bundles", {
@@ -339,8 +351,11 @@ export default function DeployAgent({ source, upload, preview, error, connected_
     })
   }
 
-  return (
-    <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Deploy agent" }]}>
+  // One body, two shells: the normal workspace layout when signed in, a
+  // minimal public shell + sign-in overlay when not — the visitor reads
+  // the full template either way.
+  const pageBody = (
+    <>
       <Head title="Deploy agent bundle" />
       <PageHeader
         eyebrow="Deploy"
@@ -927,7 +942,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
               {deployError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
               )}
-              {missingRequired.length > 0 && (
+              {authenticated && missingRequired.length > 0 && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                   <span>
@@ -935,7 +950,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   </span>
                 </div>
               )}
-              {missingInputs.length > 0 && (
+              {authenticated && missingInputs.length > 0 && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                   <span>
@@ -947,25 +962,116 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 <Button
                   type="button"
                   onClick={deploy}
-                  disabled={deploying || missingRequired.length > 0 || missingInputs.length > 0}
-                  title={missingRequired.length > 0 ? `Connect ${missingRequired.join(", ")} first` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
+                  disabled={deploying || (authenticated && (missingRequired.length > 0 || missingInputs.length > 0))}
+                  title={!authenticated ? undefined : missingRequired.length > 0 ? `Connect ${missingRequired.join(", ")} first` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
                 >
                   <Rocket className="size-4 mr-1.5" />
-                  {deploying
-                    ? (updating ? "Redeploying…" : "Deploying…")
-                    : missingRequired.length > 0
-                      ? `Connect ${missingRequired[0]} to deploy`
-                      : missingInputs.length > 0
-                        ? `Fill in ${missingInputs[0]} to deploy`
-                        : updating
-                          ? `Redeploy to ${targetAgent?.name || "agent"}`
-                          : `Deploy ${agentName.trim() || preview.name}`}
+                  {!authenticated
+                    ? `Sign in to deploy ${preview.name}`
+                    : deploying
+                      ? (updating ? "Redeploying…" : "Deploying…")
+                      : missingRequired.length > 0
+                        ? `Connect ${missingRequired[0]} to deploy`
+                        : missingInputs.length > 0
+                          ? `Fill in ${missingInputs[0]} to deploy`
+                          : updating
+                            ? `Redeploy to ${targetAgent?.name || "agent"}`
+                            : `Deploy ${agentName.trim() || preview.name}`}
                 </Button>
               </div>
             </section>
           </>
         )}
       </div>
+    </>
+  )
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/80 px-5 py-3 backdrop-blur">
+          <a href="/" className="text-sm font-semibold tracking-tight">double<span className="text-muted-foreground">.md</span></a>
+          <Button size="sm" className="h-8" onClick={() => setAuthOpen(true)}>Sign in</Button>
+        </header>
+        <main className="mx-auto max-w-3xl px-4 py-8">{pageBody}</main>
+        <AuthOverlay open={authOpen} onClose={() => setAuthOpen(false)} bundleName={preview?.name || null} />
+      </div>
+    )
+  }
+
+  return (
+    <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Deploy agent" }]}>
+      {pageBody}
     </AppLayout>
+  )
+}
+
+// Sign-in overlay for anonymous deploy links — the template stays visible
+// behind it, and Devise's stored location brings the user back to this
+// exact URL (source/upload params intact) after authenticating.
+function AuthOverlay({ open, onClose, bundleName }: { open: boolean; onClose: () => void; bundleName: string | null }) {
+  const { data, setData, post, processing } = useForm({ user: { email: "", password: "" } })
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    post(userSessionPath())
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            {bundleName ? `Sign in to deploy ${bundleName}` : "Sign in to deploy"}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-1">
+          The template stays right here — you'll come back to this exact page after signing in. Close this to keep reading.
+        </p>
+
+        <GoogleSignInButton label="Continue with Google" />
+        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
+          <div className="h-px flex-1 bg-border" />
+          <span>or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <form onSubmit={submit} className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="hook-auth-email" className="text-xs">Email</Label>
+            <Input
+              id="hook-auth-email"
+              type="email"
+              placeholder="you@company.com"
+              value={data.user.email}
+              onChange={(e) => setData("user", { ...data.user, email: e.target.value })}
+              required
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="hook-auth-password" className="text-xs">Password</Label>
+            <Input
+              id="hook-auth-password"
+              type="password"
+              placeholder="••••••••"
+              value={data.user.password}
+              onChange={(e) => setData("user", { ...data.user, password: e.target.value })}
+              required
+              className="h-9"
+            />
+          </div>
+          <Button type="submit" className="h-9 w-full" disabled={processing}>
+            {processing ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+
+        <p className="text-center text-xs text-muted-foreground">
+          No account?{" "}
+          <a href="/users/sign_up" className="font-medium text-foreground hover:underline">Create one</a>
+          {" — "}it comes back here too.
+        </p>
+      </DialogContent>
+    </Dialog>
   )
 }

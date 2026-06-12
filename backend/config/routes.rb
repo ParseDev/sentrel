@@ -125,6 +125,13 @@ Rails.application.routes.draw do
   # happens.
   post "agent_bundles/upload", to: "agent_bundles#upload", as: :upload_agent_bundles
 
+  # Shareable deploy link — the "Deploy to double.md" button target:
+  #   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
+  # PUBLIC: anonymous visitors get the full bundle preview with a sign-in
+  # overlay (the controller stores the return location); deploying still
+  # requires auth via POST /agent_bundles.
+  get "deploy-agent", to: "agent_bundles#new", as: :deploy_agent
+
   # Authenticated routes
   authenticate :user do
     # Stop an in-flight admin masquerade. Lives outside /admin because
@@ -155,11 +162,6 @@ Rails.application.routes.draw do
     # GitHub URL or an uploaded .tar.gz — the server half of
     # `npx agentmanifest deploy`.
     resources :agent_bundles, only: [ :create ]
-    # Shareable deploy link — the "Deploy to double.md" button target:
-    #   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
-    # Fetches + previews the bundle (persona, skills, secrets, channels);
-    # one click deploys via POST /agent_bundles.
-    get "deploy-agent", to: "agent_bundles#new", as: :deploy_agent
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
       resources :conversations, only: [ :index, :show ] do

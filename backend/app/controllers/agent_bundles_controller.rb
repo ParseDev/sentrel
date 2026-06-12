@@ -21,7 +21,11 @@
 # new agent's page with a notice listing what's left to connect
 # (integrations, secrets, pending channels).
 class AgentBundlesController < ApplicationController
-  before_action :authenticate_user!, except: :upload
+  # :new is public — shared deploy links and the CLI handshake shouldn't
+  # dead-end on a login page with zero context. Anonymous visitors see
+  # the full bundle preview with a sign-in overlay; deploying (#create)
+  # still requires auth.
+  before_action :authenticate_user!, except: [ :upload, :new ]
   skip_before_action :verify_authenticity_token, only: :upload
 
   UPLOAD_TTL = 30.minutes
@@ -33,13 +37,19 @@ class AgentBundlesController < ApplicationController
   # they're installing before clicking Deploy. Without ?source= it's an
   # empty form — paste a URL, Load, review, Deploy.
   def new
+    # Anonymous visitor: remember this exact URL (source/upload params and
+    # all) so Devise lands them right back here after sign-in.
+    store_location_for(:user, request.fullpath) unless user_signed_in?
+
     # Heal connection statuses before rendering — same debounced sync as
     # /integrations, so the wizard's Connected badges and required-gating
     # reflect Composio's live state, not a stale local snapshot.
-    sync_key = "composio:sync:org_#{current_tenant.id}:user_#{current_user.id}"
-    if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(sync_key).blank?
-      Rails.cache.write(sync_key, Time.current, expires_in: 60.seconds)
-      ComposioConnectionSync.call(organization: current_tenant, user: current_user)
+    if user_signed_in?
+      sync_key = "composio:sync:org_#{current_tenant.id}:user_#{current_user.id}"
+      if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(sync_key).blank?
+        Rails.cache.write(sync_key, Time.current, expires_in: 60.seconds)
+        ComposioConnectionSync.call(organization: current_tenant, user: current_user)
+      end
     end
 
     source = params[:source].to_s.strip
@@ -78,13 +88,16 @@ class AgentBundlesController < ApplicationController
       # Existing agents so the wizard can offer "update an existing agent
       # from this bundle" (redeploy) instead of creating a new one.
       # ?agent_id= preselects update mode (deep-link from an agent page).
-      agents: current_tenant.agents.order(:name).map { |a| { id: a.to_param, name: a.name, slug: a.slug } },
+      agents: user_signed_in? ? current_tenant.agents.order(:name).map { |a| { id: a.to_param, name: a.name, slug: a.slug } } : [],
       agent_id: params[:agent_id].to_s.presence,
+      # Anonymous visitors get the preview but no org state — the page
+      # shows a sign-in overlay and gates Deploy/Connect behind it.
+      authenticated: user_signed_in?,
       # Org state so the wizard renders live status on the bundle's
       # requirements: which Composio services are already connected, and
       # which credential providers already have a stored secret.
-      connected_services: current_tenant.integrations.where(status: "connected").pluck(:service_name).uniq,
-      credential_providers: current_tenant.credentials.pluck(:provider).uniq,
+      connected_services: user_signed_in? ? current_tenant.integrations.where(status: "connected").pluck(:service_name).uniq : [],
+      credential_providers: user_signed_in? ? current_tenant.credentials.pluck(:provider).uniq : [],
       # Canonical platform skills the user can tick onto the agent at
       # deploy — these aren't in the bundle (bundles only ship custom
       # skills); they live on the platform and install by slug.
