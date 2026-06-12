@@ -200,7 +200,9 @@ interface Props {
     allow_amendment: boolean
     created_at: string
   }>
-  pending_approvals_by_conversation?: Record<number, number>
+  // Keyed by BOTH prefixed (cnv_…) and raw conversation ids — see
+  // agents_controller. Values are pending-approval counts.
+  pending_approvals_by_conversation?: Record<string | number, number>
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
@@ -548,8 +550,14 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
   const [convMessages, setConvMessages] = useState<MessageItem[]>([])
   const [convApprovals, setConvApprovals] = useState<InboxApproval[]>([])
   // Live copy of the server's conv_id → pending-approval count, so badge
-  // counts drop immediately when a decision lands (no page reload).
-  const [pendingByConv, setPendingByConv] = useState<Record<number, number>>(pending_approvals_by_conversation)
+  // counts drop immediately when a decision lands (no page reload). The
+  // server keys the map by BOTH the prefixed id (cnv_…, what conversation
+  // rows carry) and the raw id (what email rows carry); resync whenever
+  // the prop refreshes via partial reloads (e.g. rail decisions).
+  const [pendingByConv, setPendingByConv] = useState<Record<string | number, number>>(pending_approvals_by_conversation)
+  useEffect(() => {
+    setPendingByConv(pending_approvals_by_conversation)
+  }, [pending_approvals_by_conversation])
   const [approvalBusy, setApprovalBusy] = useState<number | null>(null)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
@@ -623,6 +631,8 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         // it a beat, then refetch so the sent message lands in the thread.
         if (status === "approved") setTimeout(() => refreshConversation(convId), 2000)
       }
+      // Re-sync the rail count + the dual-keyed badge map from the server.
+      router.reload({ only: ["rail", "pending_approvals_by_conversation"] })
       toast.success(status === "approved" ? "Approved — the agent is proceeding" : "Rejected")
     } catch {
       toast.error("Couldn't submit the decision — try again")
@@ -654,9 +664,15 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     ...conversations.map((c) => c.channel).filter(Boolean) as string[],
   ])]
 
-  const tabs: { key: Section; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[] = [
+  // Threads blocked on a human decision — count only the prefixed keys
+  // (the map is dual-keyed, so summing every entry would double-count).
+  const inboxNeedsAction = Object.entries(pendingByConv)
+    .filter(([k, v]) => String(k).startsWith("cnv_") && v > 0)
+    .reduce((sum, [, v]) => sum + v, 0)
+
+  const tabs: { key: Section; label: string; icon: React.ComponentType<{ className?: string }>; count?: number; alert?: number }[] = [
     { key: "chat", label: "Chat", icon: Send },
-    { key: "inbox", label: "Inbox", icon: MessageSquare, count: conversations.length },
+    { key: "inbox", label: "Inbox", icon: MessageSquare, count: conversations.length, alert: inboxNeedsAction },
     { key: "tasks", label: "Tasks", icon: CheckSquare, count: tasks.length },
     { key: "schedule", label: "Schedule", icon: Clock, count: scheduled_tasks.length },
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
@@ -703,6 +719,12 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                 <span className={`text-[10px] rounded px-1.5 py-0.5 font-mono leading-none ${
                   active ? "bg-foreground/10" : "bg-muted"
                 }`}>{tab.count}</span>
+              )}
+              {(tab.alert || 0) > 0 && (
+                <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-mono leading-none text-amber-600 dark:text-amber-400" title="Needs your approval">
+                  <ShieldCheck className="size-2.5" />
+                  {tab.alert}
+                </span>
               )}
               {active && (
                 <div className="absolute bottom-0 left-4 right-4 h-0.5 bg-[var(--color-cyan)] rounded-t" />

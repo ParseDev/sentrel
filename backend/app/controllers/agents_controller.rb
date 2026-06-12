@@ -211,11 +211,19 @@ class AgentsController < ApplicationController
       approvals_by_message: approvals_by_message,
       pending_action_approvals: pending_action_approvals,
       # conversation_id → pending-approval count, so the inbox list can
-      # flag threads that are blocked on a human decision.
-      pending_approvals_by_conversation: Message
-        .where(id: @agent.pending_approvals.where(status: "pending").select(:message_id))
-        .group(:conversation_id)
-        .count,
+      # flag threads blocked on a human decision. Keyed by BOTH the
+      # prefixed id (cnv_… — what conversation rows serialize as) and the
+      # raw id (what Message#conversation_id ships on email rows).
+      pending_approvals_by_conversation: begin
+        raw = Message
+          .where(id: @agent.pending_approvals.where(status: "pending").select(:message_id))
+          .group(:conversation_id)
+          .count
+        Conversation.where(id: raw.keys).each_with_object({}) { |c, h|
+          h[c.prefix_id] = raw[c.id]
+          h[c.id] = raw[c.id]
+        }
+      end,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
         only: [ :id, :title, :status, :priority, :due_at, :completed_at ]
       ),
@@ -569,6 +577,12 @@ class AgentsController < ApplicationController
             payload_type: a.payload_type,
             risk_tier: a.risk_tier,
             input_preview: input_preview,
+            # Full payload + decision options so the rail can render a
+            # complete preview modal and approve/reject without leaving
+            # the page.
+            tool_input: a.tool_input,
+            context: a.context,
+            options: a.options,
             created_at: a.created_at,
           }
         },

@@ -14,7 +14,13 @@ import {
   Pencil,
   PanelRightClose,
   PanelRight,
+  Check,
+  X,
 } from "lucide-react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { Agent } from "@/types"
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -26,6 +32,9 @@ interface PendingApproval {
   payload_type: string | null
   risk_tier: string | null
   input_preview: string | null
+  tool_input?: Record<string, unknown> | null
+  context?: string | null
+  options?: Array<{ label: string; value: string }> | null
   created_at: string
 }
 
@@ -186,6 +195,34 @@ function RailCard({
 
 function ApprovalsCard({ agent, approvals }: { agent: Agent; approvals: PendingApproval[] }) {
   const count = approvals.length
+  const [openApproval, setOpenApproval] = useState<PendingApproval | null>(null)
+  const [busy, setBusy] = useState<number | null>(null)
+  // Hide rows the user just decided so the card updates instantly; the
+  // Inertia partial reload right after re-syncs from the server.
+  const [decidedIds, setDecidedIds] = useState<Set<number>>(new Set())
+
+  async function decide(a: PendingApproval, status: "approved" | "rejected", decision?: string) {
+    setBusy(a.id)
+    try {
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      const res = await fetch(`/pending_approvals/${a.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
+        body: JSON.stringify(decision ? { status, decision } : { status }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setDecidedIds((prev) => new Set(prev).add(a.id))
+      setOpenApproval(null)
+      toast.success(status === "approved" ? "Approved — the agent is proceeding" : "Rejected")
+      router.reload({ only: ["rail", "pending_approvals_by_conversation"] })
+    } catch {
+      toast.error("Couldn't submit the decision — try again")
+    }
+    setBusy(null)
+  }
+
+  const visible = approvals.filter((a) => !decidedIds.has(a.id))
+
   return (
     <RailCard
       storageKey="approvals"
@@ -199,11 +236,11 @@ function ApprovalsCard({ agent, approvals }: { agent: Agent; approvals: PendingA
         ) : null
       }
     >
-      {approvals.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="text-[11px] text-muted-foreground">Nothing waiting on you.</p>
       ) : (
         <ul className="space-y-1.5">
-          {approvals.slice(0, 5).map((a) => {
+          {visible.slice(0, 5).map((a) => {
             // Pick the best primary label. Older generic approvals only
             // have tool_name; newer action approvals carry a summary +
             // payload_type. Show every signal we have.
@@ -211,20 +248,48 @@ function ApprovalsCard({ agent, approvals }: { agent: Agent; approvals: PendingA
             const meta = [ a.payload_type, a.risk_tier ].filter(Boolean).join(" · ")
             return (
               <li key={a.id} className="rounded border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
-                <p className="text-[11px] font-medium text-foreground line-clamp-2">{primary}</p>
-                {a.input_preview && (
-                  <p className="mt-0.5 text-[10px] text-muted-foreground line-clamp-1 font-mono">{a.input_preview}</p>
-                )}
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {meta || "generic"} · {timeAgo(a.created_at)}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setOpenApproval(a)}
+                  className="block w-full text-left"
+                  title="View full request"
+                >
+                  <p className="text-[11px] font-medium text-foreground line-clamp-2">{primary}</p>
+                  {a.input_preview && (
+                    <p className="mt-0.5 text-[10px] text-muted-foreground line-clamp-1 font-mono">{a.input_preview}</p>
+                  )}
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {meta || "generic"} · {timeAgo(a.created_at)}
+                  </p>
+                </button>
+                <div className="mt-1.5 flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    className="h-6 flex-1 text-[10px] px-2"
+                    disabled={busy === a.id}
+                    onClick={() => decide(a, "approved")}
+                  >
+                    <Check className="size-3 mr-0.5" />
+                    {busy === a.id ? "…" : "Approve"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 flex-1 text-[10px] px-2"
+                    disabled={busy === a.id}
+                    onClick={() => decide(a, "rejected")}
+                  >
+                    <X className="size-3 mr-0.5" />
+                    Reject
+                  </Button>
+                </div>
               </li>
             )
           })}
-          {approvals.length > 5 && (
+          {visible.length > 5 && (
             <li>
               <Link href={`/agents/${agent.id}?tab=approvals`} className="text-[11px] text-foreground/80 hover:underline">
-                + {approvals.length - 5} more
+                + {visible.length - 5} more
               </Link>
             </li>
           )}
@@ -235,7 +300,120 @@ function ApprovalsCard({ agent, approvals }: { agent: Agent; approvals: PendingA
           </li>
         </ul>
       )}
+      <ApprovalModal
+        approval={openApproval}
+        agentName={agent.name}
+        busy={openApproval != null && busy === openApproval.id}
+        onClose={() => setOpenApproval(null)}
+        onDecide={decide}
+      />
     </RailCard>
+  )
+}
+
+// Full-preview modal for a rail approval — complete email (To/CC/Subject/
+// body) or payload, plus the decision buttons. Same PATCH as everywhere.
+function ApprovalModal({
+  approval,
+  agentName,
+  busy,
+  onClose,
+  onDecide,
+}: {
+  approval: PendingApproval | null
+  agentName: string
+  busy: boolean
+  onClose: () => void
+  onDecide: (a: PendingApproval, status: "approved" | "rejected", decision?: string) => void
+}) {
+  if (!approval) return null
+  const isEmail = approval.tool_name === "send_email"
+  const input = (approval.tool_input || {}) as Record<string, unknown>
+  const actionLabel = (approval.payload_type || approval.tool_name || "action").replace(/_/g, " ")
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <ShieldCheck className="size-4 text-amber-500" />
+            {agentName} wants to
+            <Badge variant="secondary" className="font-mono text-[10px] capitalize">{actionLabel}</Badge>
+            {approval.risk_tier === "high" && (
+              <Badge variant="secondary" className="font-mono text-[10px] bg-red-500/10 text-red-400 border-red-400/20">high risk</Badge>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        {approval.summary && <p className="text-sm font-medium">{approval.summary}</p>}
+
+        {isEmail ? (
+          <div className="space-y-2">
+            <div className="space-y-1 text-xs">
+              <div className="flex gap-2">
+                <span className="w-12 text-muted-foreground shrink-0">To</span>
+                <span className="font-medium">{Array.isArray(input.to) ? (input.to as string[]).join(", ") : String(input.to || "—")}</span>
+              </div>
+              {Array.isArray(input.cc) && (input.cc as string[]).length > 0 && (
+                <div className="flex gap-2">
+                  <span className="w-12 text-muted-foreground shrink-0">CC</span>
+                  <span>{(input.cc as string[]).join(", ")}</span>
+                </div>
+              )}
+              {!!input.subject && (
+                <div className="flex gap-2">
+                  <span className="w-12 text-muted-foreground shrink-0">Subject</span>
+                  <span className="font-medium">{String(input.subject)}</span>
+                </div>
+              )}
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+              {String(input.body_text || input.body_html || "")}
+            </div>
+          </div>
+        ) : (
+          <>
+            {approval.context && <p className="text-xs text-muted-foreground">{approval.context}</p>}
+            {Object.keys(input).length > 0 && (
+              <pre className="rounded-md border bg-muted/30 p-3 text-[11px] font-mono whitespace-pre-wrap max-h-72 overflow-y-auto">
+                {JSON.stringify(input, null, 2)}
+              </pre>
+            )}
+          </>
+        )}
+
+        <div className="flex gap-2 justify-end pt-1">
+          {approval.options && approval.options.length > 0 ? (
+            approval.options.map((opt) => {
+              const isReject = opt.value === "reject" || opt.value === "rejected" || opt.value === "cancel"
+              return (
+                <Button
+                  key={opt.value}
+                  variant={isReject ? "outline" : "default"}
+                  size="sm"
+                  className="h-8 text-xs px-3"
+                  disabled={busy}
+                  onClick={() => onDecide(approval, isReject ? "rejected" : "approved", opt.value)}
+                >
+                  {opt.label}
+                </Button>
+              )
+            })
+          ) : (
+            <>
+              <Button variant="outline" size="sm" className="h-8 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "rejected")}>
+                <X className="size-3.5 mr-1" />
+                Reject
+              </Button>
+              <Button size="sm" className="h-8 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "approved")}>
+                <Check className="size-3.5 mr-1" />
+                {busy ? "Sending…" : isEmail ? "Approve & send" : "Approve"}
+              </Button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
