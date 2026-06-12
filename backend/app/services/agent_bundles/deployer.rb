@@ -302,11 +302,24 @@ module AgentBundles
         chosen = (@integration_choices & group["any_of"].map(&:to_s)).first
         services << (chosen || group["any_of"].first.to_s)
       end
-      services = services.uniq
+      # Don't nag about services the org already has connected. Compare on
+      # a normalized form — Composio slugs ("googlecalendar") and stored
+      # service_names ("google_calendar", "GOOGLECALENDAR") drift in
+      # casing/separators depending on which surface created the row.
+      connected = @org.integrations.where(status: "connected")
+                      .pluck(:service_name)
+                      .map { |s| normalize_service(s) }
+                      .to_set
+      services = services.uniq.reject { |s| connected.include?(normalize_service(s)) }
       @notices << "Connect at /integrations: #{services.join(', ')}" if services.any?
       mcp = @m.integrations.select { |i| i["type"] == "mcp" }.filter_map { |i| i["name"] }
       @notices << "MCP integrations aren't supported yet (skipped): #{mcp.join(', ')}" if mcp.any?
       @notices << "Add secrets at /settings/credentials: #{@m.secret_names.join(', ')}" if @m.secret_names.any?
+    end
+
+    # "google_calendar" / "Google-Calendar" / "GOOGLECALENDAR" → "googlecalendar"
+    def normalize_service(s)
+      s.to_s.downcase.gsub(/[^a-z0-9]/, "")
     end
 
     def sanitize_slug(s)

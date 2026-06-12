@@ -83,6 +83,12 @@ function csrfToken(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 }
 
+// Service-name comparisons must survive naming drift between Composio
+// toolkit slugs ("googlecalendar") and stored service_names
+// ("google_calendar", "GOOGLECALENDAR") — normalize to lowercase
+// alphanumerics before comparing, mirroring Deployer#normalize_service.
+const normSvc = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+
 interface KpiRow {
   key: string
   value: string
@@ -118,21 +124,21 @@ export default function DeployAgent({ source, preview, error, connected_services
   // (e.g. which calendar to use). Default = the first option that's
   // already connected in the org, else the first option.
   const choiceGroups = (preview?.integrations || []).filter((i) => i.kind === "choice") as Array<{ kind: "choice"; options: string[]; required?: boolean; why: string | null }>
-  const initialConnected = new Set(connected_services.map((s) => s.toLowerCase()))
+  const initialConnected = new Set(connected_services.map(normSvc))
   const [integrationChoices, setIntegrationChoices] = useState<string[]>(
-    choiceGroups.map((g) => g.options.find((o) => initialConnected.has(o.toLowerCase())) || g.options[0]),
+    choiceGroups.map((g) => g.options.find((o) => initialConnected.has(normSvc(o))) || g.options[0]),
   )
 
   // Platform skills pre-ticked when their required integration is part of
   // the bundle — plain services plus the chosen alternative from each
   // any_of group. Changing a choice swaps the auto-ticked skills for
   // that group's options without touching manual picks elsewhere.
-  const plainServices = (preview?.integrations || []).filter((i) => i.kind === "composio").map((i) => i.service.toLowerCase())
-  const effectiveServices = new Set([...plainServices, ...integrationChoices.map((c) => c.toLowerCase())])
+  const plainServices = (preview?.integrations || []).filter((i) => i.kind === "composio").map((i) => normSvc(i.service))
+  const effectiveServices = new Set([...plainServices, ...integrationChoices.map(normSvc)])
   const [pickedPlatformSkills, setPickedPlatformSkills] = useState<Set<string>>(
     new Set(
       platform_skills
-        .filter((s) => s.requires_connections.some((c) => effectiveServices.has(c.toLowerCase())))
+        .filter((s) => s.requires_connections.some((c) => effectiveServices.has(normSvc(c))))
         .map((s) => s.slug),
     ),
   )
@@ -143,15 +149,15 @@ export default function DeployAgent({ source, preview, error, connected_services
     setIntegrationChoices(integrationChoices.map((c, i) => (i === groupIdx ? service : c)))
     // Swap auto-ticked skills: drop skills tied ONLY to other options of
     // this group, add skills matching the new choice.
-    const groupOptions = new Set(group.options.map((o) => o.toLowerCase()))
+    const groupOptions = new Set(group.options.map(normSvc))
     setPickedPlatformSkills((prev) => {
       const next = new Set(prev)
       for (const s of platform_skills) {
-        const reqs = s.requires_connections.map((c) => c.toLowerCase())
+        const reqs = s.requires_connections.map(normSvc)
         const tiedToGroup = reqs.some((c) => groupOptions.has(c))
         if (!tiedToGroup) continue
-        if (reqs.includes(service.toLowerCase())) next.add(s.slug)
-        else if (reqs.includes(previous?.toLowerCase() || "")) next.delete(s.slug)
+        if (reqs.includes(normSvc(service))) next.add(s.slug)
+        else if (reqs.includes(normSvc(previous || ""))) next.delete(s.slug)
       }
       return next
     })
@@ -171,7 +177,7 @@ export default function DeployAgent({ source, preview, error, connected_services
 
   // Live connect state — seeded from org data, updated as the user
   // connects / saves inside the wizard.
-  const [connected, setConnected] = useState<Set<string>>(new Set(connected_services.map((s) => s.toLowerCase())))
+  const [connected, setConnected] = useState<Set<string>>(new Set(connected_services.map(normSvc)))
   const [savedSecrets, setSavedSecrets] = useState<Set<string>>(
     new Set((preview?.secrets || []).filter((s) => credential_providers.map((p) => p.toLowerCase()).includes(providerFromSecretName(s)))),
   )
@@ -195,7 +201,7 @@ export default function DeployAgent({ source, preview, error, connected_services
         const timer = setInterval(() => {
           if (popup?.closed) {
             clearInterval(timer)
-            setConnected((prev) => new Set([...prev, service.toLowerCase()]))
+            setConnected((prev) => new Set([...prev, normSvc(service)]))
           }
         }, 500)
       } else {
@@ -253,10 +259,10 @@ export default function DeployAgent({ source, preview, error, connected_services
     ...(preview?.integrations || [])
       .filter((i): i is { service: string; kind: "composio"; required?: boolean; why: string | null } => i.kind === "composio" && !!i.required)
       .map((i) => i.service)
-      .filter((s) => !connected.has(s.toLowerCase())),
+      .filter((s) => !connected.has(normSvc(s))),
     ...choiceGroups
       .map((g, gi) => (g.required ? integrationChoices[gi] : null))
-      .filter((s): s is string => !!s && !connected.has(s.toLowerCase())),
+      .filter((s): s is string => !!s && !connected.has(normSvc(s))),
   ]
 
   function deploy() {
@@ -623,7 +629,7 @@ export default function DeployAgent({ source, preview, error, connected_services
                   {preview.integrations
                     .filter((i): i is { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null } => i.kind !== "choice")
                     .map((i) => {
-                      const isConnected = connected.has(i.service.toLowerCase())
+                      const isConnected = connected.has(normSvc(i.service))
                       return (
                         <div key={`${i.kind}-${i.service}`} className="flex items-center gap-2 px-4 py-2.5 text-xs">
                           <Plug className="size-3.5 text-muted-foreground" />
@@ -652,8 +658,8 @@ export default function DeployAgent({ source, preview, error, connected_services
                       class; if none is connected yet, nudge to connect one. */}
                   {choiceGroups.map((group, gi) => {
                     const chosen = integrationChoices[gi]
-                    const chosenConnected = !!chosen && connected.has(chosen.toLowerCase())
-                    const anyConnected = group.options.some((o) => connected.has(o.toLowerCase()))
+                    const chosenConnected = !!chosen && connected.has(normSvc(chosen))
+                    const anyConnected = group.options.some((o) => connected.has(normSvc(o)))
                     return (
                       <div key={`choice-${gi}`} className="px-4 py-3 text-xs space-y-2">
                         <div className="flex items-center gap-2">
@@ -667,7 +673,7 @@ export default function DeployAgent({ source, preview, error, connected_services
                         </div>
                         <div className="grid gap-1.5 sm:grid-cols-2">
                           {group.options.map((service) => {
-                            const isConnected = connected.has(service.toLowerCase())
+                            const isConnected = connected.has(normSvc(service))
                             const isChosen = chosen === service
                             return (
                               <button
