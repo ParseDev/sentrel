@@ -45,13 +45,33 @@ export const CURATED_TOOLS: Record<string, string[]> = {
     "GMAIL_REPLY_TO_EMAIL",
   ],
   github: [
-    "GITHUB_CREATE_ISSUE",
-    "GITHUB_LIST_REPOSITORIES",
-    "GITHUB_GET_ISSUE",
-    "GITHUB_LIST_ISSUES",
-    "GITHUB_ADD_COMMENT_TO_ISSUE",
-    "GITHUB_UPDATE_ISSUE",
-    "GITHUB_CREATE_PULL_REQUEST",
+    // Verified against Composio /api/v3/tools (2026-06) — the old list
+    // (GITHUB_CREATE_ISSUE, GITHUB_LIST_ISSUES, …) used names that DON'T
+    // EXIST; Composio silently dropped every one of them. Same failure
+    // mode as the Apollo incident. Covers the bug-fixer workflow:
+    // read code → branch → commit via API → PR → comment.
+    "GITHUB_GET_A_REPOSITORY",
+    "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_SEARCH_REPOSITORIES",
+    "GITHUB_GET_REPOSITORY_CONTENT",
+    "GITHUB_SEARCH_CODE",
+    "GITHUB_LIST_BRANCHES",
+    "GITHUB_GET_A_REFERENCE",
+    "GITHUB_CREATE_A_REFERENCE",
+    "GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS",
+    "GITHUB_DELETE_A_FILE",
+    "GITHUB_LIST_COMMITS",
+    "GITHUB_GET_A_COMMIT",
+    "GITHUB_CREATE_A_PULL_REQUEST",
+    "GITHUB_LIST_PULL_REQUESTS",
+    "GITHUB_GET_A_PULL_REQUEST",
+    "GITHUB_LIST_PULL_REQUESTS_FILES",
+    "GITHUB_CREATE_AN_ISSUE",
+    "GITHUB_GET_AN_ISSUE",
+    "GITHUB_UPDATE_AN_ISSUE",
+    "GITHUB_LIST_REPOSITORY_ISSUES",
+    "GITHUB_CREATE_AN_ISSUE_COMMENT",
+    "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
   ],
   slack: [
     "SLACK_SEND_MESSAGE",
@@ -96,11 +116,34 @@ export const CURATED_TOOLS: Record<string, string[]> = {
     "STRIPE_CREATE_PAYMENT_LINK",
   ],
   linear: [
-    "LINEAR_CREATE_ISSUE",
-    "LINEAR_LIST_ISSUES",
+    // Verified against Composio /api/v3/tools (2026-06) — Linear slugs
+    // repeat the product name (LINEAR_CREATE_LINEAR_ISSUE); the old
+    // shorter names didn't exist (only LINEAR_UPDATE_ISSUE was real).
+    "LINEAR_LIST_LINEAR_ISSUES",
+    "LINEAR_GET_LINEAR_ISSUE",
+    "LINEAR_CREATE_LINEAR_ISSUE",
     "LINEAR_UPDATE_ISSUE",
-    "LINEAR_GET_ISSUE",
-    "LINEAR_LIST_PROJECTS",
+    "LINEAR_CREATE_LINEAR_COMMENT",
+    "LINEAR_LIST_LINEAR_PROJECTS",
+    "LINEAR_LIST_LINEAR_TEAMS",
+    "LINEAR_LIST_LINEAR_STATES",
+    "LINEAR_LIST_LINEAR_LABELS",
+  ],
+  sentry: [
+    // Triage-focused subset (the toolkit has 176 tools, mostly org
+    // admin/SCIM/release management). Read issues + events, update
+    // status — no deletes.
+    "SENTRY_RETRIEVE_PROJECT_ISSUES_LIST",
+    "SENTRY_GET_ORGANIZATION_ISSUE_DETAILS",
+    "SENTRY_RETRIEVE_ISSUE_EVENTS_BY_ID",
+    "SENTRY_FETCH_ISSUE_EVENT_BY_ID",
+    "SENTRY_RETRIEVE_PROJECT_EVENT_BY_ID",
+    "SENTRY_GET_PROJECT_EVENTS",
+    "SENTRY_GET_PROJECT_LIST",
+    "SENTRY_RETRIEVE_ORGANIZATION_PROJECTS",
+    "SENTRY_RETRIEVE_ISSUE_TAG_DETAILS",
+    "SENTRY_UPDATE_PROJECT_ISSUE_STATUS_AND_DETAILS",
+    "SENTRY_UPDATE_ISSUE_ATTRIBUTES_IN_ORGANIZATION",
   ],
   notion: [
     "NOTION_CREATE_PAGE",
