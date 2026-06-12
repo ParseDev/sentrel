@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// agent-spec validate — check an Agent Bundle directory against the
+// agent-manifest validate — check an Agent Bundle directory against the
 // agent-bundle/v1 spec: schema, referenced files, and secret-value scan.
 //
 // Usage: node bin/validate.mjs <bundle-dir> [--json]
@@ -15,10 +15,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(here, "..", "schema", "agent-bundle.v1.schema.json");
 
 const args = process.argv.slice(2);
+if (args[0] === "validate") args.shift(); // tolerate cli.mjs passthrough
 const asJson = args.includes("--json");
 const dir = args.find((a) => !a.startsWith("--"));
 if (!dir) {
-  console.error("Usage: agent-spec validate <bundle-dir> [--json]");
+  console.error("Usage: agent-manifest validate <bundle-dir> [--json]");
   process.exit(2);
 }
 

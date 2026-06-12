@@ -139,9 +139,9 @@ Rails.application.routes.draw do
     end
 
     get "agents/tree", to: "agents#tree", as: :agents_tree
-    # Deploy an agent-bundle/v1 folder (the open agent-spec format) from a
+    # Deploy an agent-bundle/v1 folder (the open agent-manifest format) from a
     # GitHub URL or an uploaded .tar.gz — the server half of
-    # `npx agent-spec deploy`.
+    # `npx agentmanifest deploy`.
     resources :agent_bundles, only: [ :create ]
     # Shareable deploy link — the "Deploy to double.md" button target:
     #   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]

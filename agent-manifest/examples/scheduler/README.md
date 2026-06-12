@@ -59,7 +59,7 @@ the owner and goes quiet. The cap is an invariant, not a suggestion.
 
 ## Deploy it
 
-From a workspace: `/deploy-agent?source=<this repo URL>/tree/main/agent-spec/examples/scheduler`
+From a workspace: `/deploy-agent?source=<this repo URL>/tree/main/agent-manifest/examples/scheduler`
 
 After deploy: connect Google Calendar + Gmail (the wizard offers both),
 fill the office address in the policy knowledge doc (or let Rio ask

@@ -1,7 +1,7 @@
 require "yaml"
 
 # Parses + validates an agent-bundle/v1 directory (the open spec from
-# agent-spec/ — agent.yaml manifest + persona markdown + skills folders
+# agent-manifest/ — agent.yaml manifest + persona markdown + skills folders
 # + knowledge docs). Operates on an in-memory file map so the same code
 # handles a GitHub tarball, an uploaded archive, or a local directory:
 #
@@ -9,7 +9,7 @@ require "yaml"
 #             "skills/apollo-enrichment/SKILL.md" => "...", ... }
 #   manifest = AgentBundles::Manifest.parse!(files)
 #
-# Mirrors the checks in agent-spec/bin/validate.mjs: schema-level
+# Mirrors the checks in agent-manifest/bin/validate.mjs: schema-level
 # requireds, referenced-file existence, and the secret-value scan
 # (bundles declare secret NAMES under secrets[], never values).
 module AgentBundles

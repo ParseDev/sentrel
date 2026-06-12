@@ -8,7 +8,7 @@ require "stringio"
 #
 #   Fetcher.from_github("https://github.com/org/repo")                 # repo root, default branch
 #   Fetcher.from_github(".../repo/tree/main/agents/sdr")               # subdir at ref
-#   Fetcher.from_tarball(io)                                           # uploaded .tar.gz (npx agent-spec deploy)
+#   Fetcher.from_tarball(io)                                           # uploaded .tar.gz (npx agentmanifest deploy)
 #
 # GitHub fetch goes through codeload (no API token needed for public
 # repos), capped at 10MB compressed. Private repos are out of scope for

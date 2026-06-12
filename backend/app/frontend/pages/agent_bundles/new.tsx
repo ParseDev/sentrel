@@ -24,6 +24,10 @@ import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe
 // EDITABLE form — rename, change model, edit the goal, rewrite any persona
 // block (with {{variable}} chips, same editor as the agent Identity tab) —
 // then POSTs the merged result to /agent_bundles.
+//
+// Two targets: create a new agent, or pick an existing one to REDEPLOY
+// the bundle onto (posts agent_id; server runs AgentBundles::Updater).
+// ?agent_id= preselects update mode for deep links from an agent page.
 
 interface Preview {
   name: string
@@ -60,6 +64,12 @@ interface ScheduleRow {
   instruction: string
 }
 
+interface ExistingAgent {
+  id: string
+  name: string
+  slug: string
+}
+
 interface Props {
   source: string
   preview: Preview | null
@@ -67,6 +77,8 @@ interface Props {
   connected_services: string[]
   credential_providers: string[]
   platform_skills: PlatformSkill[]
+  agents: ExistingAgent[]
+  agent_id: string | null
 }
 
 // "APOLLO_API_KEY" / "apollo-token" → "apollo" — same normalization the
@@ -95,8 +107,18 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, preview, error, connected_services, credential_providers, platform_skills }: Props) {
+export default function DeployAgent({ source, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id }: Props) {
   const [url, setUrl] = useState(source)
+  // Deploy target: create a fresh agent, or redeploy the bundle onto an
+  // existing one (spec-owned fields update in place; the agent keeps its
+  // name, slug, memory and anything added outside the bundle). An agent
+  // whose slug matches the bundle was probably deployed from it — that's
+  // the default pick for update mode.
+  const slugMatch = preview ? agents.find((a) => a.slug === slugify(preview.name)) : undefined
+  const [mode, setMode] = useState<"create" | "update">(agent_id ? "update" : "create")
+  const [targetAgentId, setTargetAgentId] = useState(agent_id || slugMatch?.id || agents[0]?.id || "")
+  const updating = mode === "update" && targetAgentId !== ""
+  const targetAgent = agents.find((a) => a.id === targetAgentId)
   const [agentName, setAgentName] = useState(preview?.name || "")
   const [agentSlug, setAgentSlug] = useState(preview ? slugify(preview.name) : "")
   const [agentRole, setAgentRole] = useState(preview?.role || "")
@@ -281,6 +303,10 @@ export default function DeployAgent({ source, preview, error, connected_services
     setDeploying(true)
     router.post("/agent_bundles", {
       github_url: source,
+      // agent_id flips the server to redeploy mode — the bundle updates
+      // this agent in place instead of creating a new one. Name/slug are
+      // ignored there (redeploy never renames).
+      ...(updating ? { agent_id: targetAgentId } : {}),
       agent_name: agentName.trim(),
       agent_slug: agentSlug.trim(),
       agent_role: agentRole.trim(),
@@ -301,7 +327,7 @@ export default function DeployAgent({ source, preview, error, connected_services
       platform_skill_slugs: [...pickedPlatformSkills],
       integration_choices: integrationChoices,
       inputs: inputValues,
-      save_as_template: saveAsTemplate ? "1" : "0",
+      save_as_template: !updating && saveAsTemplate ? "1" : "0",
     }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
       onFinish: () => setDeploying(false),
@@ -313,9 +339,13 @@ export default function DeployAgent({ source, preview, error, connected_services
       <Head title="Deploy agent bundle" />
       <PageHeader
         eyebrow="Deploy"
-        title={preview ? `Deploy ${agentName.trim() || preview.name}` : "Deploy an agent bundle"}
+        title={preview
+          ? (updating ? `Redeploy ${targetAgent?.name || preview.name}` : `Deploy ${agentName.trim() || preview.name}`)
+          : "Deploy an agent bundle"}
         description={preview
-          ? "Everything below comes from the bundle and is editable — rename, adjust the goal, change the model, rewrite the persona. Deploy when it looks right."
+          ? (updating
+            ? "The bundle's updated persona, goal, skills, schedules and knowledge replace what this agent was deployed with — its name, memory and your own additions stay."
+            : "Everything below comes from the bundle and is editable — rename, adjust the goal, change the model, rewrite the persona. Deploy when it looks right.")
           : "Paste a GitHub repo containing an agent-bundle/v1 (agent.yaml at its root) to preview and deploy it."}
       />
 
@@ -354,21 +384,76 @@ export default function DeployAgent({ source, preview, error, connected_services
 
         {preview && (
           <>
+            {/* Target — create a new agent, or redeploy onto an existing one */}
+            {agents.length > 0 && (
+              <section>
+                <Overline className="mb-3">Target</Overline>
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {([
+                      { value: "create" as const, label: "Create new agent", hint: "A fresh agent from this bundle" },
+                      { value: "update" as const, label: "Update existing agent", hint: "Redeploy the bundle onto a live agent" },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setMode(opt.value)}
+                        className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                          mode === opt.value ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                        }`}
+                      >
+                        <span className={`size-3 rounded-full border shrink-0 ${mode === opt.value ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
+                        <span className="min-w-0">
+                          <span className="font-medium block">{opt.label}</span>
+                          <span className="text-[10px] text-muted-foreground block truncate">{opt.hint}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {mode === "update" && (
+                    <div className="space-y-2">
+                      <Select value={targetAgentId} onValueChange={setTargetAgentId}>
+                        <SelectTrigger className="w-full [&>span]:truncate"><SelectValue placeholder="Pick an agent" /></SelectTrigger>
+                        <SelectContent>
+                          {agents.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              <span className="font-medium">{a.name}</span>
+                              <span className="text-muted-foreground"> — {a.slug}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground">
+                        Persona, goal, bundle skills, declared schedules and knowledge docs are replaced from the bundle. The agent keeps its name, slug, memory, and any skills or schedules you added yourself.
+                      </p>
+                    </div>
+                  )}
+                  {mode === "create" && slugMatch && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Heads up: <span className="font-medium">{slugMatch.name}</span> looks like it was deployed from this bundle — pick “Update existing agent” to push your changes to it instead of creating a duplicate.
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
+
             {/* Agent details — name/slug/role/model, all editable, at the top */}
             <section>
               <Overline className="mb-3">Agent details</Overline>
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 {preview.description && <p className="text-xs text-muted-foreground leading-relaxed">{preview.description}</p>}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="agent_name">Name</Label>
-                    <Input id="agent_name" value={agentName} onChange={(e) => handleNameChange(e.target.value)} placeholder={preview.name} />
+                {!updating && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="agent_name">Name</Label>
+                      <Input id="agent_name" value={agentName} onChange={(e) => handleNameChange(e.target.value)} placeholder={preview.name} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent_slug">Slug</Label>
+                      <Input id="agent_slug" value={agentSlug} onChange={(e) => setAgentSlug(e.target.value)} />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="agent_slug">Slug</Label>
-                    <Input id="agent_slug" value={agentSlug} onChange={(e) => setAgentSlug(e.target.value)} />
-                  </div>
-                </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="agent_role">Role</Label>
                   <Input id="agent_role" value={agentRole} onChange={(e) => setAgentRole(e.target.value)} placeholder="e.g. Sales Development Rep" />
@@ -792,10 +877,12 @@ export default function DeployAgent({ source, preview, error, connected_services
 
             {/* Deploy */}
             <section className="space-y-3 pb-8">
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <Checkbox checked={saveAsTemplate} onCheckedChange={(v) => setSaveAsTemplate(!!v)} />
-                Also save to the template library (versioned, re-installable)
-              </label>
+              {!updating && (
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <Checkbox checked={saveAsTemplate} onCheckedChange={(v) => setSaveAsTemplate(!!v)} />
+                  Also save to the template library (versioned, re-installable)
+                </label>
+              )}
               {deployError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
               )}
@@ -824,12 +911,14 @@ export default function DeployAgent({ source, preview, error, connected_services
                 >
                   <Rocket className="size-4 mr-1.5" />
                   {deploying
-                    ? "Deploying…"
+                    ? (updating ? "Redeploying…" : "Deploying…")
                     : missingRequired.length > 0
                       ? `Connect ${missingRequired[0]} to deploy`
                       : missingInputs.length > 0
                         ? `Fill in ${missingInputs[0]} to deploy`
-                        : `Deploy ${agentName.trim() || preview.name}`}
+                        : updating
+                          ? `Redeploy to ${targetAgent?.name || "agent"}`
+                          : `Deploy ${agentName.trim() || preview.name}`}
                 </Button>
               </div>
             </section>

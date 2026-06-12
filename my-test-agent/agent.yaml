@@ -1,0 +1,18 @@
+spec: agent-bundle/v1
+name: John
+role: Marketing manager
+description: Manage content creation and marketing
+goal:
+  mission: Bring more users on the website
+persona:
+  personality: ./personality.md
+  identity: ./identity.md
+  instructions: ./instructions.md
+model:
+  provider: anthropic
+  id: claude-fable-5
+  temperature: 0
+channels:
+  - type: email
+integrations:
+  - service: "1"

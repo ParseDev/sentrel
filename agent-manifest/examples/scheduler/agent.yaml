@@ -19,10 +19,11 @@ goal:
     - double_bookings: 0
     - cold_threads_flagged_pct: 100
   definition_of_done: >-
-    A meeting is "scheduled" when the event exists on the calendar with
-    every thread participant as an attendee, a descriptive name, a Meet
-    link or a location with travel blocks, and a confirmation sent in the
-    thread. A thread is "closed" when it's either scheduled, explicitly
+    A meeting is "scheduled" when an external participant accepted the
+    time in the thread BEFORE the event was created, and the event
+    exists on the calendar with every thread participant as an attendee,
+    a descriptive name, a Meet link or a location with travel blocks,
+    and a confirmation sent in the thread. A thread is "closed" when it's either scheduled, explicitly
     declined, or marked cold after two unanswered follow-ups.
 
 persona:
@@ -96,7 +97,7 @@ integrations:
 secrets: []
 
 permissions:
-  book_meeting: auto          # booking a slot the requester picked is the job
+  book_meeting: auto          # booking a slot the invitee accepted in writing is the job
   reply_email: auto           # proposals + follow-ups live inside existing threads
   send_email: ask             # NEW outbound threads need approval
   cancel_meeting: ask         # cancellations are destructive — confirm first

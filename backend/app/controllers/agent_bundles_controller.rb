@@ -1,8 +1,12 @@
-# Deploy an agent-bundle/v1 (the open agent-spec folder format) as a
+# Deploy an agent-bundle/v1 (the open agent-manifest folder format) as a
 # live agent. Two sources:
 #
 #   POST /agent_bundles { github_url: "https://github.com/org/repo[/tree/ref[/subdir]]" }
-#   POST /agent_bundles { bundle: <uploaded .tar.gz> }   ← what `npx agent-spec deploy` sends
+#   POST /agent_bundles { bundle: <uploaded .tar.gz> }   ← what `npx agentmanifest deploy` sends
+#
+# Either source plus agent_id REDEPLOYS: the updated bundle is applied
+# to that existing agent (AgentBundles::Updater) instead of creating a
+# new one.
 #
 # Validates against the spec (schema requireds, referenced files,
 # secret-value scan), deploys via AgentBundles::Deployer, fires the
@@ -46,6 +50,11 @@ class AgentBundlesController < ApplicationController
       source: source,
       preview: preview,
       error: error,
+      # Existing agents so the wizard can offer "update an existing agent
+      # from this bundle" (redeploy) instead of creating a new one.
+      # ?agent_id= preselects update mode (deep-link from an agent page).
+      agents: current_tenant.agents.order(:name).map { |a| { id: a.to_param, name: a.name, slug: a.slug } },
+      agent_id: params[:agent_id].to_s.presence,
       # Org state so the wizard renders live status on the bundle's
       # requirements: which Composio services are already connected, and
       # which credential providers already have a stored secret.
@@ -72,6 +81,8 @@ class AgentBundlesController < ApplicationController
       end
 
     manifest = AgentBundles::Manifest.parse!(files)
+    return redeploy(manifest) if params[:agent_id].present?
+
     result = AgentBundles::Deployer.new(
       manifest: manifest,
       user: current_user,
@@ -118,6 +129,11 @@ class AgentBundlesController < ApplicationController
       format.html { redirect_to agent_path(agent), notice: msg }
       format.json { render json: { agent_id: agent.to_param, url: agent_path(agent), notices: result.notices }, status: :created }
     end
+  rescue ActiveRecord::RecordNotFound
+    respond_to do |format|
+      format.html { redirect_back fallback_location: new_agent_path, alert: "Agent not found — it may have been deleted." }
+      format.json { render json: { error: "agent not found" }, status: :not_found }
+    end
   rescue AgentBundles::FetchError, AgentBundles::InvalidBundle, ActiveRecord::RecordInvalid => e
     Rails.logger.warn "[AgentBundles#create] deploy failed: #{e.class}: #{e.message} (source=#{params[:github_url].presence || 'tarball'}) #{e.backtrace&.first}"
     respond_to do |format|
@@ -135,6 +151,37 @@ class AgentBundlesController < ApplicationController
   end
 
   private
+
+  # Apply an updated bundle to an existing agent (the wizard's "update
+  # existing agent" mode, or a JSON POST with agent_id). Spec-owned state
+  # is replaced, operator-owned state kept — see AgentBundles::Updater.
+  # No ProvisionAgentJob (the machine already exists) and no template
+  # snapshot; EngineSync makes the running engine reload.
+  def redeploy(manifest)
+    agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
+    result = AgentBundles::Updater.new(
+      manifest: manifest,
+      agent: agent,
+      user: current_user,
+      organization: current_tenant,
+      role: params[:agent_role],
+      model: unsafe_hash(params[:model]),
+      goal: unsafe_hash(params[:goal]),
+      persona: unsafe_hash(params[:persona]),
+      schedules: unsafe_array(params[:schedules]),
+      platform_skill_slugs: params[:platform_skill_slugs],
+      integration_choices: params[:integration_choices],
+    ).call
+
+    EngineSync.trigger(agent)
+
+    msg = "#{agent.name} redeployed from bundle"
+    msg += ". Next: #{result.notices.join(' · ')}" if result.notices.any?
+    respond_to do |format|
+      format.html { redirect_to agent_path(agent), notice: msg }
+      format.json { render json: { agent_id: agent.to_param, url: agent_path(agent), notices: result.notices }, status: :ok }
+    end
+  end
 
   def unsafe_hash(p)
     return nil if p.blank?

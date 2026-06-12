@@ -1,5 +1,5 @@
 # Deploys a validated agent-bundle/v1 Manifest as a LIVE Agent in the
-# org — the server half of "npx agent-spec deploy" / "install from
+# org — the server half of "npx agentmanifest deploy" / "install from
 # GitHub". Persona markdown lands verbatim, skills upsert as org
 # SkillDefinitions (slug-collision fork, same policy as
 # AgentTemplates::Importer), channels provision pending rows, and the
@@ -172,6 +172,16 @@ module AgentBundles
     # first — straight slug lookups against canonical seeds + org skills,
     # no file content involved.
     def install_skills!(agent)
+      install_platform_skills!(agent)
+      @m.skill_bundles.each do |bundle|
+        slug = sanitize_slug(bundle[:slug])
+        next if slug.blank? || bundle[:files]["SKILL.md"].blank?
+        skill = resolve_or_create_skill(slug, bundle[:files])
+        agent.agent_skills.find_or_create_by!(skill_definition: skill).update!(enabled: true)
+      end
+    end
+
+    def install_platform_skills!(agent)
       @platform_skill_slugs.each do |slug|
         skill = SkillDefinition.where(slug: slug)
                                .where("organization_id = ? OR organization_id IS NULL", @org.id)
@@ -182,28 +192,25 @@ module AgentBundles
           @notices << "Platform skill #{slug} isn't available on this instance — skipped."
         end
       end
+    end
 
-      @m.skill_bundles.each do |bundle|
-        slug = sanitize_slug(bundle[:slug])
-        next if slug.blank? || bundle[:files]["SKILL.md"].blank?
-
-        existing = SkillDefinition.where(slug: slug)
-                                  .where("organization_id = ? OR organization_id IS NULL", @org.id)
-                                  .first
-        # The reuse-lookup above is scoped to (this org OR platform), but
-        # SkillDefinition slugs are GLOBALLY unique — another org may own
-        # the slug. available_slug forks the name in that case, otherwise
-        # cross-org deploys of the same bundle fail with "Slug has
-        # already been taken" for every org after the first.
-        skill =
-          if existing.nil?
-            create_skill!(available_slug(slug), bundle[:files])
-          elsif existing.skill_md.to_s.strip == bundle[:files]["SKILL.md"].to_s.strip
-            existing
-          else
-            create_skill!(unique_skill_slug(slug), bundle[:files])
-          end
-        agent.agent_skills.find_or_create_by!(skill_definition: skill).update!(enabled: true)
+    # Reuse-or-fork resolution for one bundle skill: reuse a content-equal
+    # org/platform skill, otherwise create.
+    def resolve_or_create_skill(slug, files)
+      existing = SkillDefinition.where(slug: slug)
+                                .where("organization_id = ? OR organization_id IS NULL", @org.id)
+                                .first
+      # The reuse-lookup above is scoped to (this org OR platform), but
+      # SkillDefinition slugs are GLOBALLY unique — another org may own
+      # the slug. available_slug forks the name in that case, otherwise
+      # cross-org deploys of the same bundle fail with "Slug has
+      # already been taken" for every org after the first.
+      if existing.nil?
+        create_skill!(available_slug(slug), files)
+      elsif existing.skill_md.to_s.strip == files["SKILL.md"].to_s.strip
+        existing
+      else
+        create_skill!(unique_skill_slug(slug), files)
       end
     end
 
@@ -287,19 +294,24 @@ module AgentBundles
     def ingest_knowledge(agent)
       docs = @m.knowledge_docs
       return if docs.empty?
-      base = ENV.fetch("ENGINE_URL", "http://localhost:3300")
-      secret = ENV["ENGINE_API_SECRET"].to_s
       ctx = substitution_context(agent.name)
       docs.each do |doc|
-        uri = URI.parse("#{base}/rag/ingest")
-        req = Net::HTTP::Post.new(uri, { "Content-Type" => "application/json", "X-Engine-Secret" => secret })
-        req.body = { agent_id: agent.id, filename: doc[:path], text: substitute(doc[:content], ctx) }.to_json
-        res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 2, read_timeout: 15) { |h| h.request(req) }
-        raise "HTTP #{res.code}" unless res.is_a?(Net::HTTPSuccess)
+        engine_request(Net::HTTP::Post, "/rag/ingest",
+          body: { agent_id: agent.id, title: doc[:path], content: substitute(doc[:content], ctx) })
       rescue => e
         Rails.logger.warn "[AgentBundles::Deployer] knowledge ingest #{doc[:path]} failed: #{e.message}"
         @notices << "Knowledge doc #{doc[:path]} couldn't be ingested yet — upload it on the Knowledge tab once the agent is running."
       end
+    end
+
+    def engine_request(method, path, body: nil)
+      base = ENV.fetch("ENGINE_URL", "http://localhost:3300")
+      uri = URI.parse("#{base}#{path}")
+      req = method.new(uri, { "Content-Type" => "application/json", "X-Engine-Secret" => ENV["ENGINE_API_SECRET"].to_s })
+      req.body = body.to_json if body
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", open_timeout: 2, read_timeout: 15) { |h| h.request(req) }
+      raise "HTTP #{res.code}" unless res.is_a?(Net::HTTPSuccess)
+      res
     end
 
     def collect_notices
