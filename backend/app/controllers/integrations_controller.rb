@@ -435,7 +435,9 @@ class IntegrationsController < ApplicationController
   end
 
   def composio_query(params)
-    encoded = params.transform_values { |value| value.is_a?(Array) ? value.to_json : value }
+    # Comma-joined scalars — Composio's v3 API rejects JSON-array values
+    # (user_ids=["org_1"] → HTTP 400 validation error).
+    encoded = params.transform_values { |value| value.is_a?(Array) ? value.join(",") : value }
     URI.encode_www_form(encoded)
   end
 
@@ -455,55 +457,11 @@ class IntegrationsController < ApplicationController
   # Fetch active Composio connections and sync to our DB. Pulls both the
   # workspace bucket (org_<id>) AND the current user's bucket (user_<id>).
   # Creates rows tagged with the right scope; marks stale rows disconnected.
+  # Extracted to a service so the bundle-deploy wizard can run the same
+  # sync (failure-safe: a failed Composio fetch skips stale-marking
+  # instead of mass-flipping rows to disconnected).
   def sync_composio_connections
-    api_key = ENV["COMPOSIO_API_KEY"]
-    org_user_id  = "org_#{current_tenant.id}"
-    self_user_id = "user_#{current_user.id}"
-
-    org_active  = composio_active_for(api_key, org_user_id)
-    self_active = composio_active_for(api_key, self_user_id)
-
-    # Org bucket → scope='org', no owner.
-    org_active.each do |slug, conn_id|
-      row = current_tenant.integrations
-        .where(service_name: slug, scope: "org", owner_user_id: nil)
-        .first_or_initialize
-      row.assign_attributes(composio_connection_id: conn_id, status: "connected")
-      row.save! if row.changed?
-    end
-    # Personal bucket → scope='user', owner = current_user.
-    self_active.each do |slug, conn_id|
-      row = current_tenant.integrations
-        .where(service_name: slug, scope: "user", owner_user_id: current_user.id)
-        .first_or_initialize
-      row.assign_attributes(composio_connection_id: conn_id, status: "connected")
-      row.save! if row.changed?
-    end
-
-    # Mark stale rows disconnected — only consider what's visible to this user.
-    visible = current_tenant.integrations
-      .where(status: "connected")
-      .where("scope = 'org' OR (scope = 'user' AND owner_user_id = ?)", current_user.id)
-    visible.find_each do |i|
-      bucket = i.scope == "user" ? self_active : org_active
-      i.update!(status: "disconnected") unless bucket.key?(i.service_name)
-    end
-  rescue => e
-    Rails.logger.warn "Composio sync error: #{e.message}"
-  end
-
-  def composio_active_for(api_key, composio_user_id)
-    query = composio_query(user_ids: [ composio_user_id ], statuses: [ "ACTIVE" ])
-    res = composio_get("/api/v3/connected_accounts?#{query}", api_key)
-    data = JSON.parse(res.body) rescue {}
-    items = data["items"] || []
-    items.each_with_object({}) do |c, acc|
-      slug = c.dig("toolkit", "slug") || c.dig("appName") || next
-      acc[slug] = c["id"]
-    end
-  rescue => e
-    Rails.logger.warn "Composio active sync (#{composio_user_id}) failed: #{e.message}"
-    {}
+    ComposioConnectionSync.call(organization: current_tenant, user: current_user)
   end
 
   def composio_post(path, api_key, body)

@@ -19,6 +19,15 @@ class AgentBundlesController < ApplicationController
   # they're installing before clicking Deploy. Without ?source= it's an
   # empty form — paste a URL, Load, review, Deploy.
   def new
+    # Heal connection statuses before rendering — same debounced sync as
+    # /integrations, so the wizard's Connected badges and required-gating
+    # reflect Composio's live state, not a stale local snapshot.
+    sync_key = "composio:sync:org_#{current_tenant.id}:user_#{current_user.id}"
+    if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(sync_key).blank?
+      Rails.cache.write(sync_key, Time.current, expires_in: 60.seconds)
+      ComposioConnectionSync.call(organization: current_tenant, user: current_user)
+    end
+
     source = params[:source].to_s.strip
     preview = nil
     error = nil

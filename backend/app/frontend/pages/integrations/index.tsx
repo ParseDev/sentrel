@@ -260,6 +260,7 @@ export default function IntegrationsIndex({
                 {pagedSlice.map((service) => {
                   const connected = service.available && integrations.find((i) =>
                     i.service_name === service.slug &&
+                    i.status === "connected" &&
                     (scopeView === "org" ? i.scope !== "user" : i.is_mine)
                   )
                   const isRequested = !service.available &&
