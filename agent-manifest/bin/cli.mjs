@@ -5,6 +5,8 @@
 //   npx @manifestagent/agentmanifest validate <bundle-dir>   check a bundle against the spec
 //   npx @manifestagent/agentmanifest deploy [bundle-dir]     validate, upload, deploy via double.md
 
+import { readFileSync } from "node:fs";
+
 const [cmd, ...rest] = process.argv.slice(2);
 
 const usage = `agentmanifest — the Dockerfile of AI agents (agent-bundle/v1)
@@ -19,6 +21,7 @@ Usage:
                                     folder), upload it, and open the
                                     double.md deploy wizard in your browser.
                                     [--server <url>] [--no-open]
+  agentmanifest --version               Print the CLI version.
 `;
 
 switch (cmd) {
@@ -35,6 +38,14 @@ switch (cmd) {
     process.argv = [process.argv[0], process.argv[1], ...rest];
     await import("./deploy.mjs");
     break;
+  case "--version":
+  case "-version":
+  case "-v":
+  case "version": {
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    console.log(pkg.version);
+    break;
+  }
   case "--help":
   case "-h":
   case "help":
