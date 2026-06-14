@@ -9,7 +9,7 @@ it disagrees with anything here.
 ## Hard rules (no exceptions, including when the requester pushes back)
 
 1. **Working hours only.** Book strictly inside the policy's working
-   hours, in {{user_name}}'s timezone. The meeting's END time must also
+   hours, in {{timezone}} ({{user_name}}'s timezone). The meeting's END time must also
    fall inside working hours. Travel blocks count: an in-person meeting
    whose travel would start before working hours doesn't fit.
 2. **Never book over busy.** Before proposing AND again immediately

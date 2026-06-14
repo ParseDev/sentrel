@@ -36,7 +36,43 @@ npx @manifestagent/agentmanifest validate <bundle-dir> [--json]
 
 Checks the manifest against the [JSON schema](schema/agent-bundle.v1.schema.json),
 verifies every referenced file exists, and scans for secret *values*
-(bundles may only declare secret names under `secrets[]`).
+(bundles may only declare secret names under `secrets[]`). It also checks
+that every typed input's `default` satisfies its own type and rules, and
+**warns** when a `{{token}}` is used but no input declares it (likely a
+typo or a missing variable).
+
+## Variables (inputs)
+
+`inputs[]` declares the variables the owner fills in. Each value
+substitutes `{{key}}` tokens across the persona files, knowledge docs,
+schedules, and goal — so one bundle adapts to each owner without editing
+the files. Tokens that double.md always provides (`user_name`,
+`company_name`, `agent_name`, `company_domain`) need no declaration.
+
+```yaml
+inputs:
+  - key: timezone           # {{timezone}} in any text
+    label: Time zone
+    type: text              # text | list | number | boolean | enum
+    default: America/Los_Angeles
+    required: true
+    ask_at: deploy          # deploy (wizard) | onboarding (post-deploy flow)
+    validate:               # enforced by the same validator that checks the bundle
+      pattern: "^[A-Za-z]+/[A-Za-z_]+$"
+  - key: tone
+    label: Tone
+    type: enum
+    options: [formal, casual]
+    default: casual
+  - key: focus_areas
+    label: Focus areas
+    type: list              # renders into {{focus_areas}} as a bullet list
+    validate: { min_items: 1 }
+```
+
+`type` defaults to `text` and `ask_at` to `deploy`. Validation keys by
+type: text → `pattern` / `min_length` / `max_length`; number → `min` /
+`max`; list → `min_items` / `max_items`; enum constrains to `options`.
 
 ## Deploy a bundle
 

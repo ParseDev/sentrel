@@ -26,6 +26,22 @@ goal:
     and a confirmation sent in the thread. A thread is "closed" when it's either scheduled, explicitly
     declined, or marked cold after two unanswered follow-ups.
 
+# Deploy-time inputs — the wizard renders each as a form field and
+# substitutes {{key}} tokens across persona, knowledge, schedules, and
+# goal. timezone drives BOTH when the cron jobs fire and the booking
+# window, so the whole agent operates in the owner's local time.
+inputs:
+  - key: timezone
+    label: Time zone (Pacific by default)
+    description: >-
+      IANA time zone the agent operates in — when standing cron jobs fire
+      and the hours it books meetings within. Use an IANA name like
+      America/Los_Angeles (Pacific), America/New_York, or Europe/London.
+      Pacific Time is the default; it tracks PST/PDT automatically.
+    placeholder: America/Los_Angeles
+    default: America/Los_Angeles
+    required: true
+
 persona:
   identity: ./identity.md
   personality: ./personality.md
@@ -60,7 +76,7 @@ channels:
 schedules:
   - name: Morning sweep
     cron: "30 8 * * 1-5"
-    timezone: UTC
+    timezone: "{{timezone}}"
     why: Day-before confirmations + ledger hygiene before the day starts.
     instruction: >-
       Run the morning sweep. 1) Day-before confirmations: for every
@@ -74,7 +90,7 @@ schedules:
       then send {{user_name}} a one-line summary.
   - name: Friday pipeline digest
     cron: "0 16 * * 5"
-    timezone: UTC
+    timezone: "{{timezone}}"
     why: Weekly visibility — open threads, cold threads, next week's meetings.
     instruction: >-
       Send {{user_name}} the weekly scheduling digest, one short message:

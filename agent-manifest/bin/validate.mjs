@@ -17,14 +17,17 @@ if (!dir) {
 }
 
 const bundleDir = resolve(dir);
-const { valid, errors } = validateBundle(bundleDir);
+const { valid, errors, warnings = [] } = validateBundle(bundleDir);
 
 if (asJson) {
-  console.log(JSON.stringify({ valid, errors }, null, 2));
-} else if (errors.length) {
-  console.error(`✗ ${bundleDir}`);
-  for (const e of errors) console.error(`  - ${e}`);
+  console.log(JSON.stringify({ valid, errors, warnings }, null, 2));
 } else {
-  console.log(`✓ ${bundleDir} is a valid agent-bundle/v1`);
+  if (errors.length) {
+    console.error(`✗ ${bundleDir}`);
+    for (const e of errors) console.error(`  - ${e}`);
+  } else {
+    console.log(`✓ ${bundleDir} is a valid agent-bundle/v1`);
+  }
+  for (const w of warnings) console.error(`  ⚠ ${w}`);
 }
 process.exit(errors.length ? 1 : 0);

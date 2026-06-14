@@ -5,7 +5,7 @@ persona references these values; edit here, not there.
 
 ## Working hours
 
-- Bookable window: **09:00–17:00**, {{user_name}}'s timezone.
+- Bookable window: **09:00–17:00**, in **{{timezone}}** ({{user_name}}'s timezone).
 - Meetings (including travel blocks for in-person) must START and END
   inside this window.
 - No weekend bookings unless {{user_name}} explicitly approves the

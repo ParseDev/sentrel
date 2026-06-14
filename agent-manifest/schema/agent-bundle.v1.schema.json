@@ -32,7 +32,7 @@
 
     "inputs": {
       "type": "array",
-      "description": "Deploy-time parameters. Deploy UIs render each as a form field; the value substitutes {{key}} tokens across persona, knowledge, schedules, and goal. required inputs block deploy until filled.",
+      "description": "Variables collected from the owner. Each renders as a form field; its value substitutes {{key}} tokens across persona, knowledge, schedules, and goal. `required` inputs block their stage until filled. `ask_at` picks the stage: the deploy wizard, or the post-deploy onboarding flow.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -42,9 +42,49 @@
           "label": { "type": "string", "minLength": 1 },
           "description": { "type": "string" },
           "placeholder": { "type": "string" },
-          "default": { "type": "string" },
-          "required": { "type": "boolean" }
-        }
+          "type": {
+            "enum": ["text", "list", "number", "boolean", "enum"],
+            "default": "text",
+            "description": "Data type. text → a single string. list → an array of strings, rendered into {{key}} as a newline bullet list. number. boolean. enum → one value chosen from `options`. Defaults to text."
+          },
+          "options": {
+            "type": "array",
+            "description": "Allowed choices. Required when type is enum; ignored for other types.",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          },
+          "default": {
+            "type": ["string", "number", "boolean", "array"],
+            "description": "Pre-filled value. Must match the declared type, be one of `options` for enum, and satisfy `validate`.",
+            "items": { "type": "string" }
+          },
+          "required": { "type": "boolean" },
+          "ask_at": {
+            "enum": ["deploy", "onboarding"],
+            "default": "deploy",
+            "description": "When the value is collected. deploy → the deploy wizard, before the agent exists. onboarding → the post-deploy onboarding flow, the first time the owner sets the agent up. Defaults to deploy."
+          },
+          "validate": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Constraints enforced on the value by the same ajv that validates the bundle. Applicable keys depend on type: text → pattern/min_length/max_length; number → min/max; list → min_items/max_items.",
+            "properties": {
+              "pattern": { "type": "string", "format": "regex" },
+              "min_length": { "type": "integer", "minimum": 0 },
+              "max_length": { "type": "integer", "minimum": 0 },
+              "min": { "type": "number" },
+              "max": { "type": "number" },
+              "min_items": { "type": "integer", "minimum": 0 },
+              "max_items": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "enum" } }, "required": ["type"] },
+            "then": { "required": ["options"] }
+          }
+        ]
       }
     },
 
