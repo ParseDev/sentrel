@@ -119,9 +119,11 @@ webhooks:
       it for approval — never launch spend automatically.
 
 integrations:
-  # At least one social network to publish to. Connect whichever the brand
-  # uses — Nova posts natively to each (formats + insights per platform).
+  # The social networks to publish to. multi: connect ANY NUMBER — Nova
+  # posts natively to every connected one. required: at least one must be
+  # connected before deploy (an agent with no network can't publish).
   - any_of: [instagram, tiktok, facebook, youtube, linkedin]
+    multi: true
     required: true
     why: Where content gets published and reach is measured.
   # Paid ads (optional — only if running campaigns). The full Meta funnel.

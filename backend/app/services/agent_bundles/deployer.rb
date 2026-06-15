@@ -340,8 +340,18 @@ module AgentBundles
       # alternative so the notice still names something actionable.
       services = @m.integrations.filter_map { |i| i["service"] }
       @m.integrations.select { |i| i["any_of"].is_a?(Array) }.each do |group|
-        chosen = (@integration_choices & group["any_of"].map(&:to_s)).first
-        services << (chosen || group["any_of"].first.to_s)
+        options = group["any_of"].map(&:to_s)
+        if group["multi"]
+          # Multi: the agent uses every connected option; none is
+          # individually required, so only surface the ones the user
+          # explicitly chose/connected (the connected filter below drops
+          # the rest). Don't fall back to "first" — that would nag about
+          # a network the brand may not even use.
+          services.concat(@integration_choices & options)
+        else
+          chosen = (@integration_choices & options).first
+          services << (chosen || options.first)
+        end
       end
       # Don't nag about services the org already has connected. Compare on
       # a normalized form — Composio slugs ("googlecalendar") and stored

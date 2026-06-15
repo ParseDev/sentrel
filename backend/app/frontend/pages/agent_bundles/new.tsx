@@ -47,7 +47,7 @@ interface Preview {
   webhooks: Array<{ name: string; source: string; instruction: string; why: string | null }>
   integrations: Array<
     | { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null; options?: never }
-    | { kind: "choice"; options: string[]; required?: boolean; why: string | null; service?: never }
+    | { kind: "choice"; options: string[]; multi?: boolean; required?: boolean; why: string | null; service?: never }
   >
   secrets: string[]
   permissions: Record<string, string>
@@ -164,7 +164,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // any_of integration groups: the user picks ONE alternative per group
   // (e.g. which calendar to use). Default = the first option that's
   // already connected in the org, else the first option.
-  const choiceGroups = (preview?.integrations || []).filter((i) => i.kind === "choice") as Array<{ kind: "choice"; options: string[]; required?: boolean; why: string | null }>
+  const choiceGroups = (preview?.integrations || []).filter((i) => i.kind === "choice") as Array<{ kind: "choice"; options: string[]; multi?: boolean; required?: boolean; why: string | null }>
   const initialConnected = new Set(connected_services.map(normSvc))
   const [integrationChoices, setIntegrationChoices] = useState<string[]>(
     choiceGroups.map((g) => g.options.find((o) => initialConnected.has(normSvc(o))) || g.options[0]),
@@ -313,9 +313,16 @@ export default function DeployAgent({ source, upload, preview, error, connected_
       .filter((i): i is { service: string; kind: "composio"; required?: boolean; why: string | null } => i.kind === "composio" && !!i.required)
       .map((i) => i.service)
       .filter((s) => !connected.has(normSvc(s))),
-    ...choiceGroups
-      .map((g, gi) => (g.required ? integrationChoices[gi] : null))
-      .filter((s): s is string => !!s && !connected.has(normSvc(s))),
+    ...choiceGroups.flatMap((g, gi) => {
+      if (!g.required) return []
+      if (g.multi) {
+        // Multi group: satisfied as soon as ANY option is connected.
+        return g.options.some((o) => connected.has(normSvc(o))) ? [] : ["a network"]
+      }
+      // Pick-one group: the chosen option must be connected.
+      const chosen = integrationChoices[gi]
+      return chosen && !connected.has(normSvc(chosen)) ? [chosen] : []
+    }),
   ]
 
   // Required deploy-time inputs that are still empty also gate Deploy.
@@ -348,7 +355,11 @@ export default function DeployAgent({ source, upload, preview, error, connected_
       },
       schedules: schedules.filter((s) => s.name.trim() && s.cron.trim() && s.instruction.trim()),
       platform_skill_slugs: [...pickedPlatformSkills],
-      integration_choices: integrationChoices,
+      // Pick-one groups send their single chosen service; multi groups send
+      // every CONNECTED option (the agent uses all of them).
+      integration_choices: choiceGroups.flatMap((g, gi) =>
+        g.multi ? g.options.filter((o) => connected.has(normSvc(o))) : [integrationChoices[gi]],
+      ).filter(Boolean),
       inputs: inputValues,
       save_as_template: !updating && saveAsTemplate ? "1" : "0",
     }, {
@@ -854,12 +865,13 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                     const chosen = integrationChoices[gi]
                     const chosenConnected = !!chosen && connected.has(normSvc(chosen))
                     const anyConnected = group.options.some((o) => connected.has(normSvc(o)))
+                    const connectedCount = group.options.filter((o) => connected.has(normSvc(o))).length
                     return (
                       <div key={`choice-${gi}`} className="px-4 py-3 text-xs space-y-2">
                         <div className="flex items-center gap-2">
                           <Plug className="size-3.5 text-muted-foreground" />
-                          <span className="font-medium">Pick one</span>
-                          <Badge variant="outline" className="text-[9px]">any of {group.options.length}</Badge>
+                          <span className="font-medium">{group.multi ? "Connect any" : "Pick one"}</span>
+                          <Badge variant="outline" className="text-[9px]">{group.multi ? `${connectedCount}/${group.options.length} connected` : `any of ${group.options.length}`}</Badge>
                           {group.required && (
                             <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required before deploy</Badge>
                           )}
@@ -868,23 +880,30 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                         <div className="grid gap-1.5 sm:grid-cols-2">
                           {group.options.map((service) => {
                             const isConnected = connected.has(normSvc(service))
-                            const isChosen = chosen === service
+                            // multi: a connected option is "active" (used). pick-one: the radio choice.
+                            const isActive = group.multi ? isConnected : chosen === service
                             return (
                               <button
                                 key={service}
                                 type="button"
-                                onClick={() => chooseIntegration(gi, service)}
+                                onClick={() => { if (!group.multi) chooseIntegration(gi, service) }}
                                 className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
-                                  isChosen ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
-                                }`}
+                                  isActive ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                                } ${group.multi ? "cursor-default" : ""}`}
                               >
-                                <span className={`size-3 rounded-full border shrink-0 ${isChosen ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
+                                {group.multi ? (
+                                  <span className={`grid size-3.5 place-items-center rounded-sm border shrink-0 ${isConnected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
+                                    {isConnected && <Check className="size-2.5" />}
+                                  </span>
+                                ) : (
+                                  <span className={`size-3 rounded-full border shrink-0 ${isActive ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
+                                )}
                                 <span className="font-medium truncate">{service}</span>
                                 <span className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
                                   {isConnected ? (
                                     <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
                                   ) : (
-                                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === service} onClick={() => { chooseIntegration(gi, service); connectIntegration(service) }}>
+                                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === service} onClick={() => { if (!group.multi) chooseIntegration(gi, service); connectIntegration(service) }}>
                                       {connectBusy === service ? "Opening…" : "Connect"}
                                     </Button>
                                   )}
@@ -893,7 +912,18 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                             )
                           })}
                         </div>
-                        {group.required && !chosenConnected ? (
+                        {group.multi ? (
+                          anyConnected ? (
+                            <p className="text-[10px] text-muted-foreground">
+                              Nova will post to the {connectedCount} connected network{connectedCount > 1 ? "s" : ""}. Connect more anytime — here or on the agent's page.
+                            </p>
+                          ) : (
+                            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                              <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                              <span>Connect at least one network to enable Deploy — the agent posts to every one you connect.</span>
+                            </div>
+                          )
+                        ) : group.required && !chosenConnected ? (
                           <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
                             <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                             <span>

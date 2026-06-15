@@ -314,7 +314,7 @@ class AgentBundlesController < ApplicationController
           # (e.g. a calendar: googlecalendar | outlook | calendly).
           # The wizard renders a picker with live connected-status.
           # required: blocks Deploy until the chosen one is connected.
-          { kind: "choice", options: i["any_of"].map(&:to_s), required: i["required"] == true, why: i["why"] }
+          { kind: "choice", options: i["any_of"].map(&:to_s), multi: i["multi"] == true, required: i["required"] == true, why: i["why"] }
         else
           { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", required: i["required"] == true, why: i["why"] }
         end

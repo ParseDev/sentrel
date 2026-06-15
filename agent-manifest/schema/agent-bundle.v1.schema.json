@@ -201,9 +201,13 @@
                 "minItems": 2,
                 "items": { "type": "string", "minLength": 1 }
               },
+              "multi": {
+                "type": "boolean",
+                "description": "false (default): pick exactly ONE alternative (e.g. one calendar). true: connect ANY NUMBER — the agent uses every connected one (e.g. post to all connected social networks)."
+              },
               "required": {
                 "type": "boolean",
-                "description": "When true, deploy UIs must block deploying until at least one alternative (the chosen one) is connected."
+                "description": "When true, deploy UIs block deploying until the requirement is met — the chosen alternative for a pick-one group, or at least one connected option for a multi group."
               },
               "why": { "type": "string" }
             }
