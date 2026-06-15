@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
+import { LandingNav } from "@/components/landing/landing-nav"
 import { userSessionPath, userRegistrationPath } from "@/routes"
 import { MarkdownEditor } from "@/components/markdown-editor"
 import { slugify } from "@/lib/random-names"
@@ -986,21 +987,15 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   if (!authenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-muted/40 via-background to-background">
-        <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-            <a href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-              <span className="grid size-6 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold">d</span>
-              double<span className="text-muted-foreground font-normal">.md</span>
-            </a>
-            <span className="text-xs text-muted-foreground">Deploy AI employees from a link</span>
-          </div>
-        </header>
+        {/* Same floating navbar + logo as the marketing site for brand
+            continuity on shared deploy links. */}
+        <LandingNav />
 
         {preview ? (
           // Two-column: template showcase (left) + sticky auth card (right).
           // No modal, no blur — the template is always fully readable while
           // the visitor signs in or creates an account inline.
-          <main className="mx-auto grid max-w-6xl gap-8 px-5 py-10 lg:grid-cols-[1fr_380px] lg:py-14">
+          <main className="mx-auto grid max-w-6xl gap-8 px-5 pb-12 pt-28 lg:grid-cols-[1fr_380px]">
             <div className="min-w-0">
               <TemplateShowcase preview={preview} />
             </div>
@@ -1016,7 +1011,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
         ) : (
           // No bundle loaded (bare /deploy-agent) — center the auth card with
           // a short explainer; the source-paste form lives behind auth.
-          <main className="mx-auto flex max-w-md flex-col items-center px-5 py-16">
+          <main className="mx-auto flex max-w-md flex-col items-center px-5 pb-16 pt-28">
             <div className="mb-6 text-center">
               <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--color-indigo)]">
                 <Rocket className="size-3.5" /> Deploy an agent
