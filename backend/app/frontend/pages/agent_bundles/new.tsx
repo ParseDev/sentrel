@@ -1,7 +1,7 @@
 import { Head, router, useForm } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Terminal, Trash2, Wrench,
+  AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Sparkle, Target, Terminal, Trash2, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -13,7 +13,6 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
 import { userSessionPath, userRegistrationPath } from "@/routes"
 import { MarkdownEditor } from "@/components/markdown-editor"
@@ -120,9 +119,6 @@ interface KpiRow {
 
 export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true }: Props) {
   const [url, setUrl] = useState(source)
-  // Anonymous visitors get the sign-in overlay immediately (dismissible —
-  // they can read the whole template; Deploy/Connect reopen it).
-  const [authOpen, setAuthOpen] = useState(!authenticated)
   // Deploy target: create a fresh agent, or redeploy the bundle onto an
   // existing one (spec-owned fields update in place; the agent keeps its
   // name, slug, memory and anything added outside the bundle). An agent
@@ -232,7 +228,6 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 
   // Composio OAuth in a popup — same flow the inline chat card uses.
   async function connectIntegration(service: string) {
-    if (!authenticated) { setAuthOpen(true); return }
     setConnectBusy(service)
     setConnectError(null)
     try {
@@ -262,7 +257,6 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // Save a secret as an org-level generic credential. Provider derives
   // from the secret name so the agent's secrets.get resolves it later.
   async function saveSecret(name: string) {
-    if (!authenticated) { setAuthOpen(true); return }
     const value = (secretValues[name] || "").trim()
     if (!value) return
     setSecretBusy(name)
@@ -315,7 +309,6 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const missingInputs = bundleInputs.filter((i) => i.required && !(inputValues[i.key] || "").trim()).map((i) => i.label)
 
   function deploy() {
-    if (!authenticated) { setAuthOpen(true); return }
     setDeployError(null)
     setDeploying(true)
     router.post("/agent_bundles", {
@@ -992,42 +985,58 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-muted/30 to-background">
+      <div className="min-h-screen bg-gradient-to-b from-muted/40 via-background to-background">
         <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
-          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
             <a href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
               <span className="grid size-6 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold">d</span>
               double<span className="text-muted-foreground font-normal">.md</span>
             </a>
-            <Button size="sm" className="h-8" onClick={() => setAuthOpen(true)}>Sign in</Button>
+            <span className="text-xs text-muted-foreground">Deploy AI employees from a link</span>
           </div>
         </header>
 
-        {/* Hero band — frames the shared template so a cold link feels
-            like a product page, not a half-loaded app. */}
-        {preview && (
-          <div className="border-b border-border/60 bg-background/40">
-            <div className="mx-auto max-w-3xl px-4 py-7">
-              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--color-indigo)]">
-                <Rocket className="size-3.5" /> Agent template
-              </div>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight">{preview.name}</h1>
-              {preview.role && <p className="mt-0.5 text-sm text-muted-foreground">{preview.role}</p>}
-              {preview.description && (
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{preview.description}</p>
-              )}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button size="sm" className="h-9" onClick={() => setAuthOpen(true)}>
-                  <Rocket className="size-3.5 mr-1.5" /> Sign in to deploy
-                </Button>
-                <span className="text-xs text-muted-foreground">Free · takes about a minute</span>
-              </div>
+        {preview ? (
+          // Two-column: template showcase (left) + sticky auth card (right).
+          // No modal, no blur — the template is always fully readable while
+          // the visitor signs in or creates an account inline.
+          <main className="mx-auto grid max-w-6xl gap-8 px-5 py-10 lg:grid-cols-[1fr_380px] lg:py-14">
+            <div className="min-w-0">
+              <TemplateShowcase preview={preview} />
             </div>
-          </div>
+            <aside className="lg:sticky lg:top-24 lg:self-start">
+              <div className="rounded-2xl border border-border bg-card shadow-sm">
+                <AuthPanel bundleName={preview.name} />
+              </div>
+              <p className="mt-3 px-1 text-center text-[11px] leading-relaxed text-muted-foreground">
+                Free to start · You'll land right back here after signing in, ready to deploy.
+              </p>
+            </aside>
+          </main>
+        ) : (
+          // No bundle loaded (bare /deploy-agent) — center the auth card with
+          // a short explainer; the source-paste form lives behind auth.
+          <main className="mx-auto flex max-w-md flex-col items-center px-5 py-16">
+            <div className="mb-6 text-center">
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--color-indigo)]">
+                <Rocket className="size-3.5" /> Deploy an agent
+              </div>
+              <h1 className="mt-2 text-xl font-semibold tracking-tight">Sign in to deploy a bundle</h1>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                Open a shared deploy link, or sign in to paste a GitHub bundle URL.
+              </p>
+              {error && (
+                <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-left text-xs text-destructive">
+                  <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+            <div className="w-full rounded-2xl border border-border bg-card shadow-sm">
+              <AuthPanel bundleName={null} />
+            </div>
+          </main>
         )}
-
-        <main className="mx-auto max-w-3xl px-4 py-8">{pageBody}</main>
-        <AuthOverlay open={authOpen} onClose={() => setAuthOpen(false)} bundleName={preview?.name || null} />
       </div>
     )
   }
@@ -1039,12 +1048,12 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   )
 }
 
-// Auth overlay for anonymous deploy links — sign in OR create an account
-// inline, without leaving the template. Devise's stored location (set in
-// AgentBundlesController#new) brings the user right back to this exact URL
-// after either flow, and the deploy wizard is whitelisted from the
-// onboarding gate so a fresh signup can deploy immediately.
-function AuthOverlay({ open, onClose, bundleName }: { open: boolean; onClose: () => void; bundleName: string | null }) {
+// Inline auth card for the anonymous deploy page — sign in OR create an
+// account without leaving the template (it's right beside this card).
+// Devise's stored location (set in AgentBundlesController#new) brings the
+// user back to this exact URL after either flow, and the deploy wizard is
+// whitelisted from the onboarding gate so a fresh signup deploys at once.
+function AuthPanel({ bundleName }: { bundleName: string | null }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin")
 
   const signin = useForm({ user: { email: "", password: "" } })
@@ -1062,85 +1071,184 @@ function AuthOverlay({ open, onClose, bundleName }: { open: boolean; onClose: ()
   const processing = mode === "signin" ? signin.processing : signup.processing
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="gap-0 p-0 overflow-hidden" style={{ width: "calc(100% - 2rem)", maxWidth: "27rem" }}>
-        <DialogHeader className="space-y-1.5 px-6 pt-6 pb-4">
-          <DialogTitle className="text-lg">
-            {mode === "signin"
-              ? (bundleName ? `Sign in to deploy ${bundleName}` : "Sign in to deploy")
-              : (bundleName ? `Create an account to deploy ${bundleName}` : "Create your account")}
-          </DialogTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            You'll land right back on this template — nothing's lost. Close this to keep reading first.
-          </p>
-        </DialogHeader>
+    <div>
+      <div className="space-y-1.5 px-5 pt-5 pb-4">
+        <h2 className="text-base font-semibold tracking-tight">
+          {mode === "signin"
+            ? (bundleName ? `Deploy ${bundleName}` : "Sign in to deploy")
+            : "Create your account"}
+        </h2>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {mode === "signin" ? "Sign in to deploy this agent to your workspace." : "Set up your workspace — about a minute."}
+        </p>
+      </div>
 
-        <div className="space-y-4 px-6 pb-6">
-          <GoogleSignInButton label={mode === "signin" ? "Continue with Google" : "Sign up with Google"} />
+      <div className="space-y-3.5 px-5 pb-5">
+        <GoogleSignInButton label={mode === "signin" ? "Continue with Google" : "Sign up with Google"} />
 
-          <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
-            <div className="h-px flex-1 bg-border" />
-            <span>or</span>
-            <div className="h-px flex-1 bg-border" />
+        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
+          <div className="h-px flex-1 bg-border" />
+          <span>or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        {mode === "signin" ? (
+          <form onSubmit={submitSignin} className="space-y-3">
+            <AuthField label="Email" id="ov-si-email" type="email" placeholder="you@company.com"
+              value={signin.data.user.email}
+              onChange={(v) => signin.setData("user", { ...signin.data.user, email: v })}
+              error={signin.errors["user.email"] as string | undefined} />
+            <AuthField label="Password" id="ov-si-password" type="password" placeholder="••••••••"
+              value={signin.data.user.password}
+              onChange={(v) => signin.setData("user", { ...signin.data.user, password: v })}
+              error={signin.errors["user.password"] as string | undefined} />
+            <Button type="submit" className="h-9 w-full" disabled={processing}>
+              {processing ? "Signing in…" : "Sign in & continue"}
+            </Button>
+          </form>
+        ) : (
+          <form onSubmit={submitSignup} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2.5">
+              <AuthField label="Your name" id="ov-su-name" placeholder="Ada Lovelace"
+                value={signup.data.user.name}
+                onChange={(v) => signup.setData("user", { ...signup.data.user, name: v })} />
+              <AuthField label="Workspace" id="ov-su-org" placeholder="Acme"
+                value={signup.data.user.organization_name}
+                onChange={(v) => signup.setData("user", { ...signup.data.user, organization_name: v })} />
+            </div>
+            <AuthField label="Work email" id="ov-su-email" type="email" placeholder="you@company.com"
+              value={signup.data.user.email}
+              onChange={(v) => signup.setData("user", { ...signup.data.user, email: v })}
+              error={signup.errors["user.email"] as string | undefined} />
+            <div className="grid grid-cols-2 gap-2.5">
+              <AuthField label="Password" id="ov-su-pw" type="password" placeholder="8+ chars"
+                value={signup.data.user.password}
+                onChange={(v) => signup.setData("user", { ...signup.data.user, password: v })}
+                error={signup.errors["user.password"] as string | undefined} />
+              <AuthField label="Confirm" id="ov-su-pwc" type="password" placeholder="repeat"
+                value={signup.data.user.password_confirmation}
+                onChange={(v) => signup.setData("user", { ...signup.data.user, password_confirmation: v })} />
+            </div>
+            <Button type="submit" className="h-9 w-full" disabled={processing}>
+              {processing ? "Creating…" : "Create account & continue"}
+            </Button>
+          </form>
+        )}
+      </div>
+
+      <div className="rounded-b-2xl border-t border-border bg-muted/30 px-5 py-3 text-center text-xs text-muted-foreground">
+        {mode === "signin" ? (
+          <>New to double.md?{" "}
+            <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signup")}>Create an account</button>
+          </>
+        ) : (
+          <>Already have one?{" "}
+            <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signin")}>Sign in</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Read-only showcase of a bundle for the anonymous deploy page — turns the
+// raw preview into a scannable "what you're about to deploy" panel.
+function TemplateShowcase({ preview }: { preview: Preview }) {
+  const integrationLabels = (preview.integrations || []).map((i) =>
+    i.kind === "choice"
+      ? `${i.options[0]}${i.options.length > 1 ? ` +${i.options.length - 1}` : ""}`
+      : i.service,
+  )
+  const facts: Array<{ icon: typeof Wrench; label: string }> = [
+    { icon: Sparkle, label: preview.model?.id || preview.model?.model_id || "anthropic" },
+    ...(preview.skills?.length ? [{ icon: Wrench, label: `${preview.skills.length} skill${preview.skills.length > 1 ? "s" : ""}` }] : []),
+    ...(preview.schedules?.length ? [{ icon: Clock, label: `${preview.schedules.length} schedule${preview.schedules.length > 1 ? "s" : ""}` }] : []),
+    ...(preview.webhooks?.length ? [{ icon: Plug, label: `${preview.webhooks.length} webhook${preview.webhooks.length > 1 ? "s" : ""}` }] : []),
+  ]
+
+  return (
+    <div className="space-y-7">
+      <div>
+        <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--color-indigo)]">
+          <Rocket className="size-3.5" /> Agent template
+        </div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">{preview.name}</h1>
+        {preview.role && <p className="mt-1 text-base text-muted-foreground">{preview.role}</p>}
+        {preview.description && (
+          <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground">{preview.description}</p>
+        )}
+        {facts.length > 0 && (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {facts.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium">
+                <f.icon className="size-3 text-muted-foreground" /> {f.label}
+              </span>
+            ))}
           </div>
+        )}
+      </div>
 
-          {mode === "signin" ? (
-            <form onSubmit={submitSignin} className="space-y-3">
-              <AuthField label="Email" id="ov-si-email" type="email" placeholder="you@company.com" autoFocus
-                value={signin.data.user.email}
-                onChange={(v) => signin.setData("user", { ...signin.data.user, email: v })}
-                error={signin.errors["user.email"] as string | undefined} />
-              <AuthField label="Password" id="ov-si-password" type="password" placeholder="••••••••"
-                value={signin.data.user.password}
-                onChange={(v) => signin.setData("user", { ...signin.data.user, password: v })}
-                error={signin.errors["user.password"] as string | undefined} />
-              <Button type="submit" className="h-9 w-full" disabled={processing}>
-                {processing ? "Signing in…" : "Sign in & continue"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={submitSignup} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <AuthField label="Your name" id="ov-su-name" placeholder="Ada Lovelace" autoFocus
-                  value={signup.data.user.name}
-                  onChange={(v) => signup.setData("user", { ...signup.data.user, name: v })} />
-                <AuthField label="Workspace" id="ov-su-org" placeholder="Acme"
-                  value={signup.data.user.organization_name}
-                  onChange={(v) => signup.setData("user", { ...signup.data.user, organization_name: v })} />
-              </div>
-              <AuthField label="Work email" id="ov-su-email" type="email" placeholder="you@company.com"
-                value={signup.data.user.email}
-                onChange={(v) => signup.setData("user", { ...signup.data.user, email: v })}
-                error={signup.errors["user.email"] as string | undefined} />
-              <div className="grid grid-cols-2 gap-3">
-                <AuthField label="Password" id="ov-su-pw" type="password" placeholder="8+ characters"
-                  value={signup.data.user.password}
-                  onChange={(v) => signup.setData("user", { ...signup.data.user, password: v })}
-                  error={signup.errors["user.password"] as string | undefined} />
-                <AuthField label="Confirm" id="ov-su-pwc" type="password" placeholder="repeat"
-                  value={signup.data.user.password_confirmation}
-                  onChange={(v) => signup.setData("user", { ...signup.data.user, password_confirmation: v })} />
-              </div>
-              <Button type="submit" className="h-9 w-full" disabled={processing}>
-                {processing ? "Creating…" : "Create account & continue"}
-              </Button>
-            </form>
-          )}
-        </div>
+      {preview.goal?.mission && (
+        <ShowcaseSection icon={Target} title="What it does">
+          <p className="text-sm leading-relaxed text-muted-foreground">{preview.goal.mission}</p>
+        </ShowcaseSection>
+      )}
 
-        <div className="border-t border-border bg-muted/30 px-6 py-3 text-center text-xs text-muted-foreground">
-          {mode === "signin" ? (
-            <>New to double.md?{" "}
-              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signup")}>Create an account</button>
-            </>
-          ) : (
-            <>Already have one?{" "}
-              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signin")}>Sign in</button>
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+      {integrationLabels.length > 0 && (
+        <ShowcaseSection icon={Plug} title="Connects to">
+          <div className="flex flex-wrap gap-2">
+            {integrationLabels.map((label, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium capitalize">
+                {label}
+              </span>
+            ))}
+          </div>
+        </ShowcaseSection>
+      )}
+
+      {preview.skills?.length > 0 && (
+        <ShowcaseSection icon={Wrench} title="Skills">
+          <ul className="space-y-1.5">
+            {preview.skills.map((s) => (
+              <li key={s.slug} className="flex items-center gap-2 text-sm">
+                <Check className="size-3.5 shrink-0 text-emerald-500" />
+                <span className="font-medium capitalize">{s.slug.replace(/-/g, " ")}</span>
+              </li>
+            ))}
+          </ul>
+        </ShowcaseSection>
+      )}
+
+      {(preview.schedules?.length > 0 || (preview.webhooks?.length || 0) > 0) && (
+        <ShowcaseSection icon={Clock} title="Runs automatically">
+          <ul className="space-y-2">
+            {preview.schedules.map((s) => (
+              <li key={s.name} className="flex items-start gap-2 text-sm">
+                <Clock className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <span><span className="font-medium">{s.name}</span> <span className="text-muted-foreground">· {describeCron(s.cron) || s.cron}</span></span>
+              </li>
+            ))}
+            {(preview.webhooks || []).map((w) => (
+              <li key={w.name} className="flex items-start gap-2 text-sm">
+                <Plug className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <span><span className="font-medium">{w.name}</span> <span className="text-muted-foreground">· on {w.source} webhook</span></span>
+              </li>
+            ))}
+          </ul>
+        </ShowcaseSection>
+      )}
+    </div>
+  )
+}
+
+function ShowcaseSection({ icon: Icon, title, children }: { icon: typeof Wrench; title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <Icon className="size-3.5" /> {title}
+      </h2>
+      {children}
+    </section>
   )
 }
 
