@@ -17,10 +17,16 @@ with human approval before anything posts publicly or spends money.
   set → ad → creative → insights), gated by a declared monthly budget
   ceiling and hard approvals on anything that spends.
 
-The three skills (`creative-generation`, `social-publishing`, `meta-ads`)
-are **knowledge** — they teach the agent how to use each platform's tools.
-The tools themselves load from Composio when the integration is connected;
-no tool names are hard-coded, so they can't drift.
+- **Email** via **Listmonk** (self-hosted newsletters) — not a Composio
+  integration; the agent reaches it over its REST API using a stored
+  `listmonk` credential (`secrets.get` + HTTP). This is the general
+  pattern for any API-key service that isn't on Composio.
+
+The four skills (`creative-generation`, `social-publishing`, `meta-ads`,
+`email-newsletters`) are **knowledge** — they teach the agent how to use
+each platform's tools/API. Composio tools load when the integration is
+connected (no hard-coded tool names, so they can't drift); Listmonk loads
+from a stored API credential.
 
 ## Deploy
 

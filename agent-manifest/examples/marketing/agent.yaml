@@ -66,6 +66,7 @@ skills:
   - ./skills/creative-generation
   - ./skills/social-publishing
   - ./skills/meta-ads
+  - ./skills/email-newsletters
 
 knowledge:
   - path: ./knowledge/brand-and-safety-policy.md
@@ -133,6 +134,12 @@ integrations:
 secrets:
   - name: HIGGSFIELD_API_KEY
     why: Higgsfield creative generation (text-to-image FLUX + image-to-video).
+  # Optional email-marketing channel. If set, Nova can run newsletters and
+  # lifecycle email via your self-hosted Listmonk (api_user:token pair; the
+  # credential should also carry the instance base_url). Without it, the
+  # email-newsletters skill simply stays idle.
+  - name: LISTMONK_API_KEY
+    why: Listmonk newsletters, subscriber lists, and transactional email (value is the api_user:token pair).
 
 permissions:
   generate_creative: auto     # generating assets is cheap + reversible

@@ -223,6 +223,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
     new Set((preview?.secrets || []).filter((s) => credential_providers.map((p) => p.toLowerCase()).includes(providerFromSecretName(s)))),
   )
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
+  // Optional per-secret base_url + usage notes → stored in the credential's
+  // meta so secrets.get hands the agent both the token and where to call.
+  const [secretMeta, setSecretMeta] = useState<Record<string, { base_url: string; usage_md: string }>>({})
+  const [secretAdvanced, setSecretAdvanced] = useState<Set<string>>(new Set())
   const [secretBusy, setSecretBusy] = useState<string | null>(null)
   const [connectBusy, setConnectBusy] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
@@ -257,17 +261,25 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 
   // Save a secret as an org-level generic credential. Provider derives
   // from the secret name so the agent's secrets.get resolves it later.
+  // base_url + usage_md ride along in meta so self-hosted / non-Composio
+  // APIs (Listmonk, custom services) are fully usable from secrets.get —
+  // the agent gets the token AND where to call it, without leaving the
+  // wizard for the Settings → Credentials page.
   async function saveSecret(name: string) {
     const value = (secretValues[name] || "").trim()
     if (!value) return
     setSecretBusy(name)
     setConnectError(null)
+    const m = secretMeta[name]
+    const meta: Record<string, string> = {}
+    if (m?.base_url?.trim()) meta.base_url = m.base_url.trim()
+    if (m?.usage_md?.trim()) meta.usage_md = m.usage_md.trim()
     try {
       const res = await fetch("/settings/credentials", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken() },
         body: JSON.stringify({
-          credential: { kind: "generic", provider: providerFromSecretName(name), name: name, value: value },
+          credential: { kind: "generic", provider: providerFromSecretName(name), name: name, value: value, ...(Object.keys(meta).length ? { meta } : {}) },
         }),
       })
       if (res.ok || res.redirected) {
@@ -899,25 +911,62 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   })}
                   {preview.secrets.map((s) => {
                     const saved = savedSecrets.has(s)
+                    const adv = secretAdvanced.has(s)
+                    const meta = secretMeta[s] || { base_url: "", usage_md: "" }
                     return (
-                      <div key={s} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                        <KeyRound className="size-3.5 text-muted-foreground shrink-0" />
-                        <span className="font-mono text-[11px] shrink-0">{s}</span>
-                        {saved ? (
-                          <Badge className="text-[10px] gap-1 ml-auto bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Saved</Badge>
-                        ) : (
-                          <span className="flex items-center gap-1.5 ml-auto flex-1 max-w-72">
-                            <Input
-                              type="password"
-                              value={secretValues[s] || ""}
-                              onChange={(e) => setSecretValues((prev) => ({ ...prev, [s]: e.target.value }))}
-                              placeholder="paste value…"
-                              className="h-7 text-[11px] font-mono"
-                            />
-                            <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] shrink-0" disabled={secretBusy === s || !(secretValues[s] || "").trim()} onClick={() => saveSecret(s)}>
-                              {secretBusy === s ? "Saving…" : "Save"}
-                            </Button>
-                          </span>
+                      <div key={s} className="px-4 py-2.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="size-3.5 text-muted-foreground shrink-0" />
+                          <span className="font-mono text-[11px] shrink-0">{s}</span>
+                          {saved ? (
+                            <Badge className="text-[10px] gap-1 ml-auto bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Saved</Badge>
+                          ) : (
+                            <span className="flex items-center gap-1.5 ml-auto flex-1 max-w-72">
+                              <Input
+                                type="password"
+                                value={secretValues[s] || ""}
+                                onChange={(e) => setSecretValues((prev) => ({ ...prev, [s]: e.target.value }))}
+                                placeholder="paste value…"
+                                className="h-7 text-[11px] font-mono"
+                              />
+                              <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] shrink-0" disabled={secretBusy === s || !(secretValues[s] || "").trim()} onClick={() => saveSecret(s)}>
+                                {secretBusy === s ? "Saving…" : "Save"}
+                              </Button>
+                            </span>
+                          )}
+                        </div>
+                        {!saved && (
+                          <>
+                            <button
+                              type="button"
+                              className="mt-1.5 ml-5 text-[10px] text-muted-foreground hover:text-foreground"
+                              onClick={() => setSecretAdvanced((prev) => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n })}
+                            >
+                              {adv ? "− Hide base URL & docs" : "+ Base URL & docs (for self-hosted / custom APIs)"}
+                            </button>
+                            {adv && (
+                              <div className="mt-2 ml-5 space-y-2 max-w-md">
+                                <div className="space-y-1">
+                                  <Label className="text-[10px] text-muted-foreground">Base URL — where the agent calls this API</Label>
+                                  <Input
+                                    value={meta.base_url}
+                                    onChange={(e) => setSecretMeta((prev) => ({ ...prev, [s]: { ...meta, base_url: e.target.value } }))}
+                                    placeholder="https://listmonk.yourbrand.com"
+                                    className="h-7 text-[11px] font-mono"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[10px] text-muted-foreground">Usage notes (optional) — docs the agent reads from secrets.get</Label>
+                                  <textarea
+                                    value={meta.usage_md}
+                                    onChange={(e) => setSecretMeta((prev) => ({ ...prev, [s]: { ...meta, usage_md: e.target.value } }))}
+                                    placeholder="Auth: Authorization: token api_user:token · key endpoints, gotchas…"
+                                    className="w-full min-h-[52px] rounded-md border bg-background p-2 text-[11px]"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )

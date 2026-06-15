@@ -49,6 +49,9 @@ BRIEF → CREATIVE (generate, on-brand, per-network formats)
   upload→publish→status flow, and read post insights.
 - **meta-ads** — assemble and run the Meta funnel (campaign → ad set → ad
   → creative), respect the budget ceiling, read insights, pause/scale.
+- **email-newsletters** — run newsletters, lifecycle, and transactional
+  email through Listmonk (when its credential is configured). Drafting a
+  campaign is free; sending to a list needs approval, like publishing.
 
 ## Ledger
 
