@@ -1,18 +1,27 @@
-// fal.ai as a video provider too — they host Wan, Kling, Hailuo, etc.
+// fal.ai video — Kling (top-tier image-to-video / text-to-video). Contract
+// VERIFIED live (2026-06): fal's queue API returns a status_url + response_url
+// we poll. Kling honors the SOURCE image's native aspect ratio (no padding /
+// zoom-from-tiny like a camera-on-still model) and supports up to 10s.
+//
+//   auth   : Authorization: Key <FAL_KEY>
+//   submit : POST https://queue.fal.run/<model>
+//              { prompt, image_url (i2v), duration: "5"|"10" }
+//            → { status_url, response_url, request_id, status:"IN_QUEUE" }
+//   poll   : GET status_url   → { status: IN_QUEUE|IN_PROGRESS|COMPLETED }
+//   result : GET response_url → { video: { url } }
 
 import { promises as fs } from "fs";
 import path from "path";
 import { config } from "../../config.js";
 import { fetchSecret } from "../../tools/secrets.js";
+import { logger } from "../../logger.js";
 import type { GenerateVideoInput, GenerateVideoOutput } from "./types.js";
 
-// fal model slugs (override per-call via input.model, or globally via
-// FAL_VIDEO_T2V_MODEL / FAL_VIDEO_I2V_MODEL). Defaults are current Kling
-// slugs; the previous "wan-25-preview" default 404'd. Image-to-video and
-// text-to-video are DIFFERENT endpoints — picked by whether a source
-// image was provided.
-const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2/master/text-to-video";
-const DEFAULT_I2V = process.env.FAL_VIDEO_I2V_MODEL || "fal-ai/kling-video/v2/master/image-to-video";
+const QUEUE = "https://queue.fal.run";
+// Kling 2.1 standard — strong quality at a sane price. Override per-call via
+// input.model, or globally via FAL_VIDEO_I2V_MODEL / FAL_VIDEO_T2V_MODEL.
+const DEFAULT_I2V = process.env.FAL_VIDEO_I2V_MODEL || "fal-ai/kling-video/v2.1/standard/image-to-video";
+const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2.1/standard/text-to-video";
 
 async function getKey(agentId: number): Promise<string | null> {
   const cred = await fetchSecret({ agentId, provider: "fal", kind: "generic" });
@@ -30,36 +39,48 @@ export const FalVideoProvider = {
   async generate(input: GenerateVideoInput, agentId: number): Promise<GenerateVideoOutput> {
     const key = await getKey(agentId);
     if (!key) throw new Error("fal video: no credential resolved");
+    const headers = { Authorization: `Key ${key}`, "Content-Type": "application/json" };
 
-    // image-to-video needs a PUBLIC image URL (share_file produces one);
-    // a local workspace path can't be fetched by fal.
+    // i2v when a PUBLIC image URL is given (Kling derives the video's aspect
+    // ratio from the source image — pass a 9:16 still for a 9:16 clip).
     const imageUrl = input.image && /^https?:\/\//.test(input.image) ? input.image : null;
     const model = input.model || (imageUrl ? DEFAULT_I2V : DEFAULT_T2V);
+    const duration = (input.duration && input.duration >= 10) ? "10" : "5";
 
-    const body: Record<string, unknown> = {
-      prompt: input.prompt,
-      aspect_ratio: input.aspect_ratio || "16:9",
-    };
-    if (input.duration) body.duration = String(input.duration);
-    if (imageUrl) body.image_url = imageUrl; // required by image-to-video models
+    const body: Record<string, unknown> = { prompt: input.prompt, duration };
+    if (imageUrl) body.image_url = imageUrl;
 
-    const res = await fetch(`https://fal.run/${model}`, {
-      method: "POST",
-      headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`fal video failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
-    const data = await res.json() as { video?: { url?: string } };
-    if (!data.video?.url) throw new Error("fal video: no url");
+    const submitRes = await fetch(`${QUEUE}/${model}`, { method: "POST", headers, body: JSON.stringify(body) });
+    if (!submitRes.ok) throw new Error(`fal kling submit failed: ${submitRes.status} ${(await submitRes.text()).slice(0, 200)}`);
+    const submit = await submitRes.json() as { status_url?: string; response_url?: string; request_id?: string };
+    if (!submit.status_url || !submit.response_url) throw new Error(`fal kling: no status/response url: ${JSON.stringify(submit).slice(0, 200)}`);
 
-    const dl = await fetch(data.video.url);
-    if (!dl.ok) throw new Error(`fal video download failed: ${dl.status}`);
+    // Poll the queue (Kling renders take 1–4 min).
+    let done = false;
+    for (let i = 0; i < 150 && !done; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const st = await fetch(submit.status_url, { headers });
+      if (!st.ok) continue;
+      const status = String(((await st.json()) as { status?: string }).status || "").toUpperCase();
+      if (status === "COMPLETED") done = true;
+      else if (status === "ERROR" || status === "FAILED") throw new Error(`fal kling job ${status}`);
+    }
+    if (!done) throw new Error("fal kling: timed out");
+
+    const out = await fetch(submit.response_url, { headers });
+    if (!out.ok) throw new Error(`fal kling result fetch failed: ${out.status}`);
+    const result = await out.json() as { video?: { url?: string } };
+    const url = result.video?.url;
+    if (!url) throw new Error(`fal kling: no video url in result: ${JSON.stringify(result).slice(0, 200)}`);
+
+    const dl = await fetch(url);
+    if (!dl.ok) throw new Error(`fal kling download failed: ${dl.status}`);
     const buf = Buffer.from(await dl.arrayBuffer());
-
     const dir = path.join(config.dataDir, "workspace", "generated");
     await fs.mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `video-${Date.now()}.mp4`);
     await fs.writeFile(filePath, buf);
+    logger.info(`fal kling generated video on ${model} (${duration}s)`);
     return { filePath, bytes: buf.byteLength, model };
   },
 };

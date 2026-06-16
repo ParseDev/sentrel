@@ -18,12 +18,14 @@ type VideoGenProvider =
   | typeof RunwayProvider
   | typeof GoogleAiVideoProvider;
 
-// Higgsfield first (cinematic ad motion); falls through to Luma → fal →
-// Runway → Veo when no Higgsfield key is configured.
+// fal (Kling) first — it's the strongest image-to-video model and honors
+// the source image's native aspect ratio (no padding / zoom-from-still).
+// Higgsfield DoP is the next option (cinematic camera-on-still, ~5s, pads
+// non-9:16 sources). Then Luma → Runway → Veo.
 const REGISTRY: ReadonlyArray<VideoGenProvider> = [
+  FalVideoProvider,
   HiggsfieldVideoProvider,
   LumaProvider,
-  FalVideoProvider,
   RunwayProvider,
   GoogleAiVideoProvider,
 ];
