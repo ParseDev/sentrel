@@ -54,7 +54,7 @@ persona:
 
 model:
   provider: anthropic
-  id: claude-fable-5
+  id: claude-opus-4-8
   temperature: 0.7
 
 # Knowledge-only skills: each explains HOW to use a platform's tools. The
