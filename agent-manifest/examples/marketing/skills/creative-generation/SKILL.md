@@ -45,12 +45,37 @@ Generate in the destination's native ratio. Never stretch or letterbox a
    copy; put the words in the caption, not baked into the asset.
 2. **Make variants.** Creative is cheap. Generate 2–3 options for a slot so
    the human (or an A/B test) has a choice. Note them in the ledger.
-3. **Video from a still.** For motion, generate a strong still first, then
-   animate it with the video tool (image-to-video) — more controllable than
-   pure text-to-video and keeps the framing on brand.
-4. **Respect safety.** If a generation is refused or flagged, don't retry
+3. **Respect safety.** If a generation is refused or flagged, don't retry
    the same prompt — adjust it. Never generate anything that breaches the
    brand-and-safety policy.
+
+## Poster vs. video frame — two DIFFERENT source images
+
+This matters a lot and is easy to get wrong:
+
+- A **static-post poster** is composed with deliberate empty negative
+  space (top/bottom) so you can overlay hook text on it later.
+- A **video source frame** must be **FULL-BLEED**: the scene fills the
+  entire frame edge-to-edge, with NO empty bands and NO reserved text
+  space. Bands in the source make the video look like a small image that
+  then zooms in — exactly what you don't want.
+
+So when the ask is "animate this / make a video", do NOT animate the
+text-poster. **Generate a fresh full-bleed frame** (prompt it as
+"full-bleed, scene fills the entire 9:16 frame, no empty space"), then
+animate THAT. Put any on-screen text on top of the finished video, never
+baked into the source frame.
+
+## Animating a still into video (image-to-video)
+
+1. **Use a full-bleed source** (above) — not a poster with bands.
+2. **Share it first.** `share_file(<path>)` → a public `https://…/api/blobs/…`
+   URL. The video tool's `image` argument MUST be that URL, never a local
+   `/data/...` path (the provider fetches it over the network). A
+   `422 image_url required` means you skipped this step.
+3. **Call video** with that URL as `image`, the motion prompt, and
+   `aspect_ratio: "9:16"`. Clips render ~5s natively; for longer, render a
+   few and stitch them.
 
 ## Handing off to a post or an ad
 

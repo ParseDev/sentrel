@@ -63,15 +63,18 @@ export const HiggsfieldVideoProvider = {
     }
     const headers = { "hf-api-key": auth.id, "hf-secret": auth.secret, "Content-Type": "application/json" };
 
+    const params: Record<string, unknown> = {
+      prompt: input.prompt,
+      input_images: [{ type: "image_url", image_url: input.image }],
+    };
+    // Pass duration through when asked (DoP renders ~5s natively; longer
+    // clips are produced by stitching multiple renders downstream).
+    if (input.duration) params.duration = input.duration;
+
     const res = await fetch(`${BASE}/v1/image2video/dop`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        params: {
-          prompt: input.prompt,
-          input_images: [{ type: "image_url", image_url: input.image }],
-        },
-      }),
+      body: JSON.stringify({ params }),
     });
     if (!res.ok) throw new Error(`higgsfield submit failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
     const submit = await res.json() as { id?: string; job_set_id?: string };
