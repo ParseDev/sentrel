@@ -67,6 +67,7 @@ skills:
   - ./skills/social-publishing
   - ./skills/meta-ads
   - ./skills/email-newsletters
+  - ./skills/ugc-ads
 
 knowledge:
   - path: ./knowledge/brand-and-safety-policy.md

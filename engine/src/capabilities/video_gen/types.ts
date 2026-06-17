@@ -5,6 +5,8 @@ export interface GenerateVideoInput {
   aspect_ratio?: "16:9" | "9:16" | "1:1";
   /** Optional reference image (workspace path or URL) for image-to-video. */
   image?: string;
+  /** Avatar id → UGC talking-creator video; `prompt` is the spoken script. */
+  avatar?: string;
   model?: string;
 }
 

@@ -14,11 +14,12 @@ export function buildVideoGenMcpServer(agent: Agent) {
       "the file path so you can pass it to send_file (or send_image for thumbnails). Most providers " +
       "produce 5–9 second clips. Expect a 1–3 minute wait — these models are slow.",
     {
-      prompt: z.string().describe("Detailed scene description. Camera angle + subject + action + style + lighting. e.g. 'aerial drone shot, golden hour, surfer riding a glassy left-hand point break, slow motion, cinematic'."),
-      duration: z.number().int().min(3).max(10).optional().describe("Seconds (default provider's minimum — usually 5)."),
+      prompt: z.string().describe("For a scene clip: the scene description (camera + subject + action + style + lighting). For an avatar/UGC clip (when `avatar` is set): the SCRIPT the creator speaks, verbatim — write it like a real person talking to camera."),
+      duration: z.number().int().min(3).max(10).optional().describe("Seconds (default provider's minimum — usually 5). Ignored for avatar UGC (length follows the script)."),
       aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional().describe("16:9 default (landscape), 9:16 for vertical / social."),
-      image: z.string().optional().describe("Path or URL to a starting image for image-to-video. Only some providers (runway) support this."),
-      model: z.string().optional().describe("Override the default model (e.g. 'gen3a_turbo' for runway, 'veo-2.0-generate-001' for google_ai)."),
+      image: z.string().optional().describe("Path or URL to a starting image for image-to-video. Kling derives the video's ratio from this image."),
+      avatar: z.string().optional().describe("Avatar id for UGC talking-creator video (a real-looking person speaking the prompt as a script), e.g. 'emily_primary'. When set, routes to the avatar model instead of scene generation — this is how you make UGC ads."),
+      model: z.string().optional().describe("Override the default model."),
     },
     async (args) => {
       try {

@@ -22,6 +22,9 @@ const QUEUE = "https://queue.fal.run";
 // input.model, or globally via FAL_VIDEO_I2V_MODEL / FAL_VIDEO_T2V_MODEL.
 const DEFAULT_I2V = process.env.FAL_VIDEO_I2V_MODEL || "fal-ai/kling-video/v2.1/standard/image-to-video";
 const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2.1/standard/text-to-video";
+// UGC talking-creator: a script → a real-looking person delivering it,
+// lip-synced. veed/avatars is the default (argil/avatars is an alt).
+const DEFAULT_AVATAR = process.env.FAL_AVATAR_MODEL || "veed/avatars/text-to-video";
 
 async function getKey(agentId: number): Promise<string | null> {
   const cred = await fetchSecret({ agentId, provider: "fal", kind: "generic" });
@@ -62,22 +65,25 @@ export const FalVideoProvider = {
     if (!key) throw new Error("fal video: no credential resolved");
     const headers = { Authorization: `Key ${key}`, "Content-Type": "application/json" };
 
-    // i2v when a source image is given (Kling derives the video's aspect
-    // ratio from the source image — pass a 9:16 still for a 9:16 clip).
-    // Inline it as a data URI so fal never has to fetch a URL.
-    const imageData = input.image ? await toDataUri(input.image) : null;
-    if (input.image && !imageData) throw new Error(`fal kling: couldn't read source image ${input.image}`);
-    const model = input.model || (imageData ? DEFAULT_I2V : DEFAULT_T2V);
-    const duration = (input.duration && input.duration >= 10) ? "10" : "5";
+    let model: string;
+    const body: Record<string, unknown> = {};
 
-    const body: Record<string, unknown> = { prompt: input.prompt, duration };
-    if (imageData) {
-      // image-to-video: Kling derives the ratio from the source image.
-      body.image_url = imageData;
+    if (input.avatar) {
+      // UGC talking-creator: prompt IS the script the avatar speaks.
+      model = input.model || DEFAULT_AVATAR;
+      body.text = input.prompt;
+      body.avatar_id = input.avatar;
     } else {
-      // text-to-video: pass the requested ratio so Kling renders native
-      // 9:16 (etc.) instead of its 16:9 default — no still, no bands.
-      body.aspect_ratio = input.aspect_ratio || "9:16";
+      // Scene video (Kling). i2v when a source image is given — inline it
+      // as a data URI so fal never has to fetch a URL (our blob URLs are
+      // unreachable to fal). Kling derives the ratio from the image.
+      const imageData = input.image ? await toDataUri(input.image) : null;
+      if (input.image && !imageData) throw new Error(`fal kling: couldn't read source image ${input.image}`);
+      model = input.model || (imageData ? DEFAULT_I2V : DEFAULT_T2V);
+      body.prompt = input.prompt;
+      body.duration = (input.duration && input.duration >= 10) ? "10" : "5";
+      if (imageData) body.image_url = imageData;
+      else body.aspect_ratio = input.aspect_ratio || "9:16"; // t2v: native vertical
     }
 
     const submitRes = await fetch(`${QUEUE}/${model}`, { method: "POST", headers, body: JSON.stringify(body) });
@@ -110,7 +116,7 @@ export const FalVideoProvider = {
     await fs.mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `video-${Date.now()}.mp4`);
     await fs.writeFile(filePath, buf);
-    logger.info(`fal kling generated video on ${model} (${duration}s)`);
+    logger.info(`fal generated video on ${model}${input.avatar ? " (avatar UGC)" : ""}`);
     return { filePath, bytes: buf.byteLength, model };
   },
 };
