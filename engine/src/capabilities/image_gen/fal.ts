@@ -1,5 +1,11 @@
 // fal.ai image generation — fast cold-start, comparable to Replicate.
-// Default model: fal-ai/flux/schnell.
+//
+// Default model: fal-ai/flux/schnell (cheap, fast). For PHOTOREAL people —
+// UGC creator portraits, anything that becomes a talking avatar — pass
+// model: "fal-ai/flux-pro/v1.1-ultra" (verified: produces a believable
+// phone-selfie of a doctor; schnell does not). The pro/ultra family takes
+// an `aspect_ratio` string; the flux/schnell|dev family takes an
+// `image_size` enum — we send whichever the chosen model expects.
 
 import { fetchSecret } from "../../tools/secrets.js";
 import { logger } from "../../logger.js";
@@ -7,6 +13,24 @@ import { downloadAll } from "./replicate.js";
 import type { GenerateImageInput, GenerateImageOutput } from "./types.js";
 
 const DEFAULT_MODEL = "fal-ai/flux/schnell";
+
+// flux image_size enum keyed by aspect-ratio shorthand.
+const SIZE_BY_ASPECT: Record<string, string> = {
+  "1:1": "square_hd",
+  "16:9": "landscape_16_9",
+  "9:16": "portrait_16_9",
+  "4:3": "landscape_4_3",
+  "3:4": "portrait_4_3",
+};
+
+// pro/ultra models speak aspect_ratio; schnell/dev speak image_size.
+function sizeFields(model: string, input: GenerateImageInput): Record<string, unknown> {
+  if (/flux-pro|ultra/.test(model)) {
+    return { aspect_ratio: input.aspect_ratio || "1:1" };
+  }
+  const mapped = input.aspect_ratio ? SIZE_BY_ASPECT[input.aspect_ratio] : undefined;
+  return { image_size: input.size || mapped || "square_hd" };
+}
 
 async function getKey(agentId: number): Promise<string | null> {
   const cred = await fetchSecret({ agentId, provider: "fal", kind: "generic" });
@@ -34,7 +58,7 @@ export const FalProvider = {
       body: JSON.stringify({
         prompt: input.prompt,
         num_images: n,
-        image_size: input.size || "square_hd",
+        ...sizeFields(model, input),
       }),
     });
     if (!res.ok) {

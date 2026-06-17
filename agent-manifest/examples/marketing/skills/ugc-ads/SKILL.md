@@ -27,16 +27,22 @@ creator on a couch.
    the camera. For ScribeMD: a tired-but-warm physician in scrubs or a
    white coat, in a real clinic/exam-room, natural lighting, shot like a
    front-facing phone camera (slightly close, slightly imperfect).
+   **Use a photoreal model: pass `model: "fal-ai/flux-pro/v1.1-ultra"` and
+   `aspect_ratio: "9:16"`.** The cheap default model makes plasticky,
+   off-looking people — ultra makes believable ones, and a believable
+   source face is what makes the talking video land.
 2. **Make them talk** — call the **video tool** with that image **and**
    `avatar` set, and `prompt` = the verbatim script. The engine voices the
-   script and lip-syncs it to that exact face.
+   script (TTS) and lip-syncs it to that exact face for you — you do NOT
+   pass audio; just the image + the script.
 
 ```
-const doctor = image.generate({ prompt:
-  "Selfie-style vertical photo, a 40-year-old female physician in a white
+const doctor = image.generate({
+  model: "fal-ai/flux-pro/v1.1-ultra", aspect_ratio: "9:16", prompt:
+  "front-facing phone selfie of a 40-year-old female physician in a white
    coat and stethoscope standing in a real exam room, soft daylight, warm
-   tired smile, looking straight into a front-facing phone camera, candid,
-   photo-real, 9:16" })
+   tired smile, candid imperfect smartphone photo, photorealistic, natural
+   skin texture" })
 
 video.generate({
   image: doctor.path,        // the doctor you just generated
