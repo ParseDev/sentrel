@@ -108,13 +108,21 @@ RUN mkdir -p /home/engine/.cache && chown -R engine:engine /home/engine
 # (config.json.tmp.* files left mid-write, embeddings never initialize).
 # env.cacheDir in tool-embeddings.ts points here; filesystem is baked,
 # not on the /data volume, so Fly's volume mount can't shadow it.
+# HuggingFace rate-limits (HTTP 429) anonymous downloads, which was failing
+# the build intermittently and leaving :latest stale. Retry every file with
+# backoff (curl --retry treats 429/5xx/transient as retryable), and prefer
+# an HF_TOKEN when the build provides one (much higher rate limit).
+ARG HF_TOKEN=""
 RUN mkdir -p /opt/hf-cache/Xenova/all-MiniLM-L6-v2/onnx && \
     cd /opt/hf-cache/Xenova/all-MiniLM-L6-v2 && \
-    curl -fsSL -o config.json           https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/config.json && \
-    curl -fsSL -o tokenizer.json        https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer.json && \
-    curl -fsSL -o tokenizer_config.json https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer_config.json && \
-    curl -fsSL -o special_tokens_map.json https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/special_tokens_map.json && \
-    curl -fsSL -o onnx/model.onnx       https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx && \
+    AUTH=""; [ -n "$HF_TOKEN" ] && AUTH="-H \"Authorization: Bearer $HF_TOKEN\""; \
+    dl() { eval curl -fsSL --retry 8 --retry-delay 5 --retry-all-errors $AUTH -o "$1" "$2"; }; \
+    base="https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main"; \
+    dl config.json            "$base/config.json" && \
+    dl tokenizer.json         "$base/tokenizer.json" && \
+    dl tokenizer_config.json  "$base/tokenizer_config.json" && \
+    dl special_tokens_map.json "$base/special_tokens_map.json" && \
+    dl onnx/model.onnx        "$base/onnx/model.onnx" && \
     chown -R engine:engine /opt/hf-cache
 
 # /data is the single persistent mount. Everything else is ephemeral.
