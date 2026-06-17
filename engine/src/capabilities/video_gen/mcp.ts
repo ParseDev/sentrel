@@ -17,8 +17,9 @@ export function buildVideoGenMcpServer(agent: Agent) {
       prompt: z.string().describe("For a scene clip: the scene description (camera + subject + action + style + lighting). For an avatar/UGC clip (when `avatar` is set): the SCRIPT the creator speaks, verbatim — write it like a real person talking to camera."),
       duration: z.number().int().min(3).max(10).optional().describe("Seconds (default provider's minimum — usually 5). Ignored for avatar UGC (length follows the script)."),
       aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional().describe("16:9 default (landscape), 9:16 for vertical / social."),
-      image: z.string().optional().describe("Path or URL to a starting image for image-to-video. Kling derives the video's ratio from this image."),
-      avatar: z.string().optional().describe("Avatar id for UGC talking-creator video (a real-looking person speaking the prompt as a script), e.g. 'emily_primary'. When set, routes to the avatar model instead of scene generation — this is how you make UGC ads."),
+      image: z.string().optional().describe("Path or URL to a source image. Without `avatar`: image-to-video (Kling animates the scene). WITH `avatar`: the engine voices the prompt and lip-syncs THIS face to it — so a person you generated (a doctor, a nurse, a patient) becomes a talking creator. This is how you make a SPECIFIC person do UGC."),
+      avatar: z.string().optional().describe("Set this to make a talking-creator/UGC video where someone speaks the prompt (lip-synced). Two ways: (1) a stock creator id like 'emily_primary' and NO image → a generic creator; (2) ANY value (e.g. 'custom') AND an `image` of a person you generated → that exact person talks. Use option 2 for on-brand creators like a doctor in a clinic."),
+      voice: z.string().optional().describe("Optional voice id for the spoken script when using a custom face (image + avatar). Vary it for different creators."),
       model: z.string().optional().describe("Override the default model."),
     },
     async (args) => {

@@ -5,8 +5,15 @@ export interface GenerateVideoInput {
   aspect_ratio?: "16:9" | "9:16" | "1:1";
   /** Optional reference image (workspace path or URL) for image-to-video. */
   image?: string;
-  /** Avatar id → UGC talking-creator video; `prompt` is the spoken script. */
+  /**
+   * UGC talking-creator video; `prompt` is the spoken script.
+   * - avatar + no image → pre-made stock creator (use a known id).
+   * - avatar + image    → CUSTOM talking avatar: that exact face (e.g. a
+   *   doctor you generated) is voiced + lip-synced to the script.
+   */
   avatar?: string;
+  /** Voice id for the spoken script (custom talking avatar). Optional. */
+  voice?: string;
   model?: string;
 }
 

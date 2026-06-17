@@ -1,45 +1,80 @@
 ---
 name: ugc-ads
-description: Use when making UGC-style ads (the authentic, creator-talking-to-camera format that wins on TikTok/Reels) — both avatar talking-creator videos and faceless clip+voiceover+caption ads. Covers the two pipelines, the script craft, and how to drive the avatar tool.
+description: Use when making UGC-style ads (the authentic, creator-talking-to-camera format that wins on TikTok/Reels). Covers the talking-creator formats — stock creators AND custom on-brand creators you generate (e.g. a doctor in a clinic) — the faceless format, and the script craft that drives all of them.
 ---
 
 # UGC ads
 
 UGC (user-generated-content style) ads look like a real person filmed it on
 their phone — not a polished commercial. They massively out-convert
-cinematic B-roll on TikTok and Reels. Two formats; both run on fal.
+cinematic B-roll on TikTok and Reels. **A UGC ad is a person talking to
+camera, lip-synced — it is NOT a scene clip with captions.** If you ever
+make a 5-second scene with a caption over it, that's the wrong format; stop
+and use one of the talking-creator recipes below.
 
-## Format 1 — Avatar talking-creator (the default UGC ad)
+You build UGC by **composing primitives**: generate a person → voice a
+script → lip-sync. The video tool does the voicing + lip-sync for you in
+one call, so you mostly think about *who's talking* and *what they say*.
 
-A real-looking person speaks your script to camera, lip-synced. This is
-the highest-converting UGC format and the simplest to make: one tool call.
+## Recipe A — Custom on-brand creator (use this for a doctor / nurse / any specific look)
 
-- Call the **video tool** with `avatar: "<avatar_id>"` and `prompt: "<the
-  exact script the creator speaks>"`. Setting `avatar` routes to the UGC
-  avatar model (not scene generation). A known avatar id is
-  `emily_primary`; try others for different looks/voices.
-- `prompt` is the **verbatim script**, written like a real person talking
-  — not a scene description. No camera directions, no "[pause]", just the
-  words they say.
-- 9:16. The clip length follows the script (keep it 15–30s of speech).
+Make a *specific* person — one you generate, in the right setting — speak
+your script. This is how you get a **doctor in a clinic**, not a generic
+creator on a couch.
+
+1. **Generate the person** with the image tool — a realistic, phone-selfie
+   portrait of the creator you want, framed vertically (9:16), looking at
+   the camera. For ScribeMD: a tired-but-warm physician in scrubs or a
+   white coat, in a real clinic/exam-room, natural lighting, shot like a
+   front-facing phone camera (slightly close, slightly imperfect).
+2. **Make them talk** — call the **video tool** with that image **and**
+   `avatar` set, and `prompt` = the verbatim script. The engine voices the
+   script and lip-syncs it to that exact face.
+
+```
+const doctor = image.generate({ prompt:
+  "Selfie-style vertical photo, a 40-year-old female physician in a white
+   coat and stethoscope standing in a real exam room, soft daylight, warm
+   tired smile, looking straight into a front-facing phone camera, candid,
+   photo-real, 9:16" })
+
+video.generate({
+  image: doctor.path,        // the doctor you just generated
+  avatar: "custom",          // <- presence of image + avatar = lip-sync THIS face
+  voice: "warm-female",      // optional; vary per creator
+  prompt: "Okay, real talk — if you're a doctor still charting at 11pm, I
+           need you to hear this. ScribeMD listens to your visit and writes
+           the note for you. I got two hours of my night back. Try it." })
+```
+
+Vary the creator (age, gender, specialty, setting) and the script across
+several clips — different doctors, different hooks.
+
+## Recipe B — Stock creator (fastest, generic look)
+
+When the *specific* identity doesn't matter, use a pre-made creator. One
+call, no image:
 
 ```
 video.generate({ avatar: "emily_primary",
-  prompt: "Okay if you're a doctor and you're STILL charting at 11pm... I
-           need you to stop scrolling. ScribeMD listens to your visit and
-           writes the note for you. I got two hours of my night back. Link's
-           right here." })
+  prompt: "If you're a clinician drowning in notes, this changed my life..." })
 ```
 
-## Format 2 — Faceless UGC (no on-camera person)
+Stock creators are a fixed library of generic people — none are doctors and
+you can't pick the setting. For anything on-brand (a doctor, a clinic), use
+Recipe A.
 
-Punchy b-roll + a voiceover + big on-screen captions. Use when you can't
-show a face (or want variety):
-1. **Clips** — generate 2–4 short Kling scene clips (video tool, no avatar).
+## Recipe C — Faceless UGC (no on-camera person)
+
+Punchy b-roll + a voiceover + big on-screen captions. Use for variety or
+when you don't want a face:
+1. **Clips** — generate 2–4 short scene clips (video tool, no avatar).
 2. **Voiceover** — TTS the script (the voice tool).
 3. **Captions + music + stitch** — assemble with the editing step
-   (burned-in captions are non-negotiable for UGC — most people watch
-   muted).
+   (burned-in captions are non-negotiable — most people watch muted).
+
+This is the ONLY UGC format that uses scene clips, and even here the scenes
+are b-roll *under* a voiceover — never a lone captioned scene posing as a UGC ad.
 
 ## Script craft (this is 80% of UGC performance)
 
@@ -56,11 +91,15 @@ show a face (or want variety):
 
 ## Rules
 
-- Avatar UGC = one `video.generate({avatar, prompt})` call. Don't generate
-  a still first — there's no still in this format.
+- **A UGC ad is a talking person, lip-synced.** Recipe A or B. Never ship a
+  bare scene clip + caption as a "UGC ad" — that's the wrong format and it's
+  why earlier attempts looked cheap and were only 5 seconds.
+- For a **doctor or any specific on-brand creator → always Recipe A**
+  (generate the person, then `video.generate({ image, avatar, prompt })`).
 - Always 9:16 for TikTok/Reels.
-- Make **variants** — different hooks, different avatars — UGC is a numbers
+- Keep the script to ~15–30s of speech; the clip length follows the script.
+- Make **variants** — different creators, hooks, voices. UGC is a numbers
   game; the winner isn't obvious up front.
 - Publishing still goes through approval (social-publishing skill) — draft
   the clip + caption, submit, don't auto-post.
-- Tell the user which avatar/model produced each clip.
+- Tell the user which recipe + creator produced each clip.
