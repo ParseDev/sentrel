@@ -20,8 +20,10 @@ module Email
         # Our outbound emails include this header with the conversation's
         # public id; the inbound reply (any modern email client) preserves
         # it verbatim, giving us a deterministic thread anchor independent
-        # of Message-ID rewriting.
-        conversation_id_header: header(headers, "X-Doublemd-Conversation-Id"),
+        # of Message-ID rewriting. Prefer the current Sentrel header, but
+        # fall back to the legacy Doublemd one so replies to emails sent
+        # before the rebrand still thread correctly.
+        conversation_id_header: header(headers, "X-Sentrel-Conversation-Id") || header(headers, "X-Doublemd-Conversation-Id"),
       )
     end
 

@@ -193,7 +193,7 @@ module Email
         # Custom thread anchor — belt-and-suspenders alongside the encoded
         # Message-ID. Some clients normalize Message-ID; this header is
         # preserved verbatim across replies on every modern client.
-        header["X-Doublemd-Conversation-Id"] = conv_id_header if conv_id_header
+        header["X-Sentrel-Conversation-Id"] = conv_id_header if conv_id_header
 
         text_part { body text_body }
         html_part do

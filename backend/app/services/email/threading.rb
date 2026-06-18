@@ -8,8 +8,9 @@ module Email
   # correctly produces a new conversation, matching user intent.
   #
   # Resolution order:
-  #   1. X-Doublemd-Conversation-Id custom header (set by OutboundSender,
-  #      preserved verbatim across all modern email clients)
+  #   1. X-Sentrel-Conversation-Id custom header (set by OutboundSender,
+  #      preserved verbatim across all modern email clients; legacy
+  #      X-Doublemd-Conversation-Id still read on inbound for old threads)
   #   2. Message-ID prefix "conv-<cnv_id>." encoded into outbound messages
   #      (Discourse-style — caught via In-Reply-To even if the custom
   #      header gets stripped)
@@ -19,7 +20,7 @@ module Email
   module Threading
     module_function
 
-    # `conversation_id_header` is the X-Doublemd-Conversation-Id value from
+    # `conversation_id_header` is the X-Sentrel-Conversation-Id value from
     # the inbound email (passed through MimeParser). When present it's the
     # most reliable thread anchor — set by our own OutboundSender so any
     # reply to one of our emails carries it back.
