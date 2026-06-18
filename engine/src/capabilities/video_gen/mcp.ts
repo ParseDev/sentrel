@@ -20,7 +20,7 @@ export function buildVideoGenMcpServer(agent: Agent) {
       image: z.string().optional().describe("Path or URL to a source image. Without `avatar`: image-to-video (Kling animates the scene). WITH `avatar`: the engine voices the prompt and lip-syncs THIS face to it — so a person you generated (a doctor, a nurse, a patient) becomes a talking creator. This is how you make a SPECIFIC person do UGC."),
       avatar: z.string().optional().describe("Set this to make a talking-creator/UGC video where someone speaks the prompt (lip-synced). Two ways: (1) a stock creator id like 'emily_primary' and NO image → a generic creator; (2) ANY value (e.g. 'custom') AND an `image` of a person you generated → that exact person talks. Use option 2 for on-brand creators like a doctor in a clinic."),
       voice: z.string().optional().describe("Optional voice id for the spoken script when using a custom face (image + avatar). Vary it for different creators."),
-      model: z.string().optional().describe("Override the default model."),
+      model: z.string().optional().describe("Override the default model. For ONE-STEP talking UGC with native voice (no image, no avatar — just describe the person + what they say in `prompt`), pass 'fal-ai/veo3' or the cheaper 'fal-ai/veo3/fast' (Veo 3 generates the spoken audio + lip-sync itself), or 'fal-ai/sora-2/text-to-video'. Leave unset for the default scene/Kling model."),
     },
     async (args) => {
       try {

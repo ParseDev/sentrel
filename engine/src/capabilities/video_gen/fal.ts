@@ -151,16 +151,26 @@ export const FalVideoProvider = {
       body.avatar_id = input.avatar;
       mode = "stock-avatar";
     } else {
-      // Scene video (Kling). i2v when a source image is given — inline it as
-      // a data URI so fal never has to fetch a URL. Kling derives the ratio
-      // from the image; t2v needs an explicit aspect_ratio.
+      // Scene / one-step video. i2v when a source image is given — inline it
+      // as a data URI so fal never has to fetch a URL.
       const imageData = input.image ? await toDataUri(input.image) : null;
       if (input.image && !imageData) throw new Error(`fal kling: couldn't read source image ${input.image}`);
       model = input.model || (imageData ? DEFAULT_I2V : DEFAULT_T2V);
       body.prompt = input.prompt;
-      body.duration = (input.duration && input.duration >= 10) ? "10" : "5";
       if (imageData) body.image_url = imageData;
-      else body.aspect_ratio = input.aspect_ratio || "9:16";
+
+      // Veo 3 / Sora 2 generate a talking person WITH native audio from the
+      // prompt alone (one-step UGC, no separate image or lip-sync). They use a
+      // different param shape than Kling — aspect_ratio always, no "5"/"10".
+      if (/veo|sora/.test(model)) {
+        body.aspect_ratio = input.aspect_ratio || "9:16";
+        if (/veo/.test(model)) body.generate_audio = true; // native dialogue
+        mode = "one-step-talking";
+      } else {
+        // Kling: derives ratio from the source image; t2v needs aspect_ratio.
+        body.duration = (input.duration && input.duration >= 10) ? "10" : "5";
+        if (!imageData) body.aspect_ratio = input.aspect_ratio || "9:16";
+      }
     }
 
     const result = await submitAndPoll(model, body, headers);

@@ -1,107 +1,112 @@
 ---
 name: ugc-ads
-description: Use when making UGC-style ads (the authentic, creator-talking-to-camera format that wins on TikTok/Reels). Covers the locked recipe for talking-creator video (generate a person, voice a script, lip-sync), the faceless format, the script craft, and the MANDATORY self-review loop — view every asset and fix it before showing the user.
+description: Use when making UGC-style ads (authentic creator-talking-to-camera content for TikTok/Reels/Shorts). ALWAYS run the creative brief (ask the user the questions below) before generating. Covers every approach — one-step Veo 3, custom consistent face, stock avatar, faceless — plus script craft and the mandatory self-review loop.
 ---
 
 # UGC ads
 
-UGC (user-generated-content style) ads look like a real person filmed it on
-their phone — not a polished commercial. **A UGC ad is a person talking to
-camera, lip-synced — NOT a scene clip with a caption.**
+UGC ads look like a real person filmed it on their phone, not a polished
+commercial. They out-convert cinematic B-roll on TikTok/Reels/Shorts.
 
-You build UGC by composing primitives — image → voice → lip-sync — and you
-**check your own work at every step** (see Self-review, below). You can see
-images: use the **Read tool** on any generated file (it supports vision). You
-can see a video by extracting a frame with `ffmpeg` and Reading it. Never
-send an asset you haven't looked at.
+**Rule 0 — interview first, generate second.** Do NOT jump straight to making
+a clip. UGC has real forks (which approach, which look, which tone), and
+guessing wastes renders and the user's patience. Run the creative brief
+below, confirm it back in one line, THEN generate. Offer smart defaults so
+the user can just say "go with your defaults."
 
-## The locked recipe (don't improvise the models)
+## Step 1 — Creative brief (ASK the user before generating)
 
-These are chosen and proven. Use them; don't swap unless the user asks.
+Ask these as a short, friendly checklist (group them, don't interrogate).
+Suggest a default for each so they can approve fast:
 
-1. **Person image** — `image.generate` with **`model: "fal-ai/flux-pro/v1.1-ultra"`**
-   and **`aspect_ratio: "9:16"`**. (The cheap default models make plasticky,
-   cartoon people — ultra makes photoreal ones.)
-   - **Framing is the single most important thing: TIGHT head-and-shoulders.**
-     Face fills the frame, looking into a front-facing phone camera, **no
-     hands or arms in the shot.** Loose/full-body selfies make the lip-sync
-     model invent and mangle arms. Tight crop = no arms to break + reads as
-     real UGC.
-   - Prompt for realism: "candid smartphone front-camera photo, photorealistic
-     skin with visible pores and texture, natural lighting", real setting
-     (clinic/exam room) blurred behind.
-2. **Talk** — `video.generate` with that **`image`** AND **`avatar`** set, and
-   **`prompt` = the verbatim script**. The engine voices the script and
-   lip-syncs it to that exact face. You do NOT pass audio — just image + script.
+1. **Approach** — which engine? (explain the trade-off in one line each)
+   - **One-step (Veo 3)** — describe a person + their lines, get a talking
+     clip with native voice in one shot. Fast, great realism, but a *new*
+     person each clip (no consistent recurring face). *Default for most UGC.*
+   - **Consistent custom face** — generate a specific person (e.g. a doctor)
+     and reuse that exact face across clips, lip-synced. Use when they want a
+     recurring "spokesperson."
+   - **Stock avatar** — a pre-made generic creator reads the script. Fastest,
+     least control.
+   - **Faceless** — b-roll + voiceover + big captions. No on-camera person.
+2. **Creator(s)** — who's on camera? age / gender / vibe / setting (e.g.
+   "late-30s female physician, tired-but-warm, real exam room"). How many
+   different creators?
+3. **Tone** — urgent / warm / funny / authoritative / "just venting to a friend"?
+4. **Angle & CTA** — the one problem → product moment → call to action
+   (default angle for ScribeMD: doctors drowning in after-hours charting →
+   ScribeMD writes the note → "try it free").
+5. **Count & format** — how many variants? Aspect (default 9:16). Length
+   (default ~8–20s). Captions/music on the faceless ones?
+6. **Anything off-limits** — claims to avoid, must-say lines, brand handles.
 
+Confirm the brief in one line ("3 clips, Veo 3, late-30s female + 40s male
+docs, warm tone, after-hours-charting angle, 9:16 — going now") and proceed.
+
+## Step 2 — Generate (pick the approach from the brief)
+
+### A) One-step talking UGC — Veo 3 (default)
+One `video.generate` call. No image, no avatar. The **prompt is a full
+scene + the exact spoken line** — Veo 3 makes the person, the voice, and the
+lip-sync together.
 ```
-const doctor = image.generate({
-  model: "fal-ai/flux-pro/v1.1-ultra", aspect_ratio: "9:16",
-  prompt: "tight close-up head and shoulders selfie of a tired warm 38yo
-   female physician in a white coat, face fills the frame, looking into a
-   front-facing phone camera, exam room blurred behind, candid smartphone
-   photo, photorealistic skin with pores, natural light, no hands or arms in
-   frame" })
-// → SELF-REVIEW the image (below) before animating it.
-video.generate({ image: doctor.path, avatar: "custom",
-  prompt: "Okay real talk — if you're a doctor still charting at 11pm, you
-   need ScribeMD. It listens to your visit and writes the note for you. I got
-   two hours of my night back. Link's right here." })
-// → SELF-REVIEW the video before sending.
+video.generate({ model: "fal-ai/veo3", aspect_ratio: "9:16",
+  prompt: "Vertical phone selfie video. A tired late-30s female doctor in a
+   white coat in a real exam room, talking straight to camera like she's
+   venting to a friend, says: 'Okay real talk — if you're still charting at
+   11pm, you need ScribeMD. It writes your notes for you. I got my evenings
+   back. Link's right here.' Natural handheld phone look, candid." })
 ```
+Use `fal-ai/veo3/fast` for cheaper/quicker drafts. Vary the person + line per clip.
 
-## Self-review loop (MANDATORY — this is how quality stays high without the user QA-ing for you)
+### B) Consistent custom face (recurring spokesperson)
+Two steps — make the face once, reuse it, lip-sync each script.
+1. `image.generate({ model: "fal-ai/flux-pro/v1.1-ultra", aspect_ratio:
+   "9:16", prompt: "<TIGHT head-and-shoulders selfie, face fills frame, no
+   hands/arms in shot, photoreal skin, real setting blurred behind>" })`
+   — tight framing is essential (loose shots make the lip-sync mangle arms).
+2. `video.generate({ image: <face>, avatar: "custom", prompt: "<verbatim
+   script>" })` — engine voices + lip-syncs that exact face (OmniHuman).
 
-After EVERY generation, look at it and judge it honestly. Regenerate until it
-passes. Only then send.
+### C) Stock avatar
+`video.generate({ avatar: "emily_primary", prompt: "<verbatim script>" })`.
 
-**After the image** — Read the file. Check:
-- Photoreal, not cartoon/plastic/airbrushed? (skin texture, real eyes)
-- Tight head-and-shoulders, face fills frame, **no hands/arms** visible?
-- 9:16 vertical? Right person (e.g. actually reads as a doctor, right setting)?
-- If any fail → adjust the prompt and regenerate. Don't proceed with a bad still.
+### D) Faceless
+1. 2–4 short scene clips (`video.generate`, no avatar — Kling/Veo for b-roll).
+2. Voiceover (voice tool). 3. Burned-in captions + music + stitch (editing
+   step — captions are non-negotiable; most watch muted).
 
-**After the video** — extract a frame and Read it (and check duration/dims):
-```
-ffmpeg -y -i <video> -vf "select=eq(n\,12)" -vframes 1 /tmp/frame1.png   # early
-ffmpeg -y -i <video> -vf "select=eq(n\,80)" -vframes 1 /tmp/frame2.png   # later
-ffprobe -v error -show_entries stream=width,height -show_entries format=duration <video>
-```
-Read both frames. Check:
-- Face still photoreal in motion (not waxy/melting)?
-- **Hands and body intact** — no extra/distorted limbs, no mangled arms?
-- Still 9:16, framed on the face?
-- If any fail → regenerate (tighten the crop on the source image if it's a
-  hands/arms problem). Don't send a broken clip.
+## Step 3 — Self-review (MANDATORY — never send a clip you haven't watched)
 
-Tell the user, briefly, that you reviewed each one ("checked all three — faces
-hold up, hands clean, 9:16").
+You can see your work: the **Read tool supports vision** (Read any image),
+and you have `ffmpeg` to grab video frames.
+- **Images:** Read the file → photoreal not cartoon? tight, no stray hands?
+  9:16? right person/setting? Regenerate if not.
+- **Videos:** grab 2 frames and Read them, check dims/duration:
+  ```
+  ffmpeg -y -i <vid> -vf "select=eq(n\,12)" -vframes 1 /tmp/f1.png
+  ffmpeg -y -i <vid> -vf "select=eq(n\,80)" -vframes 1 /tmp/f2.png
+  ffprobe -v error -show_entries stream=width,height -show_entries format=duration <vid>
+  ```
+  Face still realistic in motion? Hands/body intact? 9:16? Lips match the
+  words? Regenerate (or switch approach) if it fails. Don't make the user QA.
 
-## Faceless UGC (no on-camera person)
+Tell the user, briefly, that you reviewed each one.
 
-Punchy b-roll + voiceover + big burned-in captions. The only UGC format that
-uses scene clips — and even here they're b-roll *under* a voiceover, never a
-lone captioned scene. 1) 2–4 short scene clips (video tool, no avatar). 2) TTS
-the script (voice tool). 3) Captions + music + stitch (editing step). Self-review
-the same way.
+## Script craft (80% of performance)
 
-## Script craft (80% of UGC performance)
-
-1. **Hook in the first 1–2 seconds.** A sharp problem or pattern-interrupt:
-   "POV: it's 11pm and you're still charting."
-2. **First person, spoken, casual.** Contractions, short sentences, one idea
-   per line. Read it aloud — if it sounds written, rewrite it.
-3. **One problem → one product moment → one CTA.** Don't list features; show
-   the before/after feeling ("I got my evenings back").
-4. **Native, not salesy** — a peer recommendation, not an ad.
+1. **Hook in the first 1–2 seconds** — sharp problem or pattern-interrupt.
+2. **First person, spoken, casual** — contractions, short lines, one idea each.
+   Read it aloud; if it sounds written, rewrite.
+3. **One problem → one product moment → one CTA.** Show the before/after
+   feeling, don't list features.
+4. **Native, not salesy** — a peer recommendation.
 5. **Clear low-friction CTA** ("link in bio", "try it free").
 
 ## Rules
-
-- A UGC ad is a talking person, lip-synced — never a bare captioned scene.
-- Tight head-and-shoulders framing, always 9:16, ~15–30s of speech.
-- **Self-review every asset before sending. No exceptions.**
-- Make variants — different creators, hooks, voices. UGC is a numbers game.
+- **Always run the brief first** (Step 1). Never skip straight to generating.
+- A talking-UGC ad is a person speaking to camera — never a bare captioned scene.
+- Default 9:16. Make variants — different creators, hooks, voices.
+- Self-review every asset before sending.
 - Publishing goes through approval (social-publishing skill) — draft, submit,
-  don't auto-post.
-- Tell the user which creator + script produced each clip, and that you reviewed it.
+  don't auto-post. Tell the user which approach + creator made each clip.
