@@ -13,9 +13,16 @@ servers:
       - 52.2.137.107
     cmd: bundle exec sidekiq
 
-# SSL via Let's Encrypt. Point DNS A record at the EC2 IP first, then deploy.
+# SSL via a Cloudflare Origin Certificate (not Let's Encrypt). The domain is
+# proxied through Cloudflare (orange cloud), so ACME HTTP-01 can't validate
+# against this origin — Cloudflare intercepts :80/:443. Instead kamal-proxy
+# serves a long-lived Cloudflare Origin cert and Cloudflare runs in Full
+# (strict) mode. CERTIFICATE_PEM / PRIVATE_KEY_PEM are secret names resolved
+# from .kamal/secrets (materialized from GitHub Secrets in CI).
 proxy:
-  ssl: true
+  ssl:
+    certificate_pem: CERTIFICATE_PEM
+    private_key_pem: PRIVATE_KEY_PEM
   hosts:
     - www.sentrel.ai
     - sentrel.ai

@@ -123,6 +123,9 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           PLAUSIBLE_SCRIPT_ID: ${{ secrets.PLAUSIBLE_SCRIPT_ID }}
+          # Cloudflare Origin Certificate (cert + key PEM) served by kamal-proxy.
+          CERTIFICATE_PEM: ${{ secrets.CERTIFICATE_PEM }}
+          PRIVATE_KEY_PEM: ${{ secrets.PRIVATE_KEY_PEM }}
         run: |
           mkdir -p .kamal
           # backend/config/master.key needs to be a file for the secrets-file
@@ -171,6 +174,8 @@ jobs:
           GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID
           GOOGLE_OAUTH_CLIENT_SECRET=$GOOGLE_OAUTH_CLIENT_SECRET
           PLAUSIBLE_SCRIPT_ID=$PLAUSIBLE_SCRIPT_ID
+          CERTIFICATE_PEM="$CERTIFICATE_PEM"
+          PRIVATE_KEY_PEM="$PRIVATE_KEY_PEM"
           EOF
 
       - name: kamal deploy
