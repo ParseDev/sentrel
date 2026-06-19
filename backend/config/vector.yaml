@@ -1,0 +1,47 @@
+# Vector log forwarder → Better Stack (Telemetry source "sentryai").
+#
+# Tails the stdout of the alchemy app containers (Rails web + Sidekiq job) via
+# the Docker API and ships each line to Better Stack over HTTP. Runs as the
+# `vector` kamal accessory (see config/deploy.yml) — container name
+# `alchemy-vector`, mounting the host Docker socket.
+#
+# The source token is injected as an env var (BETTERSTACK_SOURCE_TOKEN) so it
+# never lives in the repo. Vector interpolates env vars referenced in the sink
+# below from the container environment.
+data_dir: /var/lib/vector
+
+sources:
+  docker:
+    type: docker_logs
+    include_containers:
+      - alchemy-web
+      - alchemy-job
+
+transforms:
+  # Drop the high-volume, low-signal spend-cap retry loop (Better Stack bills on
+  # ingested volume). Remove this transform once the runaway agent loop is fixed.
+  drop_spam:
+    type: filter
+    inputs:
+      - docker
+    condition:
+      type: vrl
+      source: |
+        msg = to_string(.message) ?? ""
+        !(contains(msg, "Spend cap hit") || contains(msg, "arrived without jobId") || contains(msg, "broadcast error to agent_chat:"))
+
+sinks:
+  betterstack:
+    type: http
+    inputs:
+      - drop_spam
+    uri: https://s2533847.us-east-9.betterstackdata.com
+    method: post
+    encoding:
+      codec: json
+    compression: gzip
+    request:
+      headers:
+        Authorization: Bearer ${BETTERSTACK_SOURCE_TOKEN}
+    healthcheck:
+      enabled: false

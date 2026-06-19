@@ -89,6 +89,25 @@ aliases:
   logs: app logs -f
   dbc: app exec --interactive --reuse "bin/rails dbconsole --include-password"
 
+# Accessories — long-lived sidecar containers managed separately from the app.
+# `kamal deploy` does NOT touch these; boot/update them explicitly:
+#   bundle exec kamal accessory boot vector
+accessories:
+  # Vector log forwarder → Better Stack (Telemetry source "sentryai"). Tails the
+  # stdout of the alchemy-web (Rails) and alchemy-job (Sidekiq) containers via
+  # the host Docker socket and ships each line. Config in config/vector.yaml;
+  # the source token comes from BETTERSTACK_SOURCE_TOKEN in .kamal/secrets.
+  vector:
+    image: timberio/vector:0.44.0-alpine
+    host: 52.2.137.107
+    env:
+      secret:
+        - BETTERSTACK_SOURCE_TOKEN
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    files:
+      - config/vector.yaml:/etc/vector/vector.yaml
+
 # Persistent storage for ActiveStorage disk-backed files (if used locally;
 # production uses S3 via aws-sdk-s3, so this is mostly for uploads-in-flight).
 volumes:
