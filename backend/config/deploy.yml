@@ -107,3 +107,6 @@ builder:
 ssh:
   user: ubuntu
   keys: ["~/Downloads/alchemy_key.pem"]
+
+# Redeploy trigger 2026-06-19: rotate compromised ANTHROPIC_API_KEY — picks up
+# the new secrets.ANTHROPIC_API_KEY from GitHub Actions into the running env.
