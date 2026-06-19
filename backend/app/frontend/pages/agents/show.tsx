@@ -492,6 +492,15 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
+// Rails serializes Postgres `decimal` columns as JSON strings ("15.0"),
+// not numbers. Coerce to a real number (or null) so callers can do math /
+// .toFixed() without `t.toFixed is not a function` blowing up the page.
+function toNumOrNull(v: number | string | null | undefined): number | null {
+  if (v == null) return null
+  const n = typeof v === "number" ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, webhooks = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
@@ -1464,8 +1473,10 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
             spend={spend ? {
               daily_total_usd: spend.today?.cost_usd ?? 0,
               monthly_total_usd: spend.thirty_day?.cost_usd ?? 0,
-              daily_cap_usd: (agent as { spend_daily_cap_usd?: number | null }).spend_daily_cap_usd ?? null,
-              monthly_cap_usd: (agent as { spend_monthly_cap_usd?: number | null }).spend_monthly_cap_usd ?? null,
+              // Rails serializes `decimal` columns as JSON strings ("15.0"),
+              // so coerce to Number — SpendCard calls .toFixed() on these.
+              daily_cap_usd: toNumOrNull((agent as { spend_daily_cap_usd?: number | string | null }).spend_daily_cap_usd),
+              monthly_cap_usd: toNumOrNull((agent as { spend_monthly_cap_usd?: number | string | null }).spend_monthly_cap_usd),
             } : null}
           />
         )}
