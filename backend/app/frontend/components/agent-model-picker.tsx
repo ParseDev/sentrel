@@ -50,6 +50,7 @@ const MODELS: Array<{
       { provider: "openrouter", model_id: "deepseek/deepseek-v4-pro",   label: "DeepSeek V4 Pro",      hint: "strong reasoning" },
       { provider: "openrouter", model_id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash",    hint: "cheap + fast" },
       { provider: "openrouter", model_id: "qwen/qwen3-max-thinking",    label: "Qwen 3 Max (thinking)", hint: "open reasoning generalist" },
+      { provider: "openrouter", model_id: "z-ai/glm-5.2",               label: "GLM 5.2 (Z.ai)",        hint: "strong agentic coding" },
     ],
   },
   {

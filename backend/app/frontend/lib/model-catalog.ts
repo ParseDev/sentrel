@@ -17,6 +17,7 @@ export const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: st
     { value: "deepseek/deepseek-v4-pro",        label: "DeepSeek V4 Pro",      hint: "strong reasoning" },
     { value: "deepseek/deepseek-v4-flash",      label: "DeepSeek V4 Flash",    hint: "cheap + fast" },
     { value: "qwen/qwen3-max-thinking",         label: "Qwen 3 Max (thinking)", hint: "open reasoning generalist" },
+    { value: "z-ai/glm-5.2",                    label: "GLM 5.2 (Z.ai)",       hint: "strong agentic coding" },
     { value: "anthropic/claude-opus-4-7",       label: "Claude Opus 4.7 (via OR)" },
     { value: "anthropic/claude-sonnet-4-6",     label: "Claude Sonnet 4.6 (via OR)" },
     { value: "openai/gpt-5.5-pro",              label: "GPT-5.5 Pro (via OR)" },

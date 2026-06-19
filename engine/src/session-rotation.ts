@@ -33,6 +33,7 @@ const MODEL_CONTEXT_WINDOWS: Array<{ match: (provider: string, model: string) =>
   { match: (p, m) => /deepseek\/deepseek-v4-pro/.test(m),                                              tokens: 128_000 },
   { match: (p, m) => /deepseek\/deepseek-v4-flash/.test(m),                                            tokens: 128_000 },
   { match: (p, m) => /qwen\/qwen3-max/.test(m),                                                        tokens: 256_000 },
+  { match: (p, m) => /z-ai\/glm-5/.test(m),                                                            tokens: 200_000 },
 
   // OpenRouter — frontier non-Anthropic
   { match: (p, m) => /openai\/gpt-5/.test(m),                                                          tokens: 400_000 },
