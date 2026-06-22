@@ -70,6 +70,13 @@ export interface LoginResponse {
   onboarding_required?: boolean;
 }
 
+export interface ConversationSummary {
+  id: number;
+  agent: { id: string; name: string; slug: string; role: string; status: string };
+  last_message: { role: string; content: string; created_at: string } | null;
+  last_message_at: string | null;
+}
+
 export interface OrgListItem {
   id: number;
   name: string;
@@ -112,6 +119,10 @@ export const api = {
       "/api/mobile/organizations",
       { method: "POST", token, body: { name } }
     ),
+
+  // Conversations inbox (Chat tab)
+  listConversations: (token: string) =>
+    request<{ conversations: ConversationSummary[] }>("/api/mobile/conversations", { token }),
 
   // Onboarding
   onboarding: (token: string) =>

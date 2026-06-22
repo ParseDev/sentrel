@@ -37,6 +37,7 @@ Rails.application.routes.draw do
       get  "organizations",            to: "organizations#index"
       post "organizations",            to: "organizations#create"
       post "organizations/:id/switch", to: "organizations#switch"
+      get  "conversations",            to: "conversations#index"
       get  "onboarding",               to: "onboarding#show"
       post "onboarding/analyze",       to: "onboarding#analyze"
       post "onboarding/complete",      to: "onboarding#complete"

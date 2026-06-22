@@ -6,11 +6,14 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "sentrel",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.sentrel.mobile"
+      "bundleIdentifier": "ai.sentrel.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "ai.sentrel.mobile",
@@ -32,7 +35,16 @@
       [
         "expo-notifications",
         {
-          "color": "#6366F1"
+          "color": "#0058be"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B0B0F",
+          "image": "./assets/logo-white.png",
+          "imageWidth": 240,
+          "resizeMode": "contain"
         }
       ]
     ],
@@ -40,7 +52,12 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "http://localhost:3200"
-    }
+      "apiBaseUrl": "http://localhost:3200",
+      "router": {},
+      "eas": {
+        "projectId": "8e9eeed1-37cb-4c30-b9ae-bc12690e4546"
+      }
+    },
+    "owner": "elietoubiana"
   }
 }

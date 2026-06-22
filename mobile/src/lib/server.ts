@@ -10,7 +10,11 @@ export type ServerEnv = "dev" | "prod";
 const KEY = "sentrel.serverEnv";
 export const PROD_URL = "https://www.sentrel.ai";
 
-let currentEnv: ServerEnv = "dev";
+// A standalone/release build (no Metro, e.g. installed on a phone that isn't
+// tethered to the Mac) has no dev server to reach, so it must default to
+// production. In a dev build (Expo Go), default to local dev. A persisted
+// choice from Settings overrides either default (see initServerEnv).
+let currentEnv: ServerEnv = __DEV__ ? "dev" : "prod";
 
 function devUrl(): string {
   const hostUri =

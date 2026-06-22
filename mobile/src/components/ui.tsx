@@ -12,7 +12,7 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { colors, radius } from "../theme/colors";
+import { colors, fonts, radius } from "../theme/colors";
 
 export function Button({
   title,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
   },
-  btnText: { fontSize: 15, fontWeight: "600" },
+  btnText: { fontSize: 15, fontFamily: fonts.bold },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -227,18 +227,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 16,
   },
-  label: { color: colors.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 6 },
+  label: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.label, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 6 },
   input: {
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     color: colors.text,
+    fontFamily: fonts.body,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
   },
-  hint: { color: colors.textFaint, fontSize: 12, marginTop: 6 },
+  hint: { color: colors.textFaint, fontFamily: fonts.body, fontSize: 12, marginTop: 6 },
   dot: { width: 9, height: 9, borderRadius: 5 },
   pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, alignSelf: "flex-start" },
   row: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },

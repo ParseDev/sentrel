@@ -1,7 +1,6 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { FuturisticBackground } from "../../src/components/FuturisticBackground";
 import { PulsingOrb } from "../../src/components/PulsingOrb";
 import { Button, Field } from "../../src/components/ui";
 import { api, ApiError } from "../../src/lib/api";
@@ -60,9 +59,8 @@ export default function Onboarding() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.surfaceBright }}>
       <Stack.Screen options={{ headerShown: false }} />
-      <FuturisticBackground />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }} keyboardShouldPersistTaps="handled">
           <View style={{ alignItems: "center", marginBottom: 28 }}>

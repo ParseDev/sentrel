@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../../src/lib/auth";
 import { registerForPushNotifications } from "../../src/lib/push";
-import { colors } from "../../src/theme/colors";
+import { colors, fonts } from "../../src/theme/colors";
 
 export default function AppLayout() {
   const { token, loading } = useAuth();
@@ -27,20 +27,19 @@ export default function AppLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
-        headerTintColor: colors.text,
-        headerTitleStyle: { color: colors.text, fontWeight: "700" },
+        headerTintColor: colors.secondary,
+        headerTitleStyle: { color: colors.text, fontFamily: fonts.bold },
         contentStyle: { backgroundColor: colors.bg },
         headerShadowVisible: false,
         headerBackTitle: "Back",
       }}
     >
-      <Stack.Screen name="agents/index" options={{ title: "Agents" }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="agents/new" options={{ title: "New agent", presentation: "modal" }} />
       <Stack.Screen name="agents/[id]/index" options={{ title: "Agent" }} />
       <Stack.Screen name="agents/[id]/edit" options={{ title: "Edit agent", presentation: "modal" }} />
       <Stack.Screen name="agents/[id]/chat" options={{ title: "Chat" }} />
       <Stack.Screen name="agents/[id]/ops" options={{ title: "Operations" }} />
-      <Stack.Screen name="settings" options={{ title: "Settings", presentation: "modal" }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="organizations/new" options={{ title: "New organization", presentation: "modal" }} />
     </Stack>

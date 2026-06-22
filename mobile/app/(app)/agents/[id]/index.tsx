@@ -1,28 +1,53 @@
+import { MaterialIcons } from "@expo/vector-icons";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Avatar } from "../../../../src/components/Avatar";
 import { api, ApiError } from "../../../../src/lib/api";
 import { useAuth } from "../../../../src/lib/auth";
 import type { Agent, Spend } from "../../../../src/lib/types";
-import { Button, Card, Pill, StatusDot } from "../../../../src/components/ui";
-import { colors } from "../../../../src/theme/colors";
+import { colors, fonts, radius } from "../../../../src/theme/colors";
 
 function money(n: number | null | undefined): string {
-  if (n == null) return "—";
-  return `$${Number(n).toFixed(2)}`;
+  return n == null ? "—" : `$${Number(n).toFixed(2)}`;
+}
+
+function Card({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <View style={{ backgroundColor: colors.surfaceContainerLowest, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.outlineVariant + "66", padding: 16, marginBottom: 14 }}>
+      {title ? <Text style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 16, marginBottom: 10 }}>{title}</Text> : null}
+      {children}
+    </View>
+  );
 }
 
 function CapBar({ spent, cap }: { spent: number; cap: number | null }) {
   if (!cap) return null;
   const pct = Math.min(1, spent / cap);
-  const over = spent >= cap;
-  const color = over ? colors.danger : pct >= 0.8 ? colors.warning : colors.primary;
+  const color = spent >= cap ? colors.danger : pct >= 0.8 ? colors.warning : colors.secondary;
   return (
-    <View style={{ marginTop: 8 }}>
-      <View style={{ height: 8, backgroundColor: colors.surfaceAlt, borderRadius: 999, overflow: "hidden" }}>
-        <View style={{ width: `${pct * 100}%`, height: "100%", backgroundColor: color }} />
-      </View>
+    <View style={{ marginTop: 8, height: 6, backgroundColor: colors.surfaceContainerHighest, borderRadius: 999, overflow: "hidden" }}>
+      <View style={{ width: `${pct * 100}%`, height: "100%", backgroundColor: color }} />
     </View>
+  );
+}
+
+function ActionButton({ icon, label, onPress, primary, danger, loading }: { icon: any; label: string; onPress: () => void; primary?: boolean; danger?: boolean; loading?: boolean }) {
+  const bg = primary ? colors.secondary : "transparent";
+  const fg = primary ? "#fff" : danger ? colors.danger : colors.secondary;
+  const borderColor = primary ? "transparent" : danger ? colors.danger : colors.outline;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      style={({ pressed }) => [
+        { flex: 1, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, backgroundColor: bg, borderWidth: primary ? 0 : 1, borderColor },
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      {loading ? <ActivityIndicator color={fg} /> : <MaterialIcons name={icon} size={18} color={fg} />}
+      <Text style={{ color: fg, fontFamily: fonts.bold, fontSize: 15 }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -50,13 +75,9 @@ export default function AgentDetail() {
     }
   }, [token, id]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function confirmDelete() {
+  function confirmDelete() {
     Alert.alert("Delete agent", `Permanently delete ${agent?.name}? This tears down its machine.`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -79,105 +100,107 @@ export default function AgentDetail() {
 
   if (loading || !agent) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: colors.textMuted }}>Loading…</Text>
+      <View style={{ flex: 1, backgroundColor: colors.surfaceBright, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={colors.secondary} />
       </View>
     );
   }
 
+  const running = agent.status === "running";
   const overDaily = spend?.daily_cap_usd != null && spend.today_usd >= spend.daily_cap_usd;
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={{ flex: 1, backgroundColor: colors.surfaceBright }}
       contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.textMuted} />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.textMuted} />}
     >
       <Stack.Screen options={{ title: agent.name }} />
 
-      {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <StatusDot status={agent.status} />
-        <Text style={{ color: colors.text, fontSize: 26, fontWeight: "800" }}>{agent.name}</Text>
+      {/* Hero */}
+      <View style={{ alignItems: "center", paddingVertical: 12 }}>
+        <View style={{ width: 80, height: 80 }}>
+          <Avatar name={agent.name} size={80} />
+          <View style={{ position: "absolute", right: 0, bottom: 0, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.status[agent.status] || colors.textMuted, borderWidth: 3, borderColor: colors.surfaceBright }} />
+        </View>
+        <Text style={{ color: colors.text, fontFamily: fonts.extrabold, fontSize: 24, marginTop: 12 }}>{agent.name}</Text>
+        <Text style={{ color: colors.textMuted, fontFamily: fonts.body, fontSize: 15, marginTop: 2 }}>{agent.role}</Text>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12, flexWrap: "wrap", justifyContent: "center" }}>
+          <Chip label={agent.status} tone={running ? "success" : "muted"} />
+          {agent.ai_config?.model_id ? <Chip label={agent.ai_config.model_id} tone="primary" /> : null}
+          {agent.instance?.region ? <Chip label={agent.instance.region} tone="muted" /> : null}
+        </View>
       </View>
-      <Text style={{ color: colors.textMuted, fontSize: 15, marginBottom: 16 }}>{agent.role}</Text>
 
-      <View style={{ flexDirection: "row", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        <Pill label={agent.status} tone={agent.status === "running" ? "success" : "muted"} />
-        {agent.ai_config?.model_id ? <Pill label={agent.ai_config.model_id} tone="primary" /> : null}
-        {agent.instance?.region ? <Pill label={agent.instance.region} /> : null}
-      </View>
-
-      {/* Primary actions */}
-      <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-        <Button title="Chat" onPress={() => router.push(`/agents/${id}/chat`)} style={{ flex: 1 }} />
-        <Button title="Edit" variant="secondary" onPress={() => router.push(`/agents/${id}/edit`)} style={{ flex: 1 }} />
+      {/* Actions */}
+      <View style={{ flexDirection: "row", gap: 10, marginVertical: 16 }}>
+        <ActionButton icon="chat-bubble-outline" label="Chat" primary onPress={() => router.push(`/agents/${id}/chat?name=${encodeURIComponent(agent.name)}`)} />
+        <ActionButton icon="edit" label="Edit" onPress={() => router.push(`/agents/${id}/edit`)} />
       </View>
 
       {/* Spend */}
-      <Card style={{ marginBottom: 16 }}>
-        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700", marginBottom: 4 }}>Spend</Text>
+      <Card title="Spend">
         {overDaily ? (
-          <View style={{ marginBottom: 8 }}>
-            <Pill label="Daily cap reached" tone="danger" />
+          <View style={{ alignSelf: "flex-start", backgroundColor: colors.errorContainer, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, marginBottom: 10 }}>
+            <Text style={{ color: colors.onErrorContainer, fontFamily: fonts.labelSemibold, fontSize: 11 }}>Daily cap reached</Text>
           </View>
         ) : null}
-
-        <View style={{ marginTop: 8 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ color: colors.textMuted }}>Today</Text>
-            <Text style={{ color: colors.text, fontWeight: "600" }}>
-              {money(spend?.today_usd)} <Text style={{ color: colors.textFaint }}>/ {money(spend?.daily_cap_usd)}</Text>
-            </Text>
-          </View>
-          <CapBar spent={spend?.today_usd || 0} cap={spend?.daily_cap_usd ?? null} />
-        </View>
-
-        <View style={{ marginTop: 16 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ color: colors.textMuted }}>This month (30d)</Text>
-            <Text style={{ color: colors.text, fontWeight: "600" }}>
-              {money(spend?.thirty_day_usd)} <Text style={{ color: colors.textFaint }}>/ {money(spend?.monthly_cap_usd)}</Text>
-            </Text>
-          </View>
-          <CapBar spent={spend?.thirty_day_usd || 0} cap={spend?.monthly_cap_usd ?? null} />
-        </View>
-
-        <Text style={{ color: colors.textFaint, fontSize: 12, marginTop: 14 }}>
-          {spend?.runs_today ?? 0} runs today
-        </Text>
+        <SpendRow label="Today" value={money(spend?.today_usd)} cap={money(spend?.daily_cap_usd)} />
+        <CapBar spent={spend?.today_usd || 0} cap={spend?.daily_cap_usd ?? null} />
+        <View style={{ height: 14 }} />
+        <SpendRow label="This month (30d)" value={money(spend?.thirty_day_usd)} cap={money(spend?.monthly_cap_usd)} />
+        <CapBar spent={spend?.thirty_day_usd || 0} cap={spend?.monthly_cap_usd ?? null} />
+        <Text style={{ color: colors.textFaint, fontFamily: fonts.label, fontSize: 12, marginTop: 14 }}>{spend?.runs_today ?? 0} runs today</Text>
       </Card>
 
       {/* Machine */}
-      <Card style={{ marginBottom: 16 }}>
-        <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700", marginBottom: 10 }}>Machine</Text>
+      <Card title="Machine">
         <KV k="Instance" v={agent.instance?.status || "not provisioned"} />
         {agent.instance?.machine_id ? <KV k="Machine ID" v={agent.instance.machine_id} /> : null}
         {agent.instance?.public_ip ? <KV k="IP" v={agent.instance.public_ip} /> : null}
         {agent.instance?.provisioning_error ? (
-          <Text style={{ color: colors.danger, fontSize: 13, marginTop: 6 }}>
-            {agent.instance.provisioning_error}
-          </Text>
+          <Text style={{ color: colors.danger, fontFamily: fonts.body, fontSize: 13, marginTop: 6 }}>{agent.instance.provisioning_error}</Text>
         ) : null}
-        <Pressable onPress={() => router.push(`/agents/${id}/ops`)} style={{ marginTop: 12 }}>
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>Operations →</Text>
+        <Pressable onPress={() => router.push(`/agents/${id}/ops`)} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 12 }}>
+          <Text style={{ color: colors.secondary, fontFamily: fonts.bold }}>Operations</Text>
+          <MaterialIcons name="arrow-forward" size={16} color={colors.secondary} />
         </Pressable>
       </Card>
 
-      <Button title="Delete agent" variant="danger" onPress={confirmDelete} loading={busy} />
+      <ActionButton icon="delete-outline" label="Delete agent" danger onPress={confirmDelete} loading={busy} />
     </ScrollView>
+  );
+}
+
+function Chip({ label, tone }: { label: string; tone: "success" | "primary" | "muted" }) {
+  const map = {
+    success: { bg: "#dcf3e6", fg: "#16794a" },
+    primary: { bg: colors.secondaryFixed, fg: colors.secondary },
+    muted: { bg: colors.surfaceContainerHigh, fg: colors.textMuted },
+  }[tone];
+  return (
+    <View style={{ backgroundColor: map.bg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill }}>
+      <Text style={{ color: map.fg, fontFamily: fonts.labelSemibold, fontSize: 11 }}>{label}</Text>
+    </View>
+  );
+}
+
+function SpendRow({ label, value, cap }: { label: string; value: string; cap: string }) {
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+      <Text style={{ color: colors.textMuted, fontFamily: fonts.body }}>{label}</Text>
+      <Text style={{ color: colors.text, fontFamily: fonts.semibold }}>
+        {value} <Text style={{ color: colors.textFaint, fontFamily: fonts.body }}>/ {cap}</Text>
+      </Text>
+    </View>
   );
 }
 
 function KV({ k, v }: { k: string; v: string }) {
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-      <Text style={{ color: colors.textMuted }}>{k}</Text>
-      <Text style={{ color: colors.text, maxWidth: "60%", textAlign: "right" }} numberOfLines={1}>
-        {v}
-      </Text>
+      <Text style={{ color: colors.textMuted, fontFamily: fonts.body }}>{k}</Text>
+      <Text style={{ color: colors.text, fontFamily: fonts.body, maxWidth: "60%", textAlign: "right" }} numberOfLines={1}>{v}</Text>
     </View>
   );
 }
