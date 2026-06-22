@@ -141,28 +141,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       redirectUrl
     )}`;
 
-    const result = await WebBrowser.openAuthSessionAsync(startUrl, redirectUrl);
-    if (result.type === "cancel" || result.type === "dismiss") {
-      const err = new Error("cancelled");
-      (err as any).cancelled = true;
-      throw err;
-    }
-    if (result.type !== "success" || !result.url) {
+    // Turn the final deep link into a session. Used by BOTH the auth-session
+    // result and the Linking fallback below.
+    const completeFromUrl = async (url: string) => {
+      const { queryParams } = Linking.parse(url);
+      const newToken = queryParams?.token as string | undefined;
+      const error = queryParams?.error as string | undefined;
+      if (error || !newToken) {
+        throw new Error(
+          error === "not_configured"
+            ? "Google sign-in isn’t configured on this server. Switch to Production in Settings to use Google."
+            : "Google sign-in failed."
+        );
+      }
+      const { user } = await api.me(newToken);
+      await store.set(TOKEN_KEY, newToken);
+      await store.set(USER_KEY, JSON.stringify(user));
+      setToken(newToken);
+      setUser(user);
+    };
+
+    // Fallback: on iOS the OS sometimes hands the exp:// redirect to the app as
+    // a normal deep link instead of returning it through the auth session. Catch
+    // it so we still complete sign-in.
+    let linkedUrl: string | null = null;
+    const sub = Linking.addEventListener("url", (e) => {
+      if (e.url.includes("auth-callback")) linkedUrl = e.url;
+    });
+
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(startUrl, redirectUrl);
+      if (result.type === "success" && result.url) {
+        return completeFromUrl(result.url);
+      }
+      // The auth session closed without returning a URL — give the Linking
+      // fallback a brief moment to deliver it.
+      if (!linkedUrl) await new Promise((r) => setTimeout(r, 400));
+      if (linkedUrl) return completeFromUrl(linkedUrl);
+
+      if (result.type === "cancel" || result.type === "dismiss") {
+        const err = new Error("cancelled");
+        (err as any).cancelled = true;
+        throw err;
+      }
       throw new Error("Google sign-in didn’t complete.");
+    } finally {
+      sub.remove();
     }
-
-    const { queryParams } = Linking.parse(result.url);
-    const newToken = queryParams?.token as string | undefined;
-    const error = queryParams?.error as string | undefined;
-    if (error || !newToken) {
-      throw new Error(error === "not_configured" ? "Google sign-in isn’t configured on the server." : "Google sign-in failed.");
-    }
-
-    const { user } = await api.me(newToken);
-    await store.set(TOKEN_KEY, newToken);
-    await store.set(USER_KEY, JSON.stringify(user));
-    setToken(newToken);
-    setUser(user);
   }
 
   async function signOut() {

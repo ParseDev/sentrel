@@ -16,15 +16,18 @@ class Api::Mobile::OauthController < ApplicationController
     end
 
     token = form_authenticity_token
+    # mobile + redirect MUST ride in the query string: omniauth 2.x captures
+    # `omniauth.params` from request.GET only (not the POST body), and that's
+    # what the callback reads to detect the mobile flow. The CSRF token stays in
+    # the POST body for omniauth-rails_csrf_protection.
+    action = "/users/auth/google_oauth2?mobile=1&redirect=#{CGI.escape(redirect)}"
     html = <<~HTML
       <!doctype html>
       <html>
         <head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
         <body style="background:#0B0B0F;color:#F5F5F7;font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-          <form id="f" action="/users/auth/google_oauth2" method="post">
+          <form id="f" action="#{ERB::Util.html_escape(action)}" method="post">
             <input type="hidden" name="authenticity_token" value="#{ERB::Util.html_escape(token)}">
-            <input type="hidden" name="mobile" value="1">
-            <input type="hidden" name="redirect" value="#{ERB::Util.html_escape(redirect)}">
             <noscript><button type="submit">Continue with Google</button></noscript>
           </form>
           <p>Redirecting to Google…</p>
