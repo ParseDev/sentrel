@@ -9,6 +9,17 @@ import { colors } from "../theme/colors";
 
 type ModelOption = { value: string; label: string; hint?: string };
 
+// Agents created against an OAuth subscription store providers like
+// "anthropic_account" / "openai_account"; the model catalog is keyed by the
+// base provider. Map to the catalog key for the model list.
+function catalogKey(provider: string): string {
+  if (provider?.startsWith("anthropic")) return "anthropic";
+  if (provider?.startsWith("openrouter")) return "openrouter";
+  if (provider?.startsWith("openai")) return "openai";
+  if (provider?.startsWith("google")) return "google";
+  return provider;
+}
+
 export interface AgentFormValue {
   agent: Partial<Agent>;
   ai_config: { provider: string; model_id: string; temperature: number; max_tokens: number };
@@ -75,13 +86,23 @@ export function AgentForm({
   });
 
   const modelOptions = useMemo(() => {
-    const list = catalog[provider] || [];
+    const list = catalog[catalogKey(provider)] || [];
     // Ensure the current model is selectable even if not in the catalog.
     if (modelId && !list.some((m) => m.value === modelId)) {
       return [{ value: modelId, label: modelId }, ...list];
     }
     return list;
   }, [catalog, provider, modelId]);
+
+  // Keep the agent's current provider selectable even if it's an alias
+  // (e.g. anthropic_account) that isn't in the catalog's provider list.
+  const providerOptions = useMemo(() => {
+    const opts = providerList.map((p) => ({ value: p, label: p }));
+    if (provider && !opts.some((o) => o.value === provider)) {
+      return [{ value: provider, label: provider }, ...opts];
+    }
+    return opts;
+  }, [providerList, provider]);
 
   function handleNameChange(v: string) {
     setName(v);
@@ -129,10 +150,10 @@ export function AgentForm({
       <SelectField
         label="Provider"
         value={provider}
-        options={providerList.map((p) => ({ value: p, label: p }))}
+        options={providerOptions}
         onChange={(p) => {
           setProvider(p);
-          const first = catalog[p]?.[0]?.value;
+          const first = catalog[catalogKey(p)]?.[0]?.value;
           if (first) setModelId(first);
         }}
       />
