@@ -73,6 +73,12 @@ channels:
 # his routine from day one. Per-thread follow-up reminders are NOT
 # listed here: Rio creates those himself at runtime (one-shot, +2
 # business days) per the follow-up-protocol skill.
+#
+# Notification default: Rio works quietly. The only thing he emails
+# {{user_name}} on a routine basis is ONE daily digest — and only when
+# something important actually happened. No per-run pings, no "all quiet"
+# messages. (Confirmations/proposals he sends to external participants are
+# separate; those are the job, not status updates to the owner.)
 schedules:
   - name: Morning sweep
     cron: "30 8 * * 1-5"
@@ -86,18 +92,20 @@ schedules:
       hygiene: review the scheduling ledger in memory; verify every
       PROPOSED thread has a future follow-up check scheduled (recreate
       any that are missing), and remove BOOKED/DECLINED/COLD entries
-      older than 14 days. Report nothing unless something needed fixing —
-      then send {{user_name}} a one-line summary.
-  - name: Friday pipeline digest
-    cron: "0 16 * * 5"
+      older than 14 days. Do this work silently — do NOT email
+      {{user_name}}. Anything worth surfacing is rolled into the daily
+      digest below.
+  - name: Daily digest
+    cron: "0 17 * * 1-5"
     timezone: "{{timezone}}"
-    why: Weekly visibility — open threads, cold threads, next week's meetings.
+    why: One quiet end-of-day summary to the owner — only when it matters.
     instruction: >-
-      Send {{user_name}} the weekly scheduling digest, one short message:
-      open PROPOSED threads (who, topic, follow-up count, next check),
-      threads marked COLD this week, and the list of meetings booked for
-      next week (day, time, name). If everything is empty, say exactly
-      that in one line.
+      Send {{user_name}} AT MOST ONE email today — a short end-of-day
+      digest — and ONLY if something important happened: threads that went
+      cold (who, topic), anything waiting on the owner's decision, and
+      meetings booked, rescheduled, or cancelled for the next few days
+      (day, time, name). Keep it to a few lines. If nothing important
+      happened, send NOTHING at all — no "all quiet" message.
 
 integrations:
   # A calendar — any ONE of these works. The deploy wizard shows which

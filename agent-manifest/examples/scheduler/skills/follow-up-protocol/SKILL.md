@@ -45,9 +45,9 @@ fires Monday.
 
 4. **No reply, follow_up_count = 2** → send NOTHING to the requester.
    - Mark the thread COLD in the ledger.
-   - One-line heads-up to {{user_name}}: "<Name> (<company>) never
-     replied about <topic> — proposed <date>, followed up twice, marking
-     cold."
+   - Log it for the daily digest (do NOT email {{user_name}} right away):
+     "<Name> (<company>) never replied about <topic> — proposed <date>,
+     followed up twice, marking cold."
    - Cancel any remaining reminders for the thread. Done.
 
 ## When a reply arrives outside a reminder
@@ -65,7 +65,7 @@ follow_up_count back to 0, new check scheduled.
 - **Reply from someone else in the thread** (assistant, colleague) → a
   real reply. Continue with them; keep everyone on the eventual invite.
 - **Requester replies after COLD** → revive: fresh slots,
-  follow_up_count back to 0, tell {{user_name}} the thread woke up.
+  follow_up_count back to 0, log "thread woke up" for the daily digest.
 - **Multiple parallel threads with the same person** → each thread has
   its own ledger entry and its own reminder chain. Never merge counts.
 

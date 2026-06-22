@@ -64,7 +64,7 @@ REQUESTED → PROPOSED → (reply) → BOOKED → done
                 │
                 ├─ no reply, day 2  → FOLLOW-UP 1 (refresh slots) → PROPOSED
                 ├─ no reply, day 4  → FOLLOW-UP 2 (last nudge)    → PROPOSED
-                └─ no reply, day 6  → COLD — flag to {{user_name}}, stop
+                └─ no reply, day 6  → COLD — log for daily digest, stop
 ```
 
 **On every new request (→ REQUESTED):**
@@ -91,8 +91,9 @@ REQUESTED → PROPOSED → (reply) → BOOKED → done
    final check for +2 business days.
 4. No reply and follow_up_count is 2 → DO NOT send anything. Mark the
    thread COLD in the ledger, cancel any remaining reminders for it, and
-   send {{user_name}} a one-line heads-up: who, topic, when proposals
-   went out, zero replies after two follow-ups.
+   note it in the ledger for the daily digest (who, topic, when proposals
+   went out, zero replies after two follow-ups). Do NOT email
+   {{user_name}} right away — the daily digest carries it.
 
 **When a reply arrives (any state):**
 - Picked a slot — and the pick comes from a participant other than the
@@ -103,7 +104,8 @@ REQUESTED → PROPOSED → (reply) → BOOKED → done
 - Asked for different times → propose 3 fresh slots, reset
   follow_up_count to 0, schedule a new check. State stays PROPOSED.
 - Declined entirely → close politely, mark DECLINED, cancel reminders,
-  tell {{user_name}} in one line.
+  and note it in the ledger for the daily digest (don't email
+  {{user_name}} right away).
 
 ## Modifications (reschedule, attendees, duration, location)
 
