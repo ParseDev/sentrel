@@ -452,13 +452,29 @@ class WebhooksController < ApplicationController
 
   # POST /webhooks/telegram/:bot_token
   def telegram
-    message = params.dig(:message)
-    return head :ok unless message
-
     agent = find_agent_by_channel_config("telegram") do |config|
       config.dig("bot_token") == params[:bot_token]
     end
     return head :not_found unless agent
+
+    # Inline-button taps (e.g. picking a model from /model) arrive as
+    # callback_query updates, not messages.
+    if (cb = params.dig(:callback_query))
+      handle_telegram_callback(agent, cb)
+      return head :ok
+    end
+
+    message = params.dig(:message)
+    return head :ok unless message
+
+    # Make sure the bot's "/" command menu is registered (once per channel).
+    register_telegram_commands_once(agent)
+
+    # /model — owner-only inline picker to switch the agent's AI model.
+    if message[:text].to_s.strip.split(/[\s@]/).first == "/model"
+      handle_telegram_model_command(agent, message)
+      return head :ok
+    end
 
     chat_id = message.dig(:chat, :id)
     display = "#{message.dig(:from, :first_name)} #{message.dig(:from, :last_name)}".strip
@@ -496,6 +512,102 @@ class WebhooksController < ApplicationController
       metadata: { chat_id: chat_id, message_id: message[:message_id] }
     })
     head :ok
+  end
+
+  # ── Telegram /model command ────────────────────────────────────
+  # Owner-only inline picker. Replies with the full model catalog as inline
+  # buttons; the tap is delivered as a callback_query (handled below).
+  def handle_telegram_model_command(agent, message)
+    token = params[:bot_token]
+    chat_id = message.dig(:chat, :id)
+    display = "#{message.dig(:from, :first_name)} #{message.dig(:from, :last_name)}".strip
+    user_id = resolve_user_for_channel("telegram", chat_id, display: display, organization: agent.organization)
+
+    unless telegram_owner?(agent, user_id)
+      Telegram::Api.send_message(token, chat_id, "Only the agent's owner can change the model.")
+      return
+    end
+
+    flat = ModelCatalog.flat(anthropic_account_connected: anthropic_account_connected?(agent))
+    current = agent.ai_config&.model_id
+    keyboard = flat.each_with_index.map do |m, i|
+      mark = m[:model_id] == current ? "✓ " : ""
+      [ { text: "#{mark}#{m[:label]}", callback_data: "mdl:#{i}" } ]
+    end
+
+    Telegram::Api.send_message(
+      token, chat_id,
+      "🤖 #{agent.name}\nCurrent model: #{current || 'none'}\n\nPick a new model:",
+      reply_markup: { inline_keyboard: keyboard }
+    )
+  end
+
+  # Telegram inline-button tap. Only "mdl:<index>" (model selection) is handled.
+  def handle_telegram_callback(agent, cb)
+    token = params[:bot_token]
+    data = cb[:data].to_s
+    cb_id = cb[:id]
+    return unless data.start_with?("mdl:")
+
+    chat_id = cb.dig(:message, :chat, :id)
+    message_id = cb.dig(:message, :message_id)
+    display = "#{cb.dig(:from, :first_name)} #{cb.dig(:from, :last_name)}".strip
+    user_id = resolve_user_for_channel("telegram", chat_id, display: display, organization: agent.organization)
+
+    unless telegram_owner?(agent, user_id)
+      Telegram::Api.answer_callback_query(token, cb_id, text: "Only the agent's owner can change the model.")
+      return
+    end
+
+    flat = ModelCatalog.flat(anthropic_account_connected: anthropic_account_connected?(agent))
+    model = flat[data.split(":")[1].to_i]
+    unless model
+      Telegram::Api.answer_callback_query(token, cb_id, text: "That model is no longer available.")
+      return
+    end
+
+    apply_agent_model!(agent, model[:provider], model[:model_id])
+    Telegram::Api.answer_callback_query(token, cb_id, text: "Model → #{model[:label]}")
+    Telegram::Api.edit_message_text(token, chat_id, message_id, "✅ #{agent.name} now uses #{model[:label]}\n#{model[:provider]} · #{model[:model_id]}")
+  end
+
+  # Org-level owner/admin check (agents belong to orgs, not individual users).
+  def telegram_owner?(agent, user_id)
+    return false unless user_id
+    agent.organization.memberships.where(user_id: user_id, role: %w[owner admin]).exists?
+  end
+
+  def anthropic_account_connected?(agent)
+    OauthCredential.exists?(organization_id: agent.organization_id, provider: "anthropic", kind: "ai_provider")
+  rescue StandardError
+    false
+  end
+
+  # Update the agent's model + push the change to its running machine (model is
+  # env-affecting), mirroring Agents::AiConfigsController.
+  def apply_agent_model!(agent, provider, model_id)
+    if agent.ai_config
+      agent.ai_config.update!(provider: provider, model_id: model_id)
+    else
+      agent.create_ai_config!(provider: provider, model_id: model_id)
+    end
+    AgentMachineOps.reload(agent)
+  rescue => e
+    Rails.logger.warn("[Telegram /model] apply failed agent=#{agent.id}: #{e.class}: #{e.message}")
+    EngineSync.trigger(agent) rescue nil
+  end
+
+  # Register the bot's "/" command menu once per channel (idempotent via a flag
+  # on the ChannelConfig).
+  def register_telegram_commands_once(agent)
+    cc = agent.channel_configs.find_by(channel_type: "telegram")
+    return unless cc && !cc.config["commands_registered"]
+    Telegram::Api.set_my_commands(params[:bot_token], [
+      { command: "model", description: "Change this agent's AI model (owner only)" }
+    ])
+    cc.update!(config: cc.config.merge("commands_registered" => true))
+  rescue => e
+    Rails.logger.warn("[Telegram] command registration failed: #{e.class}: #{e.message}")
   end
 
   # POST /webhooks/web
