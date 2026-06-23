@@ -1,7 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from "expo-audio";
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AudioMessage } from "../../../../src/components/AudioMessage";
 import { ThinkingEyes } from "../../../../src/components/ThinkingEyes";
+import { Waveform } from "../../../../src/components/Waveform";
 import { api, ApiError } from "../../../../src/lib/api";
 import { useAuth } from "../../../../src/lib/auth";
 import type { Attachment, Message } from "../../../../src/lib/types";
@@ -33,6 +34,13 @@ function fmtTime(iso: string): string {
   } catch {
     return "";
   }
+}
+
+function fmtMillis(ms?: number): string {
+  const total = Math.floor((ms ?? 0) / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 // Combine ActiveStorage attachments (user uploads) with engine-sent media
@@ -67,7 +75,10 @@ export default function Chat() {
   const lastSeen = useRef<string>("1970-01-01T00:00:00Z");
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const nearBottom = useRef(true);
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  const recorderState = useAudioRecorderState(recorder);
+  const meteringRef = useRef<number | undefined>(undefined);
+  const [levels, setLevels] = useState<number[]>([]); // rolling mic levels for the live waveform
 
   function ingest(incoming: Message[]) {
     if (incoming.length === 0) return;
@@ -122,6 +133,27 @@ export default function Chat() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
     }
   }, [messages.length]);
+
+  // Keep the latest mic level handy for the recording waveform.
+  useEffect(() => {
+    meteringRef.current = recorderState?.metering;
+  }, [recorderState?.metering]);
+
+  // While recording, sample the mic level into a rolling buffer (newest last)
+  // to drive the live waveform. Falls back to a gentle wobble if metering is
+  // unavailable so the bars never look frozen.
+  useEffect(() => {
+    if (!recording) {
+      setLevels([]);
+      return;
+    }
+    const id = setInterval(() => {
+      const db = meteringRef.current;
+      const lvl = typeof db === "number" && isFinite(db) ? Math.max(0.06, Math.min(1, (db + 60) / 60)) : 0.3 + Math.random() * 0.55;
+      setLevels((prev) => [...prev.slice(-31), lvl]);
+    }, 110);
+    return () => clearInterval(id);
+  }, [recording]);
 
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -238,6 +270,26 @@ export default function Chat() {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
+          {/* Working banner (top) with the line-art computer */}
+          {waiting ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                paddingHorizontal: 16,
+                paddingVertical: 6,
+                backgroundColor: colors.surfaceContainerLow,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.outlineVariant + "66",
+              }}
+            >
+              <ThinkingEyes size={34} color={colors.secondary} />
+              <Text style={{ color: colors.secondary, fontFamily: fonts.labelSemibold, fontSize: 13 }}>
+                {name || "Agent"} is working…
+              </Text>
+            </View>
+          ) : null}
           <FlatList
             ref={listRef}
             data={messages}
@@ -258,14 +310,6 @@ export default function Chat() {
               </View>
             }
             renderItem={({ item }) => <Bubble message={item} />}
-            ListFooterComponent={
-              waiting ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 }}>
-                  <ThinkingEyes size={46} color={colors.textMuted} />
-                  <Text style={{ color: colors.textFaint, fontFamily: fonts.body, fontSize: 13 }}>Working…</Text>
-                </View>
-              ) : null
-            }
           />
           {showScrollDown ? (
             <Pressable
@@ -338,9 +382,14 @@ export default function Chat() {
           }}
         >
           {recording ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 10, flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, flex: 1 }}>
               <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: colors.danger }} />
-              <Text style={{ color: colors.danger, fontFamily: fonts.bodyMedium, fontSize: 15 }}>Recording… tap ◼ to send</Text>
+              <View style={{ flex: 1 }}>
+                <Waveform bars={levels.length ? levels : [0.1]} progress={1} filled={colors.danger} track={colors.danger + "44"} height={26} barWidth={3} gap={2} alignRight />
+              </View>
+              <Text style={{ color: colors.danger, fontFamily: fonts.label, fontSize: 12, minWidth: 38, textAlign: "right" }}>
+                {fmtMillis(recorderState?.durationMillis)}
+              </Text>
             </View>
           ) : (
             <TextInput

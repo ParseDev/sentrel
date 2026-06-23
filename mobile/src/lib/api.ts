@@ -6,6 +6,7 @@ import type {
   Spend,
   User,
 } from "./types";
+import * as FileSystem from "expo-file-system/legacy";
 import { getApiBaseUrl } from "./server";
 
 // Backwards-compatible accessor. The base URL is now dynamic (dev/prod toggle),
@@ -201,25 +202,27 @@ export const api = {
       { method: "POST", token, body: { body, attachment_signed_ids: attachmentSignedIds } }
     ),
 
-  // Multipart file upload (image / voice note / file). RN sets the multipart
-  // boundary itself, so we must NOT set Content-Type here. Returns a signed_id
-  // to pass to sendMessage.
+  // Multipart file upload (image / voice note / file). Uses expo-file-system's
+  // native uploadAsync — RN 0.85's fetch/FormData rejects the {uri,name,type}
+  // file-part shape ("Unsupported FormDataPart implementation"), so we stream
+  // the file natively instead. Returns a signed_id to pass to sendMessage.
   upload: async (token: string, file: { uri: string; name: string; type: string }) => {
-    const form = new FormData();
-    form.append("file", { uri: file.uri, name: file.name, type: file.type } as any);
-    let res: Response;
+    let res: FileSystem.FileSystemUploadResult;
     try {
-      res = await fetch(`${getApiBaseUrl()}/api/mobile/uploads`, {
-        method: "POST",
+      res = await FileSystem.uploadAsync(`${getApiBaseUrl()}/api/mobile/uploads`, file.uri, {
+        httpMethod: "POST",
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: "file",
+        mimeType: file.type,
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-        body: form,
       });
     } catch (e: any) {
       throw new ApiError(0, `Upload failed: ${e?.message ?? "network error"}`);
     }
-    const text = await res.text();
-    const data = text ? safeJson(text) : null;
-    if (!res.ok) throw new ApiError(res.status, data?.error || data?.message || `HTTP ${res.status}`, data);
+    const data = res.body ? safeJson(res.body) : null;
+    if (res.status < 200 || res.status >= 300) {
+      throw new ApiError(res.status, data?.error || data?.message || `HTTP ${res.status}`, data);
+    }
     return data as { signed_id: string; url: string; content_type: string; filename: string; byte_size: number };
   },
 
