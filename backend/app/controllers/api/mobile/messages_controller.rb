@@ -8,7 +8,7 @@ class Api::Mobile::MessagesController < Api::Mobile::BaseController
   def index
     convo = current_internal_conversation
     msgs = if convo
-      convo.messages.order(created_at: :asc).last(params[:limit].to_i.clamp(1, 200).nonzero? || 50)
+      convo.messages.with_attached_attachments.order(created_at: :asc).last(params[:limit].to_i.clamp(1, 200).nonzero? || 50)
     else
       []
     end
@@ -18,10 +18,16 @@ class Api::Mobile::MessagesController < Api::Mobile::BaseController
     }
   end
 
-  # POST /api/mobile/agents/:agent_id/messages  { body }
+  # POST /api/mobile/agents/:agent_id/messages
+  #   { body, attachment_signed_ids: [] }
+  # attachment_signed_ids are blobs uploaded first via POST /api/mobile/uploads
+  # (images, voice notes, files). A message may be attachment-only (no body).
   def create
     body = params[:body].to_s
-    return render json: { error: "empty_message" }, status: :unprocessable_entity if body.strip.empty?
+    signed_ids = Array(params[:attachment_signed_ids]).select(&:present?)
+    if body.strip.empty? && signed_ids.empty?
+      return render json: { error: "empty_message" }, status: :unprocessable_entity
+    end
 
     cold_start = false
     if @agent.status != "running"
@@ -38,8 +44,27 @@ class Api::Mobile::MessagesController < Api::Mobile::BaseController
       sender_name: current_user.name,
       sender_email: current_user.email,
       sender_user_id: current_user.id,
-      metadata: {}
+      metadata: signed_ids.any? ? { attachment_ids: signed_ids } : {}
     )
+
+    signed_ids.each do |sid|
+      message.attachments.attach(sid)
+    rescue => e
+      Rails.logger.warn "mobile messages#create: failed to attach #{sid}: #{e.message}"
+    end
+
+    # Resolve to presigned URLs so the engine can fetch directly (mirrors
+    # webhooks#web). URLs expire in 1h — long enough for any run.
+    attachments_payload = message.attachments.map do |att|
+      blob = att.blob
+      {
+        signed_id: att.signed_id,
+        url: blob.url(expires_in: 1.hour, disposition: "attachment"),
+        filename: blob.filename.to_s,
+        content_type: blob.content_type,
+        byte_size: blob.byte_size
+      }
+    end
 
     AgentEventBus.publish(
       type: "inbound_message",
@@ -51,6 +76,8 @@ class Api::Mobile::MessagesController < Api::Mobile::BaseController
         from: current_user.email,
         from_name: current_user.name,
         body: body,
+        attachment_ids: signed_ids,
+        attachments: attachments_payload,
         conversationId: convo.id,
         user_id: current_user.id
       }
@@ -130,8 +157,21 @@ class Api::Mobile::MessagesController < Api::Mobile::BaseController
       content: m.content,
       created_at: m.created_at.iso8601,
       metadata: m.metadata,
-      sender: m.display_sender
+      sender: m.display_sender,
+      attachments: attachments_for(m)
     }
+  end
+
+  # ActiveStorage attachments (user uploads) as presigned URLs the app can
+  # render directly. Engine-sent media still rides in metadata["media"].
+  def attachments_for(m)
+    return [] unless m.attachments.attached?
+    m.attachments.map do |att|
+      blob = att.blob
+      { url: blob.url(expires_in: 1.hour), content_type: blob.content_type, filename: blob.filename.to_s, byte_size: blob.byte_size }
+    rescue
+      nil
+    end.compact
   end
 
   def parse_time(raw)

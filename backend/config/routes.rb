@@ -39,6 +39,7 @@ Rails.application.routes.draw do
       post "organizations/:id/switch", to: "organizations#switch"
       get  "conversations",            to: "conversations#index"
       get  "model_catalog",            to: "model_catalog#show"
+      post "uploads",                  to: "uploads#create"
       get  "onboarding",               to: "onboarding#show"
       post "onboarding/analyze",       to: "onboarding#analyze"
       post "onboarding/complete",      to: "onboarding#complete"

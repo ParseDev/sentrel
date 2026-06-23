@@ -46,6 +46,19 @@
           "imageWidth": 240,
           "resizeMode": "contain"
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Sentrel to record voice messages to your agents."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Sentrel to attach photos to your agent chats.",
+          "cameraPermission": "Allow Sentrel to take photos to send to your agents."
+        }
       ]
     ],
     "experiments": {

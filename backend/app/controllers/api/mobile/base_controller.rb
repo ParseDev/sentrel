@@ -10,6 +10,7 @@ class Api::Mobile::BaseController < ApplicationController
   skip_before_action :redirect_apex_to_www, raise: false
 
   before_action :authenticate_mobile!
+  before_action :set_active_storage_url_options
 
   rescue_from ActiveRecord::RecordNotFound,   with: :render_not_found
   rescue_from ActiveRecord::RecordInvalid,    with: :render_unprocessable
@@ -25,6 +26,12 @@ class Api::Mobile::BaseController < ApplicationController
     # Resolve the tenant exactly like the web app: the user's active org.
     set_current_tenant(@current_mobile_user.organization)
     @mobile_device.touch_seen!
+  end
+
+  # Needed for the Disk service (dev) to build attachment URLs. No-op for S3
+  # (prod), which presigns directly.
+  def set_active_storage_url_options
+    ActiveStorage::Current.url_options = { protocol: request.protocol, host: request.host, port: request.optional_port }
   end
 
   # Override Devise's helper so current_user resolves to the token user

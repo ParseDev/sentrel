@@ -77,6 +77,13 @@ export interface Spend {
   top_models: { model_id: string; runs: number; cost_usd: number }[];
 }
 
+export interface Attachment {
+  url: string;
+  content_type: string;
+  filename: string;
+  byte_size: number;
+}
+
 export interface Message {
   id: number;
   role: "user" | "assistant" | "system";
@@ -84,6 +91,7 @@ export interface Message {
   created_at: string;
   metadata?: Record<string, unknown>;
   sender?: { name?: string; email?: string; kind?: string };
+  attachments?: Attachment[];
 }
 
 export interface OpsResult {

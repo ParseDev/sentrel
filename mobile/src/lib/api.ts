@@ -195,11 +195,33 @@ export const api = {
       { token }
     ),
 
-  sendMessage: (token: string, id: string, body: string) =>
+  sendMessage: (token: string, id: string, body: string, attachmentSignedIds: string[] = []) =>
     request<{ message: Message; conversation_id: number; cold_start: boolean; agent_status: string }>(
       `/api/mobile/agents/${id}/messages`,
-      { method: "POST", token, body: { body } }
+      { method: "POST", token, body: { body, attachment_signed_ids: attachmentSignedIds } }
     ),
+
+  // Multipart file upload (image / voice note / file). RN sets the multipart
+  // boundary itself, so we must NOT set Content-Type here. Returns a signed_id
+  // to pass to sendMessage.
+  upload: async (token: string, file: { uri: string; name: string; type: string }) => {
+    const form = new FormData();
+    form.append("file", { uri: file.uri, name: file.name, type: file.type } as any);
+    let res: Response;
+    try {
+      res = await fetch(`${getApiBaseUrl()}/api/mobile/uploads`, {
+        method: "POST",
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        body: form,
+      });
+    } catch (e: any) {
+      throw new ApiError(0, `Upload failed: ${e?.message ?? "network error"}`);
+    }
+    const text = await res.text();
+    const data = text ? safeJson(text) : null;
+    if (!res.ok) throw new ApiError(res.status, data?.error || data?.message || `HTTP ${res.status}`, data);
+    return data as { signed_id: string; url: string; content_type: string; filename: string; byte_size: number };
+  },
 
   pollMessages: (token: string, id: string, after: string) =>
     request<{ messages: Message[] }>(
