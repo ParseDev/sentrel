@@ -210,12 +210,13 @@ module Nango
       raise RateLimited.new("#{provider} rate limited", retry_after: retry_after)
     end
 
-    # A 401 on a connected integration means the token is dead (revoked or
-    # refresh failed). Mark the connection unhealthy so the UI + health job
-    # know, and raise so the agent prompts a reconnect — not a generic failure.
+    # A 401 means the provider rejected the token. Signal the agent (reconnect),
+    # but do NOT flip the DB status here — a single transient/edge 401 would then
+    # block EVERY subsequent call as "not connected" until reconnect. The health
+    # job (which confirms via Nango get_connection) is the authority on marking a
+    # connection broken; the next call simply tries again.
     def check_auth!(res, integration)
       return unless res.code.to_i == 401
-      integration.update_columns(status: "error", updated_at: Time.current) rescue nil
       raise AuthExpired, "#{integration.service_name} connection rejected (401) — reconnect needed"
     end
 

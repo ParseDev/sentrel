@@ -158,7 +158,7 @@ RSpec.describe Nango::Proxy do
       }.to raise_error(Nango::Proxy::Transient)
     end
 
-    it "raises AuthExpired + marks the integration error on 401" do
+    it "raises AuthExpired on 401 WITHOUT flipping status (no cascade)" do
       intg = integration(mode: "managed")
       fake = instance_double(Net::HTTP)
       allow(Net::HTTP).to receive(:start).and_yield(fake)
@@ -167,7 +167,8 @@ RSpec.describe Nango::Proxy do
       expect {
         described_class.call(agent: agent, integration: intg, method: "GET", path: "/user")
       }.to raise_error(Nango::Proxy::AuthExpired)
-      expect(intg.reload.status).to eq("error")
+      # Status stays connected — a single 401 must NOT block subsequent calls.
+      expect(intg.reload.status).to eq("connected")
     end
 
     it "raises RateLimited with retry_after on 429" do

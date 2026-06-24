@@ -53,7 +53,15 @@ class Api::IntegrationsController < ActionController::API
   # token for byo_token providers).
   def proxy
     agent = Agent.find(params[:agent_id])
-    integration = Integration.where(organization_id: agent.organization_id, service_name: params[:provider].to_s, status: "connected").first
+    # Find the connection, preferring "connected" but accepting "error" too — a
+    # flagged-but-maybe-recovered connection should still get a call attempt
+    # (it either works, or 401s → AuthExpired). Only a genuinely absent /
+    # disconnected row is "not connected".
+    integration = Integration
+      .where(organization_id: agent.organization_id, service_name: params[:provider].to_s)
+      .where(status: %w[connected error])
+      .order(Arel.sql("CASE status WHEN 'connected' THEN 0 ELSE 1 END"))
+      .first
     return render(json: { error: "#{params[:provider]} is not connected", needs_connection: true }, status: :not_found) unless integration
 
     result = Nango::Proxy.call(
