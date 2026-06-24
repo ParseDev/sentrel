@@ -95,10 +95,17 @@ export function ConnectModal({ app, scope, orgConfig, connectBaseUrl, onClose, o
         return
       }
 
-      const connectionId = await openNangoConnectUI(
+      // Open the Nango Connect popup, then close OUR modal immediately. Our
+      // Radix dialog traps focus + pointer events, so if it stays mounted it
+      // blocks the popup's "Connect" button (you'd have to dismiss ours first).
+      // The popup lives on document.body, independent of this component, so it
+      // survives unmount; the rest of this flow runs via closure.
+      const connectPromise = openNangoConnectUI(
         sess.data.connect_base_url || connectBaseUrl,
         sess.data.session_token,
       )
+      onClose()
+      const connectionId = await connectPromise
       if (!connectionId) {
         toast.message("Connection cancelled.")
         return
