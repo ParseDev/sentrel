@@ -334,6 +334,8 @@ Rails.application.routes.draw do
         # "Request" and we record demand here, surfacing aggregate counts to
         # ops so prioritisation is data-driven.
         post ":service_name/request", action: :request_integration, as: :request_integration
+        # Observability — recent connected-app API calls (audit log) for this org.
+        get :activity
 
         # ── Nango-backed connect flow (managed / byo_oauth / byo_token) ──
         # Managed + BYO-OAuth: mint a Nango Connect session; the browser SDK

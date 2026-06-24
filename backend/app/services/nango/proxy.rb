@@ -65,6 +65,7 @@ module Nango
         raise ApprovalRequired, "approval required for #{verb} #{provider}"
       end
 
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result =
         if integration.byo_token?
           call_direct(agent, integration, verb, path, query, body)
@@ -72,13 +73,19 @@ module Nango
           call_nango(integration, verb, path, query, body)
         end
 
-      audit(agent, integration, verb, path, result, status: "success")
+      audit(agent, integration, verb, path, result, status: "success", latency_ms: elapsed_ms(started))
       result
     rescue Forbidden, ApprovalRequired
       raise
     rescue => e
-      audit(agent, integration, verb, path, nil, status: "error", error: e.message, error_kind: e.class.name.split("::").last)
+      audit(agent, integration, verb, path, nil, status: "error", error: e.message,
+            error_kind: e.class.name.split("::").last, latency_ms: elapsed_ms(started))
       raise
+    end
+
+    def elapsed_ms(started)
+      return nil unless started
+      ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
     end
 
     # A write to a gated provider (Meta/LinkedIn/TikTok) needs human approval,
@@ -221,14 +228,14 @@ module Nango
 
     # ── audit ─────────────────────────────────────────────────────────────────
 
-    def audit(agent, integration, verb, path, result, status:, error: nil, error_kind: nil)
+    def audit(agent, integration, verb, path, result, status:, error: nil, error_kind: nil, latency_ms: nil)
       AuditLog.create!(
         organization_id: agent.organization_id,
         agent_id: agent.id,
         action: "nango_proxy",
         tool_name: "nango.request",
         input: { provider: integration.service_name, method: verb, path: path, mode: integration.connect_mode },
-        output: { status: result&.status, error: error, error_kind: error_kind }.compact,
+        output: { status: result&.status, error: error, error_kind: error_kind, latency_ms: latency_ms }.compact,
         status: status,
       )
     rescue => e

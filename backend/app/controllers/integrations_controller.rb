@@ -124,6 +124,31 @@ class IntegrationsController < ApplicationController
     }
   end
 
+  # GET /integrations/activity
+  # Observability: the org's recent connected-app API calls (from the audit
+  # log the proxy writes), plus a per-provider summary with error rates.
+  def activity
+    logs = AuditLog.where(organization_id: current_tenant.id, action: "nango_proxy")
+                   .includes(:agent).order(created_at: :desc).limit(200)
+    calls = logs.map do |l|
+      input = l.input || {}
+      output = l.output || {}
+      {
+        id: l.id, at: l.created_at.iso8601, agent: l.agent&.name,
+        provider: input["provider"], method: input["method"], path: input["path"],
+        result: l.status, upstream: output["status"],
+        error: output["error"], error_kind: output["error_kind"], latency_ms: output["latency_ms"],
+      }
+    end
+    summary = calls.group_by { |c| c[:provider] }.map { |prov, cs|
+      errors = cs.count { |c| c[:result] == "error" }
+      { provider: prov, calls: cs.size, errors: errors,
+        error_rate: cs.empty? ? 0 : (errors * 100.0 / cs.size).round,
+        p50_ms: median(cs.filter_map { |c| c[:latency_ms] }) }
+    }.sort_by { |s| -s[:calls] }
+    render inertia: "integrations/activity", props: { calls: calls, summary: summary }
+  end
+
   # POST /integrations/connect/:service_name
   # Redirects to Composio's hosted OAuth page for this org + app
   def connect
@@ -453,6 +478,13 @@ class IntegrationsController < ApplicationController
   end
 
   private
+
+  def median(arr)
+    return nil if arr.empty?
+    sorted = arr.map(&:to_i).sort
+    mid = sorted.size / 2
+    sorted.size.odd? ? sorted[mid] : ((sorted[mid - 1] + sorted[mid]) / 2.0).round
+  end
 
   # Look up a catalog entry or render a 404 JSON error (returns nil so callers
   # can `entry = catalog_entry!(...) or return`).

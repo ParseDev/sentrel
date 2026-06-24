@@ -222,11 +222,16 @@ export default function IntegrationsIndex({
       ]}
     >
       <Head title="Integrations" />
-      <PageHeader
-        eyebrow="Tools"
-        title="Integrations"
-        description="Connect the services your agents work inside. OAuth once, they use them forever."
-      />
+      <div className="flex items-start justify-between">
+        <PageHeader
+          eyebrow="Tools"
+          title="Integrations"
+          description="Connect the services your agents work inside. OAuth once, they use them forever."
+        />
+        <a href="/integrations/activity" className="mt-1 shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-[var(--border-strong)] hover:text-foreground">
+          Activity
+        </a>
+      </div>
 
       {/* Workspace / Personal scope toggle */}
       <div className="mb-2 inline-flex rounded-md border border-border p-0.5">
