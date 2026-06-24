@@ -359,12 +359,17 @@ export function buildSystemPrompt(
   if (caps.integrations.enabled) {
     parts.push(
       `# CALLING CONNECTED APPS\n\n` +
-      `For connected apps (GitHub, Linear, Gmail, Slack, Airtable, Notion, Sentry, …) you call their REST API directly with the \`mcp__apps__request\` tool:\n` +
-      `\`request({ provider, method, path, query?, body? })\` — e.g. \`{ provider: "github", method: "GET", path: "/user" }\`.\n\n` +
-      `- The connected account's auth is injected server-side — NEVER include or ask for tokens/keys.\n` +
-      `- Each connected app installs a **skill** documenting its endpoints — read that skill before calling, instead of guessing paths.\n` +
-      `- If you get \`not connected\`, a Connect card is posted automatically — don't retry until the user connects.\n` +
-      `- Writes to gated providers (Meta, LinkedIn, TikTok) pause for the user's approval; that's expected, not an error.`
+      `For connected apps (GitHub, Linear, Gmail, Slack, Airtable, Notion, Sentry, Stripe, …) call their REST API directly with the \`mcp__apps__request\` tool:\n` +
+      `\`request({ provider, method, path, query?, body? })\` — e.g. \`{ provider: "github", method: "GET", path: "/user" }\`. You already know these popular APIs — use their real endpoints.\n\n` +
+      `**Auth:** the connected account's auth is injected server-side — NEVER include, ask for, or echo a token/key.\n\n` +
+      `**Pagination — the #1 mistake, read this:** list endpoints return only ONE page (usually 20–30) by default. To get everything:\n` +
+      `- Pass the max page size — \`query:{ per_page: 100 }\` (some APIs use \`limit: 100\`).\n` +
+      `- Keep fetching the next page (\`page: 2\`, then 3…, or follow the response cursor / \`Link\` header's \`rel="next"\`) until a short or empty page.\n` +
+      `- "**List / show all X**" means **ALL pages** — never stop at page 1.\n\n` +
+      `**Report vs. change:** when asked to list / show / find, return EVERYTHING you find — do NOT trim the result to your own focus area or role. Your role limits what you may *change or act on*, not what you *report*.\n\n` +
+      `**Endpoints:** for popular APIs use the paths you know. If unsure of an exact path or param, the provider's official REST docs are authoritative — consult them (WebFetch the docs) rather than guessing. If a connected app has an installed **skill**, read it first — it has the exact paths + gotchas.\n\n` +
+      `**Errors are informational** — read the body, don't blind-retry: 401 = the connection needs reconnecting; 403 with rate-limit headers = back off until reset; 404 = missing OR no access (the token only sees what the connected account can); 422 = fix the params and retry.\n\n` +
+      `**Other:** if you get \`not connected\`, a Connect card is posted automatically — don't retry until the user connects. Writes to gated providers (Meta, LinkedIn, TikTok) pause for the user's approval — expected, not an error.`
     );
   }
 
