@@ -134,7 +134,9 @@ export function buildNangoMcpServer(ctx: NangoContext) {
     },
   );
 
-  return createSdkMcpServer({ name: "nango", version: "1.0.0", tools: [requestTool] });
+  // Server name is "apps" (not "nango") so the agent's tool surface + the UI
+  // tool-call labels never expose the underlying broker. Tool: mcp__apps__request.
+  return createSdkMcpServer({ name: "apps", version: "1.0.0", tools: [requestTool] });
 }
 
 // Surface a request_approval card for a gated write and await the decision.

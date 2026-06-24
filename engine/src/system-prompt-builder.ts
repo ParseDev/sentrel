@@ -353,14 +353,14 @@ export function buildSystemPrompt(
     );
   }
 
-  // nango_request — the generic API gateway to Nango-connected apps. Replaces
-  // Composio's per-tool surface: one tool, every app, endpoints documented in
-  // each app's installed skill. Always available when integrations are enabled.
+  // The connected-app proxy tool (mcp__apps__request) — one tool, every app,
+  // endpoints documented in each app's installed skill. Always available when
+  // integrations are enabled. Broker-neutral name on purpose.
   if (caps.integrations.enabled) {
     parts.push(
-      `# CALLING CONNECTED APPS — \`nango_request\`\n\n` +
-      `For connected apps (GitHub, Linear, Gmail, Slack, Airtable, Notion, Sentry, …) you call their REST API directly with the \`mcp__nango__request\` tool:\n` +
-      `\`nango_request({ provider, method, path, query?, body? })\` — e.g. \`{ provider: "github", method: "GET", path: "/user" }\`.\n\n` +
+      `# CALLING CONNECTED APPS\n\n` +
+      `For connected apps (GitHub, Linear, Gmail, Slack, Airtable, Notion, Sentry, …) you call their REST API directly with the \`mcp__apps__request\` tool:\n` +
+      `\`request({ provider, method, path, query?, body? })\` — e.g. \`{ provider: "github", method: "GET", path: "/user" }\`.\n\n` +
       `- The connected account's auth is injected server-side — NEVER include or ask for tokens/keys.\n` +
       `- Each connected app installs a **skill** documenting its endpoints — read that skill before calling, instead of guessing paths.\n` +
       `- If you get \`not connected\`, a Connect card is posted automatically — don't retry until the user connects.\n` +

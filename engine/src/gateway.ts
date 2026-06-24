@@ -557,6 +557,21 @@ function detailFromInput(tool: string, input: unknown): string | null {
 }
 
 export function getToolLabel(tool: string, input?: unknown): string {
+  // Connected-app proxy (mcp__apps__request): show the PROVIDER + a hint
+  // ("🔗 GitHub: GET /user/repos"), never the broker name.
+  if (tool === "mcp__apps__request" && input && typeof input === "object") {
+    const inp = input as Record<string, unknown>;
+    const provider = typeof inp.provider === "string" ? inp.provider : null;
+    if (provider) {
+      const label = capitalize(provider.replace(/[_-]+/g, " "));
+      const method = typeof inp.method === "string" ? inp.method.toUpperCase() : "";
+      const path = typeof inp.path === "string" ? inp.path : "";
+      const detail = `${method} ${path}`.trim();
+      return detail ? `🔗 ${label}: ${detail.slice(0, 70)}` : `🔗 ${label}...`;
+    }
+    return "🔗 Connected app...";
+  }
+
   const base = humanizeToolName(tool);
   if (input == null) return base;
   const detail = detailFromInput(tool, input);

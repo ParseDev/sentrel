@@ -1488,8 +1488,10 @@ async function buildQueryOptions(
     orgId: agent.organization_id,
     origin: taskOrigin,
   });
-  mcpServers.nango = nangoServer;
-  baseMcpServers.nango = nangoServer;
+  // Registered under "apps" (not "nango") so the tool name + UI labels stay
+  // broker-neutral (mcp__apps__request).
+  mcpServers.apps = nangoServer;
+  baseMcpServers.apps = nangoServer;
 
   // Self-authoring skills MCP — agents can compose new SKILL.md bundles and
   // install them on themselves via skills.create + skills.install_on_me.
@@ -1755,8 +1757,8 @@ async function buildQueryOptions(
         "mcp__integrations__search_integrations",
         // Composio tools: explicit list (wildcards may not match)
         ...composioToolNames.map((name) => `mcp__composio__${name}`),
-        // Nango generic proxy tool — the long-tail integration surface.
-        "mcp__nango__request",
+        // Generic connected-app proxy tool — the long-tail integration surface.
+        "mcp__apps__request",
       ] : []),
       ...(caps.knowledge_base.enabled && profile.knowledge ? [
         "mcp__knowledge__search_knowledge",
