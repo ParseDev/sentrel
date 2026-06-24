@@ -441,4 +441,13 @@ Rails.application.routes.draw do
   # now — not every role has a seeded AgentTemplate yet, the page is the
   # spec we build templates against.
   get "use-cases", to: "home#use_cases"
+
+  # Public community + system agent-template gallery. Unauthenticated — the
+  # per-card "Deploy" button funnels into /agents/new?template=… (which
+  # prompts sign-in when needed). Distinct from the auth-gated in-app
+  # /agent_templates library.
+  get "templates", to: "templates#index", as: :templates
+  # Public per-template detail page (the "View" target). Deploy still routes
+  # through /agents/new?template=… from here.
+  get "templates/:slug", to: "templates#show", as: :community_template
 end

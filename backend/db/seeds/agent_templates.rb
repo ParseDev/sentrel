@@ -988,7 +988,35 @@ end
 TEMPLATES.each do |t|
   row = AgentTemplate.find_or_initialize_by(slug: t[:slug])
   row.assign_attributes(t)
+  # System seeds are the curated public catalog — always visible at /templates.
+  row.published = true
   row.save!
   puts "  ✓ #{t[:slug]} — #{t[:name]}"
 end
+
+# External apps each role connects to — the "Tools it connects to" list shown on
+# the template page. Slugs MUST exist in config/integrations.yml
+# (IntegrationCatalog), otherwise they render as a bare humanized slug.
+TEMPLATE_INTEGRATIONS = {
+  "ceo"                => %w[gmail google_calendar slack notion],
+  "marketing-lead"     => %w[gmail slack notion linkedin google_drive],
+  "compliance-officer" => %w[google_drive notion],
+  "proposal-writer"    => %w[google_drive google_sheets notion],
+  "engineer"           => %w[github linear sentry vercel slack],
+  "product-manager"    => %w[linear notion slack gmail],
+  "designer"           => %w[notion google_drive slack],
+  "content-writer"     => %w[gmail notion google_drive linkedin],
+  "data-analyst"       => %w[google_sheets airtable slack],
+  "finance"            => %w[google_sheets gmail],
+  "sdr"                => %w[gmail linkedin google_calendar slack],
+  "support"            => %w[gmail slack linear],
+  "researcher"         => %w[google_drive notion],
+  "recruiter"          => %w[gmail linkedin google_calendar],
+  "seo-specialist"     => %w[google_sheets google_drive slack],
+  "meeting-manager"    => %w[google_calendar gmail slack],
+}.freeze
+TEMPLATE_INTEGRATIONS.each do |slug, services|
+  AgentTemplate.find_by(slug: slug)&.update!(suggested_integrations: services)
+end
+
 puts "Done. #{AgentTemplate.count} templates in place."

@@ -95,6 +95,24 @@ class AgentTemplate < ApplicationRecord
     update_column(:install_count, install_count.to_i + 1)
   end
 
+  # Lightweight fields for browse/deploy cards — the public /templates
+  # gallery and the no-agent empty-state picker. Kept here so both callers
+  # render the same shape (name, summary, author, badge) without each
+  # re-deriving the author label.
+  def card_attributes
+    {
+      slug: slug,
+      name: name,
+      role: role,
+      description: description,
+      icon: icon,
+      category: category,
+      system_template: system_template,
+      install_count: install_count,
+      author_name: system_template ? "Sentrel" : (created_by_user&.name.presence || "Workspace member"),
+    }
+  end
+
   private
 
   def substitute(text, ctx)

@@ -11,11 +11,13 @@ class Users::RegistrationsController < Devise::RegistrationsController
 
     build_resource(sign_up_params.except(:organization_name).merge(role: "owner"))
     resource.organization = org
+    resource.signup_utm = captured_signup_utm
 
     ActiveRecord::Base.transaction do
       org.save!
       resource.save!
     end
+    clear_signup_attribution
 
     SignupNotificationMailer.new_signup(resource, source: "email").deliver_later
 

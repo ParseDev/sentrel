@@ -82,6 +82,7 @@ module Admin
         platform_admin: u.platform_admin,
         organization: u.organization&.as_json(only: [:id, :name, :slug]),
         created_at: u.created_at, current_sign_in_at: u.try(:current_sign_in_at),
+        signup_utm: u.signup_utm.presence,
         is_current: u == current_user,
       }
     end

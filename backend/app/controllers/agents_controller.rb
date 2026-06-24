@@ -3,11 +3,12 @@ class AgentsController < ApplicationController
   before_action :set_agent, only: [ :show, :edit, :update, :destroy, :export ]
 
   def index
-    render inertia: "agents/index", props: {
-      agents: current_tenant.agents.includes(:ai_config, :instance, :manager).map { |a|
-        agent_json(a)
-      }
-    }
+    agents = current_tenant.agents.includes(:ai_config, :instance, :manager).to_a
+    props = { agents: agents.map { |a| agent_json(a) } }
+    # When the workspace is empty, the page shows a template picker instead of
+    # forcing the create flow — surface a handful of deployable templates.
+    props[:templates] = empty_state_templates if agents.empty?
+    render inertia: "agents/index", props: props
   end
 
   # GET /agents/tree(.json)
@@ -552,6 +553,21 @@ class AgentsController < ApplicationController
 
   def set_agent
     @agent = find_by_public_id!(current_tenant.agents, params[:id])
+  end
+
+  # Deployable templates for the no-agent empty state — system + this org's
+  # published ones. without_tenant so visible_to does its own access check
+  # (acts_as_tenant would otherwise hide the org-NULL system seeds). Capped
+  # to keep the picker glanceable; the full gallery lives at /templates.
+  def empty_state_templates
+    tenant = current_tenant
+    ActsAsTenant.without_tenant do
+      AgentTemplate.visible_to(tenant)
+                   .includes(:created_by_user)
+                   .order(:category, :name)
+                   .limit(6)
+                   .map(&:card_attributes)
+    end
   end
 
   # Right-rail payload for the agent show page. One round-trip of small

@@ -22,6 +22,7 @@
 # Ship-first 🟢 (standard OAuth, managed works immediately) ---------------------
 
 github:
+  logo: /integration-logos/github.svg
   label: GitHub
   category: Developer
   provider_config_key: github
@@ -34,6 +35,7 @@ github:
   review: none
 
 linear:
+  logo: /integration-logos/linear.svg
   label: Linear
   category: Productivity
   provider_config_key: linear
@@ -46,6 +48,7 @@ linear:
   review: none
 
 airtable:
+  logo: /integration-logos/airtable.svg
   label: Airtable
   category: Productivity
   provider_config_key: airtable
@@ -58,6 +61,7 @@ airtable:
   review: none
 
 notion:
+  logo: /integration-logos/notion.svg
   label: Notion
   category: Productivity
   provider_config_key: notion
@@ -70,6 +74,7 @@ notion:
   review: none
 
 slack:
+  logo: /integration-logos/slack.svg
   label: Slack
   category: Communication
   provider_config_key: slack
@@ -82,6 +87,7 @@ slack:
   review: none
 
 sentry:
+  logo: /integration-logos/sentry.svg
   label: Sentry
   category: Developer
   provider_config_key: sentry-oauth
@@ -95,6 +101,7 @@ sentry:
 
 # Vercel ships as API_KEY in Nango (no OAuth template) -> paste-token only.
 vercel:
+  logo: /integration-logos/vercel.svg
   label: Vercel
   category: Developer
   auth_type: api_key
@@ -107,6 +114,7 @@ vercel:
 # Google 🟡 (managed requires Google OAuth verification) -----------------------
 
 gmail:
+  logo: /integration-logos/gmail.svg
   label: Gmail
   category: Communication
   provider_config_key: google-mail
@@ -119,6 +127,7 @@ gmail:
   review: google
 
 google_drive:
+  logo: /integration-logos/google_drive.svg
   label: Google Drive
   category: Productivity
   provider_config_key: google-drive
@@ -131,6 +140,7 @@ google_drive:
   review: google
 
 google_calendar:
+  logo: /integration-logos/google_calendar.svg
   label: Google Calendar
   category: Productivity
   provider_config_key: google-calendar
@@ -143,6 +153,7 @@ google_calendar:
   review: google
 
 google_sheets:
+  logo: /integration-logos/google_sheets.svg
   label: Google Sheets
   category: Productivity
   provider_config_key: google-sheet
@@ -160,6 +171,7 @@ google_sheets:
 # NOT the Nango proxy — it needs the full ads funnel surface. Listed here so it
 # shows in the catalog; `tool: mcp` routes it to the McpServer path.
 meta_ads:
+  logo: /integration-logos/meta_ads.svg
   label: Meta Ads
   category: Marketing
   auth_type: oauth2
@@ -170,6 +182,7 @@ meta_ads:
   review: gated
 
 linkedin:
+  logo: /integration-logos/linkedin.svg
   label: LinkedIn
   category: Marketing
   provider_config_key: linkedin
@@ -182,6 +195,7 @@ linkedin:
   review: gated
 
 tiktok:
+  logo: /integration-logos/tiktok.svg
   label: TikTok Ads
   category: Marketing
   provider_config_key: tiktok-ads

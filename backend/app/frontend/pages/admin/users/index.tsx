@@ -15,6 +15,7 @@ interface User {
   organization: { id: number; name: string; slug: string } | null
   created_at: string
   current_sign_in_at: string | null
+  signup_utm: Record<string, string> | null
 }
 
 interface Props { users: User[]; roles: string[]; pagy: PagyMeta; q: string }
@@ -86,6 +87,7 @@ export default function AdminUsersIndex({ users, roles, pagy, q: initialQ }: Pro
                 <th className="p-2">Organization</th>
                 <th className="p-2">Org Role</th>
                 <th className="p-2">Platform Admin</th>
+                <th className="p-2">Signup source</th>
                 <th className="p-2">Created</th>
                 <th className="p-2 text-right">Actions</th>
               </tr>
@@ -127,6 +129,19 @@ export default function AdminUsersIndex({ users, roles, pagy, q: initialQ }: Pro
                       />
                       {u.platform_admin && <span className="rounded bg-purple-200 dark:bg-purple-800 px-1.5 py-0.5 text-[10px] uppercase font-medium">platform</span>}
                     </label>
+                  </td>
+                  <td className="p-2 text-xs">
+                    {u.signup_utm ? (
+                      <span
+                        className="font-mono text-[11px]"
+                        title={Object.entries(u.signup_utm).map(([k, v]) => `${k}: ${v}`).join("\n")}
+                      >
+                        {u.signup_utm.utm_source || "—"}
+                        {u.signup_utm.utm_campaign ? ` / ${u.signup_utm.utm_campaign}` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="p-2 text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="p-2 text-right">

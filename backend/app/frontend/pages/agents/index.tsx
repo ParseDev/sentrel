@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import AppLayout from "@/layouts/app-layout"
 import { agentPath, dashboardPath, newAgentPath } from "@/routes"
 import type { Agent } from "@/types"
+import { TemplateDeployCard, type DeployTemplate } from "@/components/template-deploy-card"
 
 const STATUS_MAP: Record<string, { dot: "online" | "working" | "idle" | "error" | "offline"; label: string }> = {
   running: { dot: "working", label: "Running" },
@@ -31,7 +32,7 @@ const FILTERS = ["All", "Running", "Paused", "Stopped"] as const
 type FilterKey = (typeof FILTERS)[number]
 type ViewMode = "cards" | "tree"
 
-export default function AgentsIndex({ agents }: { agents: Agent[] }) {
+export default function AgentsIndex({ agents, templates = [] }: { agents: Agent[]; templates?: DeployTemplate[] }) {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<FilterKey>("All")
   const [view, setView] = useState<ViewMode>("cards")
@@ -180,7 +181,7 @@ export default function AgentsIndex({ agents }: { agents: Agent[] }) {
       )}
 
       {agents.length === 0 ? (
-        <EmptyState />
+        <EmptyState templates={templates} />
       ) : view === "tree" ? (
         <AgentTree agents={agents} />
       ) : filtered.length === 0 ? (
@@ -462,26 +463,51 @@ function TreeRow({ node, depth }: { node: TreeNode; depth: number }) {
 }
 
 /* ---------- empty ---------- */
-function EmptyState() {
+// No agents yet: lead with a gallery of deployable templates (one click into
+// the new-agent workflow) and keep "start from scratch" as a secondary path —
+// rather than dropping the user straight into the create form.
+function EmptyState({ templates }: { templates: DeployTemplate[] }) {
   return (
-    <GlowCard glow="soft" tint="indigo" className="px-6 py-16 text-center">
-      <div className="mx-auto flex size-12 items-center justify-center rounded-md border border-dashed">
-        <Bot className="size-5 text-muted-foreground" />
+    <GlowCard glow="soft" tint="indigo" className="px-6 py-12">
+      <div className="text-center">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-md border border-dashed">
+          <Bot className="size-5 text-muted-foreground" />
+        </div>
+        <Overline className="mt-5 justify-center">Workspace empty</Overline>
+        <h3 className="mx-auto mt-3 max-w-sm font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
+          Hire your first AI teammate.
+        </h3>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+          {templates.length > 0
+            ? "Deploy a ready-made template below, or start from a blank agent and write the role yourself."
+            : "Give them a role, connect the tools they'll use, set an approval policy. They start working on a schedule of your choosing."}
+        </p>
       </div>
-      <Overline className="mt-5 justify-center">Workspace empty</Overline>
-      <h3 className="mx-auto mt-3 max-w-sm font-display text-xl font-semibold tracking-[-0.02em] text-foreground">
-        Hire your first AI teammate.
-      </h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-        Give them a role, connect the tools they'll use, set an approval policy.
-        They start working on a schedule of your choosing.
-      </p>
-      <Button asChild className="mt-6 gap-1.5">
-        <Link href={newAgentPath()}>
-          <Plus className="size-3.5" />
-          Hire an agent
-        </Link>
-      </Button>
+
+      {templates.length > 0 && (
+        <div className="mx-auto mt-8 grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((t) => (
+            <TemplateDeployCard key={t.slug} t={t} />
+          ))}
+        </div>
+      )}
+
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <Button asChild className="gap-1.5">
+          <Link href={newAgentPath()}>
+            <Plus className="size-3.5" />
+            Create new agent
+          </Link>
+        </Button>
+        {templates.length > 0 && (
+          <Button asChild variant="outline" className="gap-1.5">
+            <a href="/templates">
+              Browse all templates
+              <ArrowUpRight className="size-3.5" />
+            </a>
+          </Button>
+        )}
+      </div>
     </GlowCard>
   )
 }

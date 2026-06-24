@@ -92,6 +92,7 @@ class Users::OmniauthCallbacksController < Devise::OmniauthCallbacksController
       password: password,
       password_confirmation: password,
       role: "owner",
+      signup_utm: captured_signup_utm,
     )
 
     ActiveRecord::Base.transaction do
@@ -109,6 +110,7 @@ class Users::OmniauthCallbacksController < Devise::OmniauthCallbacksController
       end
     end
 
+    clear_signup_attribution
     SignupNotificationMailer.new_signup(user, source: "google_oauth").deliver_later
 
     user

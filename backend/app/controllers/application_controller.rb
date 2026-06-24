@@ -5,8 +5,13 @@ class ApplicationController < ActionController::Base
   allow_browser versions: :modern
 
   set_current_tenant_through_filter
+  before_action :capture_signup_attribution
   before_action :redirect_apex_to_www
   before_action :set_tenant
+
+  # Marketing-attribution params persisted on a user at signup.
+  UTM_KEYS = %w[utm_source utm_medium utm_campaign utm_term utm_content].freeze
+  SIGNUP_ATTR_COOKIE = :signup_attribution
 
   before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :consume_pending_invitation, if: :user_signed_in?
@@ -171,7 +176,7 @@ class ApplicationController < ActionController::Base
   def redirect_to_onboarding
     return if devise_controller?
     return if self.is_a?(OnboardingController)
-    return if request.path.start_with?("/onboarding", "/api", "/webhooks", "/deploy-agent", "/hooks")
+    return if request.path.start_with?("/onboarding", "/api", "/webhooks", "/deploy-agent", "/hooks", "/templates")
     return if current_tenant&.onboarding_completed_at.present?
 
     redirect_to onboarding_path
@@ -180,5 +185,41 @@ class ApplicationController < ActionController::Base
   def configure_permitted_parameters
     devise_parameter_sanitizer.permit(:sign_up, keys: [ :name ])
     devise_parameter_sanitizer.permit(:account_update, keys: [ :name ])
+  end
+
+  # First-touch marketing attribution. When a visitor lands on any page with
+  # utm_* (or gclid) params, stash them in a signed cookie so they survive
+  # navigating around the marketing site AND the Google OAuth redirect. We only
+  # write it once (first touch wins) and never for an already-signed-in user.
+  # Persisted onto the User at signup by the registrations / omniauth controllers.
+  def capture_signup_attribution
+    return if user_signed_in?
+    return if cookies.signed[SIGNUP_ATTR_COOKIE].present?
+    return unless UTM_KEYS.any? { |k| params[k].present? } || params[:gclid].present?
+
+    data = UTM_KEYS.index_with { |k| params[k].to_s.presence }.compact
+    data["gclid"] = params[:gclid].to_s if params[:gclid].present?
+    data["referrer"] = request.referer if request.referer.present?
+    data["landing_path"] = request.path
+    data["captured_at"] = Time.current.iso8601
+
+    cookies.signed[SIGNUP_ATTR_COOKIE] = {
+      value: data.to_json,
+      expires: 30.days.from_now,
+      httponly: true,
+      same_site: :lax,
+    }
+  end
+
+  # Parsed first-touch attribution for the current request, or {} if none.
+  def captured_signup_utm
+    raw = cookies.signed[SIGNUP_ATTR_COOKIE]
+    raw.present? ? JSON.parse(raw) : {}
+  rescue JSON::ParserError
+    {}
+  end
+
+  def clear_signup_attribution
+    cookies.delete(SIGNUP_ATTR_COOKIE)
   end
 end
