@@ -114,6 +114,20 @@ export function buildNangoMcpServer(ctx: NangoContext) {
           res = await call(true);
         }
 
+        // Rate limited → tell the agent exactly how long to wait. The
+        // connection is FINE — do not reconnect.
+        if (res.status === 429) {
+          const data = await res.json().catch(() => ({})) as { retry_after?: number };
+          const wait = data.retry_after ? `~${data.retry_after}s` : "a bit";
+          return { content: [{ type: "text" as const, text: `${titleCase(args.provider)} is rate-limited. Wait ${wait}, then retry. The connection is fine — don't reconnect.` }], isError: true };
+        }
+
+        // Transient infra blip that survived server-side retries → retry
+        // shortly. NOT a disconnect, so don't post a Connect card.
+        if (res.status === 503) {
+          return { content: [{ type: "text" as const, text: `Temporary hiccup reaching ${titleCase(args.provider)} (transient). Try the same call again in a moment — the connection is fine.` }], isError: true };
+        }
+
         if (!res.ok) {
           const text = await res.text();
           return { content: [{ type: "text" as const, text: `nango_request failed: ${res.status} ${text.slice(0, 300)}` }], isError: true };

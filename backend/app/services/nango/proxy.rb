@@ -19,10 +19,30 @@ module Nango
 
     class Forbidden < StandardError; end
     class ApprovalRequired < StandardError; end
+    # Transient infra failure (network blip / upstream 5xx) that survived
+    # retries. Distinct from "not connected" so the agent retries later instead
+    # of telling the user to reconnect a connection that's actually fine.
+    class Transient < StandardError; end
+    # Provider rate limit. Carries when it's safe to try again.
+    class RateLimited < StandardError
+      attr_reader :retry_after
+      def initialize(msg, retry_after: nil)
+        super(msg)
+        @retry_after = retry_after
+      end
+    end
 
     MAX_RESPONSE_BYTES = 1_000_000 # 1MB — proxy buffers through Rails, don't OOM.
     OPEN_TIMEOUT = 5
     READ_TIMEOUT = 30
+
+    # Retry transient failures so a momentary blip never surfaces to the agent.
+    MAX_ATTEMPTS = 3
+    RETRYABLE_STATUSES = [502, 503, 504].freeze
+    RETRYABLE_ERRORS = [
+      Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ECONNREFUSED,
+      Errno::EHOSTUNREACH, EOFError, SocketError, IOError
+    ].freeze
 
     Result = Struct.new(:status, :body, :source, keyword_init: true)
 
@@ -53,7 +73,7 @@ module Nango
     rescue Forbidden, ApprovalRequired
       raise
     rescue => e
-      audit(agent, integration, verb, path, nil, status: "error", error: e.message)
+      audit(agent, integration, verb, path, nil, status: "error", error: e.message, error_kind: e.class.name.split("::").last)
       raise
     end
 
@@ -83,6 +103,7 @@ module Nango
       req["Connection-Id"]      = integration.nango_connection_id.to_s
       req["Provider-Config-Key"] = integration.provider_config_key.to_s
       res = perform(uri, req)
+      check_rate_limit!(res, integration.service_name)
       Result.new(status: res.code.to_i, body: capped_body(res), source: integration.connect_mode)
     end
 
@@ -99,6 +120,7 @@ module Nango
       req = http_request(verb, uri, body)
       req["Authorization"] = "Bearer #{token}"
       res = perform(uri, req)
+      check_rate_limit!(res, integration.service_name)
       cred.use! if cred.respond_to?(:use!)
       Result.new(status: res.code.to_i, body: capped_body(res), source: "byo_token")
     end
@@ -126,11 +148,53 @@ module Nango
       req
     end
 
+    # Perform the HTTP call, retrying transient failures (network errors +
+    # upstream 5xx) with exponential backoff. A blip never reaches the agent.
     def perform(uri, req)
-      Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https",
-                      open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
-        http.request(req)
+      attempt = 0
+      begin
+        attempt += 1
+        res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https",
+                              open_timeout: OPEN_TIMEOUT, read_timeout: READ_TIMEOUT) do |http|
+          http.request(req)
+        end
+        if RETRYABLE_STATUSES.include?(res.code.to_i) && attempt < MAX_ATTEMPTS
+          sleep(backoff(attempt))
+          raise Retry
+        end
+        res
+      rescue Retry
+        retry
+      rescue *RETRYABLE_ERRORS => e
+        if attempt < MAX_ATTEMPTS
+          sleep(backoff(attempt))
+          retry
+        end
+        raise Transient, "upstream unreachable after #{attempt} attempts: #{e.class}"
       end
+    end
+
+    # Internal-only sentinel to re-enter the retry loop on a retryable status.
+    class Retry < StandardError; end
+
+    def backoff(attempt)
+      (0.4 * (2**(attempt - 1))).clamp(0.4, 3.0)
+    end
+
+    # Raise RateLimited when the provider says we're throttled, so the agent
+    # waits instead of hammering. Honors Retry-After and x-ratelimit-reset.
+    def check_rate_limit!(res, provider)
+      code = res.code.to_i
+      remaining = res["x-ratelimit-remaining"]
+      throttled = code == 429 || (code == 403 && remaining.to_s == "0")
+      return unless throttled
+      retry_after =
+        if res["retry-after"].present?
+          res["retry-after"].to_i
+        elsif res["x-ratelimit-reset"].present?
+          [res["x-ratelimit-reset"].to_i - Time.now.to_i, 0].max
+        end
+      raise RateLimited.new("#{provider} rate limited", retry_after: retry_after)
     end
 
     def capped_body(res)
@@ -142,14 +206,14 @@ module Nango
 
     # ── audit ─────────────────────────────────────────────────────────────────
 
-    def audit(agent, integration, verb, path, result, status:, error: nil)
+    def audit(agent, integration, verb, path, result, status:, error: nil, error_kind: nil)
       AuditLog.create!(
         organization_id: agent.organization_id,
         agent_id: agent.id,
         action: "nango_proxy",
         tool_name: "nango.request",
         input: { provider: integration.service_name, method: verb, path: path, mode: integration.connect_mode },
-        output: { status: result&.status, error: error }.compact,
+        output: { status: result&.status, error: error, error_kind: error_kind }.compact,
         status: status,
       )
     rescue => e

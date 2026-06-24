@@ -4,6 +4,14 @@ RSpec.describe Nango::Proxy do
   let(:org)   { create_org }
   let(:agent) { with_tenant(org) { create_agent(org) } }
 
+  # HTTP response double that also answers header access (res["x-..."]) — the
+  # proxy now reads rate-limit headers, so bare instance_doubles aren't enough.
+  def http_resp(code:, body:, headers: {})
+    instance_double(Net::HTTPResponse, code: code, body: body).tap do |r|
+      allow(r).to receive(:[]) { |k| headers[k.to_s.downcase] }
+    end
+  end
+
   def integration(mode:, service: "github", **attrs)
     with_tenant(org) do
       Integration.create!({
@@ -33,7 +41,7 @@ RSpec.describe Nango::Proxy do
       allow(Net::HTTP).to receive(:start).and_yield(fake)
       allow(fake).to receive(:request) do |req|
         captured = req
-        instance_double(Net::HTTPResponse, code: "200", body: { ok: true }.to_json)
+        http_resp(code: "200", body: { ok: true }.to_json)
       end
 
       res = described_class.call(agent: agent, integration: intg, method: "GET", path: "/user")
@@ -59,7 +67,7 @@ RSpec.describe Nango::Proxy do
       allow(Net::HTTP).to receive(:start).and_yield(fake)
       allow(fake).to receive(:request) do |req|
         captured = req
-        instance_double(Net::HTTPResponse, code: "200", body: "[]")
+        http_resp(code: "200", body: "[]")
       end
 
       res = described_class.call(agent: agent, integration: intg, method: "GET", path: "/v2/deployments")
@@ -88,11 +96,11 @@ RSpec.describe Nango::Proxy do
         AgentToolPolicy.create!(organization: org, agent: agent, toolkit_slug: "github", preset: "read_only")
       end
       allow(Net::HTTP).to receive(:start).and_return(
-        instance_double(Net::HTTPResponse, code: "200", body: "{}")
+        http_resp(code: "200", body: "{}")
       )
       allow(Net::HTTP).to receive(:start).and_yield(
         instance_double(Net::HTTP).tap { |h| allow(h).to receive(:request).and_return(
-          instance_double(Net::HTTPResponse, code: "200", body: "{}")) }
+          http_resp(code: "200", body: "{}")) }
       )
 
       expect {
@@ -114,7 +122,7 @@ RSpec.describe Nango::Proxy do
       intg = integration(mode: "managed", service: "linkedin", provider_config_key: "linkedin")
       allow(Net::HTTP).to receive(:start).and_yield(
         instance_double(Net::HTTP).tap { |h| allow(h).to receive(:request).and_return(
-          instance_double(Net::HTTPResponse, code: "200", body: "{}")) }
+          http_resp(code: "200", body: "{}")) }
       )
 
       expect {
@@ -123,12 +131,53 @@ RSpec.describe Nango::Proxy do
     end
   end
 
+  describe "reliability" do
+    before { allow(described_class).to receive(:sleep) } # don't actually wait
+
+    it "retries a transient 5xx then succeeds (agent never sees the blip)" do
+      intg = integration(mode: "managed")
+      calls = 0
+      fake = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:start).and_yield(fake)
+      allow(fake).to receive(:request) do
+        calls += 1
+        calls < 2 ? http_resp(code: "503", body: "bad gateway") : http_resp(code: "200", body: "{}")
+      end
+
+      res = described_class.call(agent: agent, integration: intg, method: "GET", path: "/user")
+      expect(res.status).to eq(200)
+      expect(calls).to eq(2) # retried once
+    end
+
+    it "raises Transient after exhausting retries on network errors" do
+      intg = integration(mode: "managed")
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNRESET)
+
+      expect {
+        described_class.call(agent: agent, integration: intg, method: "GET", path: "/user")
+      }.to raise_error(Nango::Proxy::Transient)
+    end
+
+    it "raises RateLimited with retry_after on 429" do
+      intg = integration(mode: "managed")
+      fake = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:start).and_yield(fake)
+      allow(fake).to receive(:request).and_return(
+        http_resp(code: "429", body: "slow down", headers: { "retry-after" => "42" })
+      )
+
+      expect {
+        described_class.call(agent: agent, integration: intg, method: "GET", path: "/user")
+      }.to raise_error(Nango::Proxy::RateLimited) { |e| expect(e.retry_after).to eq(42) }
+    end
+  end
+
   describe "audit logging" do
     it "writes an AuditLog row on success" do
       intg = integration(mode: "managed")
       allow(Net::HTTP).to receive(:start).and_yield(
         instance_double(Net::HTTP).tap { |h| allow(h).to receive(:request).and_return(
-          instance_double(Net::HTTPResponse, code: "200", body: "{}")) }
+          http_resp(code: "200", body: "{}")) }
       )
 
       expect {

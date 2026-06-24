@@ -71,6 +71,13 @@ class Api::IntegrationsController < ActionController::API
     render json: { error: "approval required", requires_approval: true }, status: :accepted
   rescue Nango::Proxy::Forbidden => e
     render json: { error: e.message, forbidden: true }, status: :forbidden
+  rescue Nango::Proxy::RateLimited => e
+    # Distinct from a hard failure — the connection is fine, just throttled.
+    render json: { error: e.message, rate_limited: true, retry_after: e.retry_after }, status: :too_many_requests
+  rescue Nango::Proxy::Transient => e
+    # Momentary infra blip that survived retries — NOT a disconnect. Tell the
+    # agent to try again shortly, not to reconnect.
+    render json: { error: e.message, transient: true }, status: :service_unavailable
   rescue => e
     Rails.logger.warn "POST /api/nango_proxy failed: #{e.class}: #{e.message}"
     render json: { error: e.message }, status: :bad_gateway
