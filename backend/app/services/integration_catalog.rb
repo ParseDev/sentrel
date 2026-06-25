@@ -60,7 +60,7 @@ class IntegrationCatalog
     #             modes, auth_type, review, tool, docs_url }]
     def list(_organization_id = nil, configured_keys: nil)
       keys = configured_keys
-      all.map do |e|
+      entries = all.map do |e|
         if keys.blank?
           e.merge(available: true, oauth_ready: nil)
         else
@@ -70,6 +70,21 @@ class IntegrationCatalog
           e.merge(available: available, oauth_ready: oauth_ready, modes: modes)
         end
       end
+      dedupe_by_brand(entries)
+    end
+
+    # Nango's /providers ships multiple templates per brand — auth variants +
+    # sub-products (github user/app, sentry + sentry-oauth, stripe-api-key,
+    # 1Password Events/SCIM/Users) — which collapse to the same display label
+    # after cleanup and render as duplicate cards. Show ONE card per brand,
+    # preferring a connectable (available) representative, then featured, then
+    # the shortest slug (the base app). Keeps featured-first ordering.
+    def dedupe_by_brand(entries)
+      entries
+        .group_by { |e| e[:label].to_s.strip.downcase }
+        .values
+        .map { |grp| grp.max_by { |e| [e[:available] ? 1 : 0, e[:featured] ? 1 : 0, -e[:slug].to_s.length] } }
+        .sort_by { |e| [e[:featured] ? 0 : 1, e[:label].to_s.downcase] }
     end
 
     # Slim list for the engine — slug + label + api_base_url so nango_request
