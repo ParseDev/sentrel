@@ -19,7 +19,9 @@ class CatalogApp < ApplicationRecord
       label: label,
       category: category || "Other",
       description: nil,
-      logo: logo,
+      # Served through our logo proxy (correct content-type + white-labeled),
+      # derived from slug so it's independent of the stored value.
+      logo: "/integration-logos/remote/#{slug}",
       provider_config_key: slug, # Nango unique_key == provider key in practice
       auth_type: auth_mode.to_s.downcase.start_with?("oauth") ? "oauth2" : "api_key",
       api_base_url: api_base_url,

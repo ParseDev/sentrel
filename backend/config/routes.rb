@@ -327,6 +327,10 @@ Rails.application.routes.draw do
     get  "invite/:token",        to: "invitations#show",   as: :invitation_link
     post "invite/:token/accept", to: "invitations#accept", as: :accept_invitation
     resources :reports, only: [ :index ]
+    # Public logo proxy for the app directory — re-serves Nango provider SVGs
+    # with the correct content-type on our own domain (white-labeled, cached).
+    get "integration-logos/remote/:slug", to: "integration_logos#show", as: :integration_logo
+
     resources :integrations, only: [ :index, :destroy ] do
       collection do
         post ":service_name/connect", action: :connect, as: :connect
