@@ -15,7 +15,7 @@ import {
   agentScope,
   orgScope,
 } from "../rag/store.js";
-import { embedText, isEmbeddingReady } from "../integrations/tool-embeddings.js";
+import { embedText, isEmbeddingReady } from "../rag/embeddings.js";
 import { logger } from "../logger.js";
 
 export function buildKnowledgeMcpServer(agentId: number, orgId: number) {

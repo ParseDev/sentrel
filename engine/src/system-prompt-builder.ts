@@ -1,7 +1,7 @@
 import type { Agent } from "./types.js";
 import type { AgentSkill } from "./host/host.js";
 import { resolveCapabilities } from "./capabilities.js";
-import { getSupportedSlugs } from "./integrations/supported-cache.js";
+import { getSupportedSlugs } from "./integrations/supported.js";
 
 // Builds the agent's full system prompt. Passed to the Claude Agent SDK as
 // `options.systemPrompt` (string form), which fully replaces the default
@@ -341,7 +341,7 @@ export function buildSystemPrompt(
       `${getSupportedSlugs().join(", ")}.\n\n` +
       `If the user asks for an unsupported service (Salesforce, Pipedrive, Zoho, Outlook, Asana, Trello, Zendesk, Freshdesk, Front, Help Scout, Jira, Bitbucket, GitLab, AWS, GCP, Azure, etc.) — DO NOT call propose_connection. Tell the user honestly: "We don't support <service> yet — but I can use <closest supported alternative> if that fits." Suggest a real alternative from the supported list.\n\n` +
       `## When a tool returns "needs auth"\n` +
-      `If a Composio tool fails with text containing "needs auth" / "not connected" / "the user is being asked to connect" — STOP. The platform has already surfaced a Connect <service> card to the user inline; you do not need to call propose_connection again. Do NOT retry the tool call. Acknowledge briefly that you're waiting on the connection, and offer a useful next step (suggest a different approach, or ask the user to confirm once they've connected).`
+      `If an integration tool fails with text containing "needs auth" / "not connected" / "the user is being asked to connect" — STOP. The platform has already surfaced a Connect <service> card to the user inline; you do not need to call propose_connection again. Do NOT retry the tool call. Acknowledge briefly that you're waiting on the connection, and offer a useful next step (suggest a different approach, or ask the user to confirm once they've connected).`
     );
   } else if (caps.integrations.enabled) {
     parts.push(

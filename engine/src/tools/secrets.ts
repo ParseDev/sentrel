@@ -1,5 +1,5 @@
 // secrets — agent reads stored credentials (cloud / generic API keys) for
-// tools that don't have a dedicated Composio integration. Rails is the source
+// tools that don't have a dedicated integration. Rails is the source
 // of truth; this MCP server is a thin proxy that delegates ACL + audit logging
 // to /api/secrets.
 //
@@ -85,8 +85,8 @@ function titleCaseLocal(s: string): string {
 // secrets guard to avoid showing an "add API key" card for an app that's
 // already connected (the agent should use nango_request instead). Provider-
 // agnostic — reads the same /api/integrations list the engine uses for
-// nango_request, with no Composio coupling.
-async function fetchConnectedProviders(agentId: number): Promise<Set<string>> {
+// nango_request.
+export async function fetchConnectedProviders(agentId: number): Promise<Set<string>> {
   const secret = process.env.ENGINE_API_SECRET;
   if (!secret) return new Set();
   const res = await fetch(`${railsInternalUrl()}/api/integrations?agent_id=${agentId}`, {
@@ -108,7 +108,7 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
   const getTool = tool(
     "get",
     "Fetch a stored credential (cloud provider key, generic API key) that the workspace owner has shared with this agent. " +
-      "Use this when you need to authenticate to a third-party service that isn't already wired through Composio — e.g. Heroku, Hetzner, custom APIs. " +
+      "Use this when you need to authenticate to a third-party service that isn't already wired through a connected app — e.g. Heroku, Hetzner, custom APIs. " +
       "Pass `name` for a specific named secret OR `provider` (+ optional `kind`) for the org default. " +
       "If you get `no access`, the workspace owner hasn't granted this agent permission to use this credential — propose connecting it via the Credentials settings page instead of retrying. " +
       "High-risk credentials (cloud providers that can spend money) pause the turn for human approval before the value is returned.",
@@ -160,7 +160,7 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
         if (res.status === 403 || res.status === 404) {
           const rawProvider = (args.provider || args.name || "credential").toString().toLowerCase();
           // Normalize "APOLLO_API_KEY" / "apollo_api_key" / "apollo-token"
-          // → "apollo" so the Composio active-toolkit lookup matches.
+          // → "apollo" so the connected-integration lookup matches.
           const normalizedProvider = rawProvider
             .replace(/[_-]?(api[_-]?key|access[_-]?token|secret[_-]?key|auth[_-]?token|token|key|secret)$/i, "")
             .replace(/[_-]+$/, "");
@@ -171,7 +171,7 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
           // instead of asking for a raw key. Return a pointed error that
           // tells the model to use the integration, not surface a credential
           // prompt. Drives off the connected-integrations list from Rails
-          // (provider-agnostic — no Composio dependency on the always-on path).
+          // (provider-agnostic, on the always-on path).
           try {
             const connected = await fetchConnectedProviders(agentId);
             if (connected.has(normalizedProvider) || connected.has(rawProvider)) {

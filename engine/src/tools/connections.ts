@@ -15,13 +15,13 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
 import { host } from "../host/index.js";
 import { emitConnectionProposal } from "../gateway.js";
-import { getSupportedIntegrations, getSupportedSlugs, getSupportedLabel } from "../integrations/supported-cache.js";
+import { getSupportedSlugs, getSupportedLabel } from "../integrations/supported.js";
 import type { Origin } from "../channels/origin-delivery.js";
 
-// The supported-integrations list is sourced dynamically from Composio's
-// auth_configs (proxied through Rails) — see supported-cache.ts. Add an
-// auth_config in the Composio dashboard → it's usable here on next refresh
-// (≤30 min). No code change required.
+// The supported-integrations list is sourced dynamically from the integration
+// broker's catalog (proxied through Rails) — see supported.ts. Add an
+// integration server-side → it's usable here on next refresh (≤30 min). No
+// code change required.
 
 interface ConnectionsContext {
   agentId: number;
@@ -32,31 +32,31 @@ interface ConnectionsContext {
 export function buildConnectionsMcpServer(ctx: ConnectionsContext) {
   const proposeConnectionTool = tool(
     "propose_connection",
-    "Surface an inline 'Connect <service>' or 'Add <provider> credential' card in the chat when the user wants something that requires external access the org hasn't set up yet. The user clicks once: for Composio toolkits (Apollo, HubSpot, Slack, Gmail, …) the OAuth popup opens; for API-token services (Intercom, Stripe, Heroku, any custom REST API) a credentials form opens in a new tab. ALWAYS prefer this card over telling the user to navigate to /integrations or /settings/credentials themselves.",
+    "Surface an inline 'Connect <service>' or 'Add <provider> credential' card in the chat when the user wants something that requires external access the org hasn't set up yet. The user clicks once: for OAuth integrations (Apollo, HubSpot, Slack, Gmail, …) the OAuth popup opens; for API-token services (Intercom, Stripe, Heroku, any custom REST API) a credentials form opens in a new tab. ALWAYS prefer this card over telling the user to navigate to /integrations or /settings/credentials themselves.",
     {
       service: z.string().describe(
-        "Service slug. For Composio integrations: must be in the supported list (system prompt). For API-token credentials: any provider name the user would recognize ('intercom', 'stripe', 'heroku').",
+        "Service slug. For OAuth integrations: must be in the supported list (system prompt). For API-token credentials: any provider name the user would recognize ('intercom', 'stripe', 'heroku').",
       ),
-      label: z.string().optional().describe("Display name. Defaults to the official label for Composio slugs; for credentials defaults to title-cased service."),
+      label: z.string().optional().describe("Display name. Defaults to the official label for supported slugs; for credentials defaults to title-cased service."),
       why: z.string().describe("One-line user-facing reason. Shows on the card."),
-      kind: z.enum(["composio_oauth", "api_credential"]).optional().describe(
-        "Which kind of access to request. composio_oauth (default) for OAuth-managed integrations in the Composio catalog; api_credential for raw API tokens / keys the workspace owner pastes at /settings/credentials.",
+      kind: z.enum(["oauth", "api_credential"]).optional().describe(
+        "Which kind of access to request. oauth (default) for OAuth-managed integrations in the supported catalog; api_credential for raw API tokens / keys the workspace owner pastes at /settings/credentials.",
       ),
     },
     async (args) => {
       const slug = args.service.toLowerCase();
-      const kind = args.kind || "composio_oauth";
+      const kind = args.kind || "oauth";
 
       let label: string;
-      if (kind === "composio_oauth") {
+      if (kind === "oauth") {
         const officialLabel = getSupportedLabel(slug);
         if (!officialLabel) {
           const list = getSupportedSlugs().join(", ");
-          logger.warn(`Connection proposal rejected: unsupported Composio service '${args.service}' (current: ${list})`);
+          logger.warn(`Connection proposal rejected: unsupported OAuth service '${args.service}' (current: ${list})`);
           return {
             content: [{
               type: "text",
-              text: `'${args.service}' isn't in our Composio toolkits. If this service has a public API token (like Intercom, Heroku, Stripe), retry with kind='api_credential' instead.`,
+              text: `'${args.service}' isn't in our supported integrations. If this service has a public API token (like Intercom, Heroku, Stripe), retry with kind='api_credential' instead.`,
             }],
             isError: true,
           };
@@ -76,7 +76,7 @@ export function buildConnectionsMcpServer(ctx: ConnectionsContext) {
         kind,
       });
 
-      const actionVerb = kind === "composio_oauth" ? "authenticate via OAuth" : "paste their API token";
+      const actionVerb = kind === "oauth" ? "authenticate via OAuth" : "paste their API token";
       return {
         content: [{
           type: "text",
@@ -102,14 +102,14 @@ export async function postProposal(opts: {
   slug: string;
   label: string;
   why: string;
-  kind: "composio_oauth" | "api_credential" | "org_credential";
+  kind: "oauth" | "api_credential" | "org_credential";
 }): Promise<void> {
   const { ctx, slug, label, why, kind } = opts;
-  const approvalToken = `${kind === "composio_oauth" ? "conn" : "cred"}_${Date.now()}_${slug}`;
-  const summary = kind === "composio_oauth"
+  const approvalToken = `${kind === "oauth" ? "conn" : "cred"}_${Date.now()}_${slug}`;
+  const summary = kind === "oauth"
     ? `Connect ${label} — ${why}`
     : `Add ${label} credential — ${why}`;
-  const connectButtonLabel = kind === "composio_oauth" ? `Connect ${label}` : `Add ${label} credential`;
+  const connectButtonLabel = kind === "oauth" ? `Connect ${label}` : `Add ${label} credential`;
 
   try {
     await host.createPendingActionApproval({

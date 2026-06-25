@@ -5,7 +5,7 @@
 
 import { chunkText, hashContent } from "./chunker.js";
 import { contextualizeChunks } from "./contextualizer.js";
-import { embedText, isEmbeddingReady } from "../integrations/tool-embeddings.js";
+import { embedText, isEmbeddingReady } from "./embeddings.js";
 import * as store from "./store.js";
 import { host } from "../host/index.js";
 import { logger } from "../logger.js";

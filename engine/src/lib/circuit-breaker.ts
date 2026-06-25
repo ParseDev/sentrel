@@ -6,8 +6,8 @@
 //   HALF    — after cooldown, one probe request allowed; success → CLOSED, fail → OPEN
 //
 // Usage:
-//   const breaker = new CircuitBreaker("composio", { failThreshold: 3, cooldownMs: 30_000 });
-//   const result = await breaker.call(() => composioApi.list());
+//   const breaker = new CircuitBreaker("nango", { failThreshold: 3, cooldownMs: 30_000 });
+//   const result = await breaker.call(() => nangoApi.list());
 //   // On failure: throws CircuitOpenError or the original error
 //   // On open circuit: throws immediately without calling fn
 

@@ -487,21 +487,12 @@ const TOOL_LABELS: Record<string, string> = {
   Glob: "📂 Finding files...",
 };
 
-// Composio + MCP tools: extract a readable name from prefixed tool names
+// MCP tools: extract a readable name from prefixed tool names
 function humanizeToolName(tool: string): string {
   if (TOOL_LABELS[tool]) return TOOL_LABELS[tool];
 
-  // mcp__composio__GOOGLESHEETS_CREATE_GOOGLE_SHEET1 → "Creating Google Sheet..."
-  // mcp__composio__VERCEL_CREATE_DEPLOYMENT → "Deploying to Vercel..."
   // mcp__tasks__write_checkpoint → "Saving progress..."
   // mcp__recall__search_messages → "Searching messages..."
-  const composioMatch = tool.match(/^mcp__composio__(\w+?)_(.+)/);
-  if (composioMatch && composioMatch[1] && composioMatch[2]) {
-    const app = composioMatch[1].toLowerCase().replace(/s$/, "");
-    const action = composioMatch[2].toLowerCase().replace(/_/g, " ").replace(/\d+$/, "").trim();
-    return `🔗 ${capitalize(app)}: ${action}...`;
-  }
-
   const mcpMatch = tool.match(/^mcp__(.+?)__(.+)/);
   if (mcpMatch && mcpMatch[1] && mcpMatch[2]) {
     const server = mcpMatch[1].replace(/-/g, " ");
@@ -551,7 +542,7 @@ function detailFromInput(tool: string, input: unknown): string | null {
     case "Agent":
       return trim(inp.prompt, 80) || trim(inp.subagent_type);
   }
-  // Composio/MCP tool — try common keys
+  // MCP tool — try common keys
   return trim(inp.query) || trim(inp.q) || trim(inp.name) || trim(inp.title) ||
     trim(inp.subject) || trim(inp.url) || trim(inp.body, 60);
 }
@@ -693,22 +684,22 @@ export function emitActionApproval(data: {
 // Unified "external access required" card. ONE card type, three kinds —
 // the chat surface dispatches the right action based on `kind`:
 //
-//   composio_oauth → POST /integrations/:slug/connect → OAuth popup
+//   oauth          → POST /integrations/:slug/connect → OAuth popup
 //   api_credential → open /settings/credentials?provider=:slug in a new tab
 //   org_credential → same destination, framed for org-wide secrets
 //
 // Replaces the old propose_connection + secrets.get text path with a
 // single consistent UX. Legacy callers without `kind` default to
-// composio_oauth for back-compat (the field used to be implicit).
+// oauth for back-compat (the field used to be implicit).
 export function emitConnectionProposal(data: {
   service: string;
   label: string;
   why: string;
-  kind?: "composio_oauth" | "api_credential" | "org_credential";
+  kind?: "oauth" | "api_credential" | "org_credential";
 }): void {
   broadcast({
     type: "connection_proposal",
-    kind: data.kind || "composio_oauth",
+    kind: data.kind || "oauth",
     service: data.service,
     label: data.label,
     why: data.why,

@@ -5,9 +5,8 @@ import { runAgent } from "./agent-runner.js";
 import { syncWorkspace } from "./memory.js";
 import { provisionSkills, syncSkillsFromDb } from "./skills.js";
 import { startWorkScheduler } from "./work-scheduler.js";
-import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
-import { startSupportedIntegrationsCache, stopSupportedIntegrationsCache } from "./integrations/supported-cache.js";
-import { invalidateToolkitsCache } from "./integrations/composio.js";
+import { initToolEmbeddings } from "./rag/embeddings.js";
+import { startSupportedIntegrationsCache, stopSupportedIntegrationsCache } from "./integrations/supported.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
 import { startGateway, setSyncHandler } from "./gateway.js";
@@ -45,14 +44,14 @@ async function main() {
   // 3. Provision role-based skills
   provisionSkills(agent);
 
-  // 4. Init tool embeddings with a bounded wait. First boot downloads ~25MB
+  // 4. Init embeddings with a bounded wait. First boot downloads ~25MB
   // from HuggingFace Hub then caches on /data/hf-cache (symlinked via
   // env.cacheDir). Subsequent boots load from cache in <1s. We wait up to
-  // 30s so the "ready" log reflects a warm tool-router on cold starts,
+  // 30s so the "ready" log reflects a warm embedder on cold starts,
   // then fall through so Fly egress hiccups don't block the engine. If
-  // the download finishes later it still populates the index.
+  // the download finishes later it still populates the model.
   const embedInit = initToolEmbeddings().catch((err) =>
-    logger.warn("Tool embeddings init failed, using fallbacks", { error: (err as Error).message }),
+    logger.warn("Embeddings init failed, using fallbacks", { error: (err as Error).message }),
   );
   let embedTimedOut = false;
   let embedTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -61,7 +60,7 @@ async function main() {
     new Promise<void>((resolve) =>
       embedTimeout = setTimeout(() => {
         embedTimedOut = true;
-        logger.warn("Tool embeddings still loading after 30s — continuing without waiting");
+        logger.warn("Embeddings still loading after 30s — continuing without waiting");
         resolve();
       }, 30_000),
     ),
@@ -69,10 +68,10 @@ async function main() {
   if (!embedTimedOut && embedTimeout) clearTimeout(embedTimeout);
 
   // Item 5 — pull the supported-integrations list from Rails (which proxies
-  // Composio's auth_configs). Cached + auto-refreshed every 30 min so adding
-  // a new auth_config in the Composio dashboard makes it usable here without
-  // a code change. Boot doesn't block on this — fallback list takes over if
-  // the fetch fails.
+  // the integration broker's catalog). Cached + auto-refreshed every 30 min so
+  // adding a new integration server-side makes it usable here without a code
+  // change. Boot doesn't block on this — fallback list takes over if the fetch
+  // fails.
   void startSupportedIntegrationsCache();
 
   // 5. Update agent status
@@ -104,7 +103,6 @@ async function main() {
   // 10. Start gateway (WebSocket + HTTP: POST /sync, GET /health)
   setSyncHandler(async () => {
     const freshAgent = await host.getAgent(config.employeeId);
-    invalidateToolkitsCache(freshAgent.organization_id);
     invalidateSystemPromptCache(freshAgent.id);
     drainWarmQueryPool(`agent:${freshAgent.id}:`);
     syncWorkspace(freshAgent);

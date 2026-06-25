@@ -1,6 +1,6 @@
 // slack — outbound for the Slack-as-channel lane (the bot user installed in
-// the user's workspace via /slack/install). Distinct from the Composio Slack
-// integration tools, which call user-OAuth Slack endpoints for agent tool use.
+// the user's workspace via /slack/install). Distinct from the connected Slack
+// integration, which calls user-OAuth Slack endpoints for agent tool use.
 //
 // Rails is the only thing that holds the bot_token. We POST through
 // /api/send_slack_message; the controller resolves the agent's ChannelConfig,

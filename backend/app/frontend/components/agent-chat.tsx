@@ -540,7 +540,7 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
       service: String(payload.service || ""),
       label: String(payload.label || seed.payload_type),
       why: String(payload.why || ""),
-      kind: kind || "connect",
+      kind: kind || "oauth",
       dismiss: () => setConnectionProposal(null),
     }
   })()
@@ -829,7 +829,7 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
         service: data.service,
         label: data.label || data.service,
         why: data.why || "",
-        kind: data.kind || "connect",
+        kind: data.kind || "oauth",
         dismiss: () => setConnectionProposal(null),
       })
     }

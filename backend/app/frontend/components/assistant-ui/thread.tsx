@@ -103,13 +103,13 @@ export const ActionApprovalProvider = ActionApprovalContext.Provider;
 // access. ONE card type handles both kinds:
 //   connect → send the user to the /integrations directory to connect
 //   api_credential → open /settings/credentials?provider=:slug in new tab
-// Missing kind defaults to "connect" for back-compat with rows
+// Missing kind defaults to "oauth" for back-compat with rows
 // persisted before the unified flow.
 type ConnectionProposalData = {
   service: string
   label: string
   why: string
-  kind?: "connect" | "api_credential" | "org_credential"
+  kind?: "oauth" | "api_credential" | "org_credential"
   dismiss: () => void
 } | null
 

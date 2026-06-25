@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import type { Agent } from "../types.js";
 import type { AgentSkill } from "../host/host.js";
 import { buildCurrentTimeSection, buildSystemPrompt } from "../system-prompt-builder.js";
-import { getSupportedSlugs } from "../integrations/supported-cache.js";
+import { getSupportedSlugs } from "../integrations/supported.js";
 
 type TeammatePromptInfo = {
   name: string;

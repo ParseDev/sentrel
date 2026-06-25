@@ -18,7 +18,7 @@ const SAFE_ENV_VARS = new Set([
 // Patterns that indicate a value is a secret
 const SECRET_PATTERNS = [
   /^sk[-_]/i,           // sk-ant-xxx, sk-proj-xxx
-  /^ak[-_]/i,           // ak_xxx (Composio)
+  /^ak[-_]/i,           // ak_xxx (API key prefix)
   /^ghp_/i,             // GitHub personal access token
   /^gho_/i,             // GitHub OAuth token
   /^Bearer\s/i,         // Bearer tokens

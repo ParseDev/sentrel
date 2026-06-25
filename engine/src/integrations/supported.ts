@@ -1,11 +1,11 @@
-// Canonical "what services can the user connect" list. Source of truth is
-// Composio's auth_configs (proxied by Rails at /api/integrations/supported)
-// so adding a new integration in the Composio dashboard makes it usable
-// here automatically — no code change needed.
+// Canonical "what services can the user connect" list. Source of truth is the
+// integration broker's catalog, proxied by Rails at /api/integrations/supported,
+// so adding a new integration server-side makes it usable here automatically —
+// no code change needed.
 //
-// Boot fetch + 30-min refresh. If the fetch fails (Rails down, Composio API
-// down, network blip), we keep the previous cache; on first-boot failure we
-// fall back to a small hardcoded set so the agent can still operate.
+// Boot fetch + 30-min refresh. If the fetch fails (Rails down, broker API down,
+// network blip), we keep the previous cache; on first-boot failure we fall back
+// to a small hardcoded set so the agent can still operate.
 
 import { logger } from "../logger.js";
 
@@ -39,7 +39,7 @@ async function resolveOrgId(): Promise<number | null> {
     cachedOrgId = agent.organization_id;
     return cachedOrgId;
   } catch (err) {
-    logger.warn("supported-cache: couldn't resolve org_id", { error: (err as Error).message });
+    logger.warn("supported integrations: couldn't resolve org_id", { error: (err as Error).message });
     return null;
   }
 }
@@ -76,7 +76,7 @@ export function stopSupportedIntegrationsCache(): void {
 async function refresh(): Promise<void> {
   const railsUrl = process.env.RAILS_INTERNAL_URL;
   const secret = process.env.ENGINE_API_SECRET;
-  // The agent's org_id is needed because the toolkit cache is org-scoped.
+  // The agent's org_id is needed because the catalog is org-scoped.
   // Read from EMPLOYEE_ID-resolved agent on first refresh, then cache.
   const orgId = await resolveOrgId();
   if (!railsUrl || !secret || !orgId) {

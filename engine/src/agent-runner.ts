@@ -17,16 +17,14 @@ import { buildTasksMcpServer } from "./tools/tasks.js";
 import { buildApprovalsMcpServer } from "./tools/approvals.js";
 import { buildConnectionsMcpServer } from "./tools/connections.js";
 import { resolveActionApproval } from "./security/action-approval.js";
-import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
-import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
+import { createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
 import { buildFilesMcpServer } from "./tools/files.js";
-import { buildSecretsMcpServer } from "./tools/secrets.js";
+import { buildSecretsMcpServer, fetchConnectedProviders } from "./tools/secrets.js";
 import { buildNangoMcpServer } from "./tools/nango.js";
 import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
 import { buildShareFileMcpServer } from "./tools/share-file.js";
 import { createSlackChannelMcpServer } from "./tools/slack-channel.js";
-import { hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
 import { scanCommand } from "./security/command-scanner.js";
@@ -388,8 +386,8 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
   const built = buildPrompt(agent, job, history, conversation, processedMedia, taskCheckpoint, knowledgePrefetch);
   spans.end(promptSpan, { chars: built.promptText.length });
 
-  // Shared state so the search_integrations tool can call setMcpServers()
-  // to dynamically add Composio toolkits mid-session (same user interaction).
+  // Shared state holding the live SDK query handle + base MCP servers, so
+  // any dynamic setMcpServers() call mid-session can preserve them.
   const queryState = createQueryState();
 
   const optionsSpan = spans.start("build_query_options");
@@ -937,6 +935,31 @@ interface QueryResult {
   thinkingDurationMs: number;
 }
 
+// Deliverable-intent detection for runtime validation. We only need a couple
+// of coarse buckets (spreadsheet vs lead/contact enrichment) to sanity-check
+// that the agent used the right family of tools for the requested deliverable.
+type DeliverableIntent = "spreadsheet" | "lead_enrichment";
+const DELIVERABLE_INTENTS: Record<DeliverableIntent, { patterns: RegExp[]; toolkits: string[] }> = {
+  spreadsheet: {
+    patterns: [/\b(google\s*sheets?|spreadsheet|workbook|excel|csv table)\b/i, /\bsheet\b/i],
+    toolkits: ["googlesheets", "airtable"],
+  },
+  lead_enrichment: {
+    patterns: [
+      /\b(apollo|lead|prospect|find contacts?|find emails?|verify emails?|enrich|people search|decision.?makers?)\b/i,
+    ],
+    toolkits: ["apollo", "linkedin", "hubspot", "salesforce", "pipedrive", "zoho", "outreach", "salesloft"],
+  },
+};
+
+function hasIntegrationIntent(text: string, key: DeliverableIntent): boolean {
+  return DELIVERABLE_INTENTS[key].patterns.some((pattern) => pattern.test(text));
+}
+
+function toolkitsForIntent(key: DeliverableIntent): string[] {
+  return DELIVERABLE_INTENTS[key].toolkits;
+}
+
 function validateTaskDeliverable(
   job: JobData,
   result: QueryResult,
@@ -1076,13 +1099,11 @@ async function runAgentLoop(
     // Log which tools the agent has on init (for debugging tool loading)
     if (msg.type === "system" && msg.subtype === "init" && msg.tools) {
       const toolNames = Array.isArray(msg.tools) ? msg.tools : Object.keys(msg.tools || {});
-      const composioTools = toolNames.filter((t: string) => t.startsWith("mcp__composio__"));
-      const mcpTools = toolNames.filter((t: string) => t.startsWith("mcp__") && !t.startsWith("mcp__composio__"));
+      const mcpTools = toolNames.filter((t: string) => t.startsWith("mcp__"));
       const hasKnowledge = toolNames.includes("mcp__knowledge__search_knowledge");
-      logger.info(`SDK init: ${composioTools.length} Composio, ${mcpTools.length} other MCP, knowledge=${hasKnowledge ? "yes" : "NO"}`);
+      logger.info(`SDK init: ${mcpTools.length} MCP tools, knowledge=${hasKnowledge ? "yes" : "NO"}`);
       spans?.event("sdk_init", {
         warmed: queryHandle.warmed,
-        composioTools: composioTools.length,
         mcpTools: mcpTools.length,
         hasKnowledge,
       });
@@ -1285,13 +1306,6 @@ function buildCurrentTurnText(job: JobData): string {
   ].join(" "));
 }
 
-function buildRoutingText(job: JobData, history: Message[] = []): string {
-  return capRoutingText([
-    buildCurrentTurnText(job),
-    ...history.slice(-2).map((m) => m.content),
-  ].join(" "));
-}
-
 function buildToolProfile(
   agent: Agent,
   job: JobData,
@@ -1305,16 +1319,13 @@ function buildToolProfile(
   // those regexes proved unwinnable: every follow-up phrasing the
   // user invents that misses a keyword silently drops the entire MCP
   // server. "okay can u give me details abvout thgeir conpanies" has
-  // no "apollo" keyword, so the Composio MCP doesn't load, so the
+  // no "apollo" keyword, so the integration tools don't load, so the
   // model's Apollo tool calls fail — even though the conversation is
   // OBVIOUSLY about Apollo.
   //
   // Trust the capability flag. If the user turned on integrations on
   // the agent's edit page, the model gets the MCP tools and decides
-  // for itself whether to call them. The inner Composio routing
-  // layer (layer0/1/2) still picks WHICH toolkits to load based on
-  // available connections + recent usage — that part is signal-based,
-  // not keyword-based.
+  // for itself whether to call them.
   //
   // Cost: ~1-3k extra MCP tool tokens per turn for capabilities the
   // current turn doesn't end up using. Sonnet's 200k context absorbs
@@ -1480,7 +1491,7 @@ async function buildQueryOptions(
   baseMcpServers.secrets = secretsServer;
 
   // nango — generic gateway to Nango-connected apps (the long-tail integration
-  // surface, replacing Composio toolkits). One tool, every provider; Rails
+  // surface). One tool, every provider; Rails
   // injects the token + enforces per-agent ACL + the approval gate. Always-on
   // AND in baseMcpServers so a mid-session setMcpServers() swap can't drop it.
   const nangoServer = buildNangoMcpServer({
@@ -1595,23 +1606,16 @@ async function buildQueryOptions(
     logger.warn("external MCP registration skipped:", err);
   }
 
-  // Integrations capability gates both `integrations` (search) and
-  // `composio` (actual execution tools). Disable the capability to
-  // produce a pure-knowledge/internal agent with no external tool access.
-  let composioToolNames: string[] = [];
+  // Integrations capability gates the connected-app proxy (`apps`) plus the
+  // propose_connection tool. Disable the capability to produce a
+  // pure-knowledge/internal agent with no external tool access.
   let relevantToolkits: string[] = [];
   let allConnectedToolkits: string[] = [];
   if (caps.integrations.enabled && profile.integrations) {
-    const buildOriginatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
-      ?? (job as { user_id?: number }).user_id;
-    const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState, buildOriginatingUserId);
-    mcpServers.integrations = integrationsServer;
-    baseMcpServers.integrations = integrationsServer;
-
-    // Item 5 — propose_connection. Lives next to integrations: same gating
-    // (a no-integrations agent doesn't need it), same purpose (let the agent
-    // ask the user to connect a service). Posts an inline "Connect <X>" card
-    // AND persists it via pending_approvals so the card survives a refresh.
+    // propose_connection — lets the agent ask the user to connect an app. Posts
+    // an inline "Connect <X>" card AND persists it via pending_approvals so the
+    // card survives a refresh. (Connected-app access is the always-on Nango
+    // proxy registered above as `apps`.)
     const connectionsServer = buildConnectionsMcpServer({
       agentId: agent.id,
       orgId: agent.organization_id,
@@ -1620,65 +1624,18 @@ async function buildQueryOptions(
     mcpServers.connections = connectionsServer;
     baseMcpServers.connections = connectionsServer;
 
-    // Step 2 — Context-aware tool loading (hybrid: pre-load + on-demand).
-    // Layer 1 (pre-query): Audit log tool history — keep toolkits the agent
-    //   used recently (handles "try again").
-    // Layer 2 (pre-query): Embedding match on user message — pre-load
-    //   toolkits the user is clearly asking for. Agent has tools from turn 1.
-    // Layer 3 (on-demand): search_integrations MCP tool — agent calls it to
-    //   load ADDITIONAL toolkits mid-session if needed.
-    // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
-    const availableToolkits = await getActiveToolkits(agent.organization_id, buildOriginatingUserId);
-    allConnectedToolkits = availableToolkits;
-    const toolRouting = process.env.TOOL_ROUTING || "smart";
-
-    const layer1 = await getRecentComposioToolkits(agent.id);
-
-    const routingText = buildRoutingText(job, history);
-    const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
-    const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
-
-    // Layer 0 — deterministic routing by service mention and broad intent
-    // category. This avoids one-off rules for every integration while still
-    // keeping "spreadsheet" on spreadsheet tools, "lead enrichment" on lead
-    // tools, etc. Pass through the full status map so "Apollo isn't ACTIVE"
-    // becomes "Apollo was REVOKED — reconnect" instead of the generic
-    // "Apollo not connected" (which contradicts what /integrations shows).
-    const { getToolkitStatuses } = await import("./integrations/composio.js");
-    const toolkitStatuses = await getToolkitStatuses(agent.organization_id, buildOriginatingUserId).catch(() => new Map<string, string>());
-    const layer0Decision = routeIntegrationRequest(routingText, availableToolkits, layer2, toolkitStatuses);
-    const layer0 = layer0Decision.matches;
-
-    relevantToolkits = toolRouting === "all"
-      ? availableToolkits
-      : [...new Set([...layer0, ...layer1])].filter((t) => availableToolkits.includes(t));
-
-    logger.info(
-      `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} ` +
-      `(layer0=${layer0.join(",") || "-"}, intents=${layer0Decision.intents.join(",") || "-"}, layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
-    );
-
-    // Per-agent ACL — engine drops Composio tools the policy rejects before
-    // the agent ever sees them. Empty array (no rows) = default policy
-    // (allow everything common), preserving back-compat.
-    const toolPolicies = await host.getAgentToolPolicies(agent.id);
-    const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits, buildOriginatingUserId, toolPolicies);
-    const composioServer = composioResult?.server;
-    composioToolNames = composioResult?.toolNames || [];
-
-    if (composioServer) {
-      mcpServers.composio = composioServer;
-      // Note: composio is NOT in baseMcpServers — search_integrations
-      // swaps composio servers via setMcpServers, but keeps the base set intact.
-    }
+    // Connected apps for the system prompt's "LIVE connections" line — sourced
+    // from the Nango connected list (/api/integrations), broker-neutral.
+    allConnectedToolkits = Array.from(await fetchConnectedProviders(agent.id));
+    logger.info(`Connected apps (Nango): ${allConnectedToolkits.join(", ") || "none"}`);
   } else if (caps.integrations.enabled) {
     logger.info(`Tool routing: skipped for job profile (fastChat=${profile.fastChat})`);
   } else {
-    logger.info(`Tool routing: integrations capability disabled — no composio/integrations MCP servers`);
+    logger.info(`Tool routing: integrations capability disabled`);
   }
 
-  // Store base (non-composio) servers so search_integrations can include
-  // them in its setMcpServers call — otherwise setMcpServers would nuke them.
+  // Store base servers so any dynamic setMcpServers call can include them —
+  // otherwise setMcpServers would nuke them.
   queryState.baseMcpServers = baseMcpServers;
 
   logger.info(`MCP servers registered: ${Object.keys(mcpServers).join(", ") || "none"}`);
@@ -1754,12 +1711,8 @@ async function buildQueryOptions(
         "mcp__code__execute",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
-        // Composio is retired: mcp__composio__* (crippled per-action tools) and
-        // mcp__integrations__search_integrations are NO LONGER allowlisted, so
-        // agents can't fall back to them (e.g. the free/busy-only
-        // GOOGLECALENDAR_EVENTS_LIST). All connected-app access goes through the
-        // Nango proxy. (composioToolNames is still computed above for routing
-        // context/logging; it's intentionally no longer surfaced to the agent.)
+        // All connected-app access goes through the always-on Nango proxy,
+        // exposed as a single mcp__apps__request tool — one tool, every app.
         "mcp__apps__request",
       ] : []),
       ...(caps.knowledge_base.enabled && profile.knowledge ? [
@@ -2056,25 +2009,6 @@ async function notifyTaskEvent(taskId: number, messageId: number): Promise<void>
   });
 }
 
-// Layer 1 of tool routing: extract toolkit slugs from the agent's most recent
-// audit log entry. If the agent used mcp__composio__GOOGLESHEETS_* last turn,
-// keep googlesheets loaded without the user needing to re-mention it.
-async function getRecentComposioToolkits(agentId: number): Promise<string[]> {
-  try {
-    const logs = await host.getRecentAuditToolCalls(agentId, 3);
-    const toolkits = new Set<string>();
-    for (const toolName of logs) {
-      const match = toolName.match(/^mcp__composio__([A-Z]+?)_/);
-      if (match && match[1]) {
-        toolkits.add(match[1].toLowerCase());
-      }
-    }
-    return [...toolkits];
-  } catch {
-    return [];
-  }
-}
-
 // Always-retrieve RAG with threshold filter (Mem0/Letta pattern).
 // Runs on every inbound turn when knowledge_base is enabled. No regex, no
 // "decide whether to search" — embed the user text, run hybrid search,
@@ -2093,7 +2027,7 @@ async function prefetchKnowledge(agent: Agent, job: JobData) {
 
   try {
     const { listDocuments, searchMerged, agentScope, orgScope } = await import("./rag/store.js");
-    const { embedText, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
+    const { embedText, isEmbeddingReady } = await import("./rag/embeddings.js");
     if (!isEmbeddingReady()) return null;
     // Fast exit: skip if neither the agent nor the org has any docs indexed.
     const [agentDocs, orgDocs] = await Promise.all([

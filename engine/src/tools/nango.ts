@@ -8,7 +8,7 @@
 // also enforces the per-agent AgentToolPolicy (read/write) + the approval gate
 // for writes to gated providers. The agent learns each app's endpoints from its
 // installed SKILL.md (auto-installed on connect), so there's no per-endpoint
-// tool surface to maintain — unlike Composio.
+// tool surface to maintain.
 
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
