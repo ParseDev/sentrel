@@ -27,6 +27,20 @@ class IntegrationsController < ApplicationController
       end
     end
 
+    # Backfill the app directory (catalog_apps) from Nango /providers on first
+    # load if it's empty — so the rich directory populates without a manual
+    # command. Debounced; the daily CatalogSyncJob cron keeps it fresh after.
+    # Until it's populated, IntegrationCatalog falls back to the static YAML.
+    begin
+      if defined?(CatalogApp) && ActiveRecord::Base.connection.table_exists?("catalog_apps") &&
+         !CatalogApp.where(published: true).exists? && Rails.cache.read("catalog:backfill").blank?
+        Rails.cache.write("catalog:backfill", Time.current, expires_in: 5.minutes)
+        CatalogSyncJob.perform_later
+      end
+    rescue StandardError => e
+      Rails.logger.warn "catalog backfill enqueue skipped: #{e.class}: #{e.message}"
+    end
+
     # Subscription OAuth credentials (Anthropic Pro/Max, ChatGPT Plus/Pro).
     # Wrapped in rescue: until db:migrate has created oauth_credentials on this
     # environment AND active_record_encryption keys are set, the rest of
