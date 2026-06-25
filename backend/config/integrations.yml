@@ -90,12 +90,16 @@ sentry:
   logo: /integration-logos/sentry.svg
   label: Sentry
   category: Developer
-  provider_config_key: sentry-oauth
-  auth_type: oauth2
+  # Sentry's OAuth is the heavy "Public Integrations" flow (needs Hostname +
+  # User ID); its Auth Token (API key) path is simpler and just as capable, so
+  # we use Nango's api_key `sentry` integration — the user pastes a Sentry Auth
+  # Token in the Connect UI and Nango injects it on /proxy calls.
+  provider_config_key: sentry
+  auth_type: api_key
   api_base_url: https://sentry.io/api/0
   docs_url: https://docs.sentry.io/api/
-  scopes: [project:read, event:read, org:read]
-  modes: [managed, byo_oauth, byo_token]
+  scopes: []
+  modes: [managed]
   tool: proxy
   review: none
 
