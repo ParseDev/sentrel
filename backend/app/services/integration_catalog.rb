@@ -8,19 +8,37 @@ class IntegrationCatalog
   CONFIG_PATH = Rails.root.join("config", "integrations.yml")
 
   class << self
+    # True once the DB directory (catalog_apps, synced from Nango /providers) is
+    # populated. Until then we fall back to the static YAML so the page renders
+    # during rollout / if the table is empty.
+    def db_backed?
+      return false unless defined?(CatalogApp) && ActiveRecord::Base.connection.table_exists?("catalog_apps")
+      CatalogApp.published.exists?
+    rescue StandardError
+      false
+    end
+
     # All catalog entries as [{ slug:, label:, category:, ... }], label-sorted.
     def all
-      load_catalog.map { |slug, attrs| entry(slug, attrs) }.sort_by { |e| e[:label].to_s.downcase }
+      if db_backed?
+        CatalogApp.published.ordered.map(&:to_catalog_entry)
+      else
+        load_catalog.map { |slug, attrs| entry(slug, attrs) }.sort_by { |e| e[:label].to_s.downcase }
+      end
     end
 
     # One entry by service slug, or nil.
     def find(slug)
-      attrs = load_catalog[slug.to_s]
-      attrs && entry(slug.to_s, attrs)
+      if db_backed?
+        CatalogApp.find_by(slug: slug.to_s)&.to_catalog_entry
+      else
+        attrs = load_catalog[slug.to_s]
+        attrs && entry(slug.to_s, attrs)
+      end
     end
 
     def exists?(slug)
-      load_catalog.key?(slug.to_s)
+      db_backed? ? CatalogApp.where(slug: slug.to_s).exists? : load_catalog.key?(slug.to_s)
     end
 
     # Integrations-page list, synced with what's actually configured in Nango.
@@ -55,13 +73,17 @@ class IntegrationCatalog
     end
 
     # Slim list for the engine — slug + label + api_base_url so nango_request
-    # knows where to route. Connection state is layered on by the API endpoint.
+    # knows where to route. Limited to apps actually configured in Nango (+ MCP
+    # apps) so propose_connection only ever suggests things that can be connected,
+    # not the full 872-app directory.
     def list_for_engine(_organization_id = nil)
-      all.map { |e| { slug: e[:slug], label: e[:label], api_base_url: e[:api_base_url], tool: e[:tool] } }
+      keys = Nango::Client.configured_provider_keys
+      all.select { |e| e[:tool] == "mcp" || keys.include?(e[:provider_config_key]) }
+         .map { |e| { slug: e[:slug], label: e[:label], api_base_url: e[:api_base_url], tool: e[:tool] } }
     end
 
     def slugs
-      load_catalog.keys
+      db_backed? ? CatalogApp.pluck(:slug) : load_catalog.keys
     end
 
     def categories

@@ -49,6 +49,16 @@ module Nango
       post_json("/connect/sessions", body)
     end
 
+    # Nango's full provider TEMPLATE catalog (~872 apps), each with display_name,
+    # categories, auth_mode, proxy.base_url, docs + scopes. This is the source for
+    # the rich directory — clean + pre-categorized, distinct from /integrations
+    # (what we've configured). Synced into catalog_apps by Nango::CatalogSync.
+    def list_providers
+      Array(get_json("/providers")["data"])
+    rescue Error
+      []
+    end
+
     # The integrations (provider configs) set up in this Nango environment. Each
     # one's `unique_key` is what we store as provider_config_key. This is the
     # source of truth for "which apps can actually be connected via managed
