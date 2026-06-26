@@ -91,7 +91,7 @@ TEMPLATES = [
     suggested_provider: "anthropic",
     suggested_model: SONNET,
     suggested_manager_role: "CEO",
-    suggested_skill_slugs: %w[web-search send-email sdr-outreach],
+    suggested_skill_slugs: %w[web-search content-writing social-media gmail-management slack-communication notion linkedin],
     capabilities: {
       "knowledge_base" => { "enabled" => true },
       "scheduling"     => { "enabled" => true },
@@ -999,7 +999,7 @@ end
 # (IntegrationCatalog), otherwise they render as a bare humanized slug.
 TEMPLATE_INTEGRATIONS = {
   "ceo"                => %w[google-mail google-calendar slack notion],
-  "marketing-lead"     => %w[google-mail slack notion linkedin google-drive],
+  "marketing-lead"     => %w[google-mail slack notion linkedin google-drive facebook hubspot google-sheet],
   "compliance-officer" => %w[google-drive notion],
   "proposal-writer"    => %w[google-drive google-sheet notion],
   "engineer"           => %w[github linear sentry vercel slack],
