@@ -998,22 +998,22 @@ end
 # the template page. Slugs MUST exist in config/integrations.yml
 # (IntegrationCatalog), otherwise they render as a bare humanized slug.
 TEMPLATE_INTEGRATIONS = {
-  "ceo"                => %w[gmail google_calendar slack notion],
-  "marketing-lead"     => %w[gmail slack notion linkedin google_drive],
-  "compliance-officer" => %w[google_drive notion],
-  "proposal-writer"    => %w[google_drive google_sheets notion],
+  "ceo"                => %w[google-mail google-calendar slack notion],
+  "marketing-lead"     => %w[google-mail slack notion linkedin google-drive],
+  "compliance-officer" => %w[google-drive notion],
+  "proposal-writer"    => %w[google-drive google-sheet notion],
   "engineer"           => %w[github linear sentry vercel slack],
-  "product-manager"    => %w[linear notion slack gmail],
-  "designer"           => %w[notion google_drive slack],
-  "content-writer"     => %w[gmail notion google_drive linkedin],
-  "data-analyst"       => %w[google_sheets airtable slack],
-  "finance"            => %w[google_sheets gmail],
-  "sdr"                => %w[gmail linkedin google_calendar slack],
-  "support"            => %w[gmail slack linear],
-  "researcher"         => %w[google_drive notion],
-  "recruiter"          => %w[gmail linkedin google_calendar],
-  "seo-specialist"     => %w[google_sheets google_drive slack],
-  "meeting-manager"    => %w[google_calendar gmail slack]
+  "product-manager"    => %w[linear notion slack google-mail],
+  "designer"           => %w[notion google-drive slack],
+  "content-writer"     => %w[google-mail notion google-drive linkedin],
+  "data-analyst"       => %w[google-sheet airtable slack],
+  "finance"            => %w[google-sheet google-mail],
+  "sdr"                => %w[google-mail linkedin google-calendar slack],
+  "support"            => %w[google-mail slack linear],
+  "researcher"         => %w[google-drive notion],
+  "recruiter"          => %w[google-mail linkedin google-calendar],
+  "seo-specialist"     => %w[google-sheet google-drive slack],
+  "meeting-manager"    => %w[google-calendar google-mail slack]
 }.freeze
 TEMPLATE_INTEGRATIONS.each do |slug, services|
   AgentTemplate.find_by(slug: slug)&.update!(suggested_integrations: services)
