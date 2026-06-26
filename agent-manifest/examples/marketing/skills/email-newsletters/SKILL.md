@@ -1,98 +1,82 @@
 ---
 name: email-newsletters
-description: Use when sending newsletters, lifecycle/transactional emails, or one-off marketing emails. Covers sending through Gmail via the apps proxy (the raw RFC822 send) or a connected ESP, and the hard rule that actually SENDING to a list needs approval.
+description: Use when sending newsletters, lifecycle, or one-off marketing emails. Defaults to the agent's own outbox (its own address, no connection needed); use a connected ESP for true bulk lists. Actually SENDING to a list needs approval.
 ---
 
 # Email newsletters
 
-You send email by calling a connected app's REST API through the
-**`request`** tool (server `apps`):
+You already have your **own email address** (e.g. `nova@<workspace>.double.md`)
+and a built-in **outbox** — you do NOT need to connect Gmail or any app to send
+mail as yourself. That's the default path. Reach for an ESP/Gmail only when the
+job specifically calls for it (see "When to use what").
 
-```
-request({ provider, method, path, query?, body? })
-```
+## Default: send from your own outbox (no connection needed)
 
-Auth is injected for you — never ask for or echo a token. The result is
-`{ status, body }`.
+To send an email, write a JSON file to `workspace/outbox/` with a unique
+filename (e.g. `workspace/outbox/spring-sale-jane.json`). The platform picks it
+up and sends it from your address.
 
-There are two paths depending on what's connected:
-
-- **Gmail** (`provider: "google-mail"`) — best for low-volume sends from a
-  workspace address: a personal note, a small lifecycle email, a test. Use a
-  domain-verified workspace address, not a personal Gmail, for anything
-  list-shaped.
-- **A dedicated ESP** (Mailchimp, SendGrid, Customer.io, etc., reached via
-  the proxy with that app's slug) — for true bulk newsletters to a list.
-  These have proper list management, unsubscribe handling, and deliverability
-  that a raw Gmail send doesn't. Connect the ESP at /integrations and use its
-  REST API the same way.
-
-## Sending through Gmail (the raw RFC822 send)
-
-Gmail's send takes a full RFC 822 email **base64url-encoded** into `raw`.
-Build the message (headers + blank line + body), base64url-encode it, then:
-
-```
-request({ provider:"google-mail", method:"POST",
-  path:"/gmail/v1/users/me/messages/send",
-  body:{ raw:"<base64url of the RFC822 message>" } })
+```json
+{
+  "to": "subscriber@example.com",
+  "cc": [],
+  "bcc": [],
+  "subject": "Our biggest sale yet ☀️",
+  "body_text": "Plain-text version of the email",
+  "body_html": "<h1>Spring sale</h1><p>…</p>",
+  "attachments": ["reports/q4.pdf"]
+}
 ```
 
-The RFC 822 you encode looks like:
+- `body_html` is optional; it falls back to `body_text`.
+- `attachments` are paths relative to your workspace dir.
+- For a small, personalized list, write **one JSON file per recipient** so each
+  gets a clean `To:` line — don't put 200 people in one `to`.
+- This is the same mechanism as the `send-email` skill — newsletters are just
+  marketing-shaped emails on top of it.
 
-```
-To: subscriber@example.com
-Subject: Our biggest sale yet ☀️
-Content-Type: text/html; charset="UTF-8"
+## When to use what
 
-<h1>Spring sale</h1><p>…</p>
-```
+| Sending… | Use |
+|----------|-----|
+| Anything **as yourself** — a note, a lifecycle email, a small segment | **your outbox** (above) — default |
+| A **true bulk newsletter** to a managed list (unsubscribe, deliverability, reporting) | a connected **ESP** (Mailchimp / SendGrid / Customer.io) via the `request` proxy |
+| Sending **from a specific person's mailbox** (the owner's actual Gmail, reading their inbox) | the connected **Gmail** (`provider: "google-mail"`) |
 
-- **HTML email:** set `Content-Type: text/html; charset="UTF-8"`.
-- **base64url, not standard base64** (`-`/`_`, padding optional) — a plain
-  base64 `raw` will 400.
-- **One recipient per send** for personalized lifecycle mail; for a small
-  list, loop and send per subscriber so each gets a clean To: line. For a
-  real bulk blast, use an ESP instead — don't fan out hundreds of Gmail
-  sends.
-- Prefer create-draft + send-draft for review-before-send:
-  `POST /gmail/v1/users/me/drafts` · `body:{ message:{ raw } }`, then
-  `POST /gmail/v1/users/me/drafts/send` · `body:{ id:"<draftId>" }`.
+Don't fan out hundreds of individual outbox/Gmail sends for a real blast — that's
+what an ESP is for (list management + deliverability + unsubscribe handling).
 
-## Sending through an ESP (bulk newsletters)
+## Bulk newsletters through an ESP
 
-When a true newsletter ESP is connected, the typical shape is: confirm the
-target list, create the campaign as a **draft**, then a separate call
-**sends** it. For example, against a Mailchimp-style API
-(`provider: "mailchimp"`, base `https://<dc>.api.mailchimp.com`):
+When an ESP is connected, you call its REST API through the **`request`** tool
+(server `apps`): `request({ provider, method, path, query?, body? })`. Auth is
+injected — never ask for or echo a token; the result is `{ status, body }`. The
+pattern is always **draft first, send is a separate gated action**. Example
+against a Mailchimp-style API (`provider: "mailchimp"`):
 
 | Need | Method + path | Notes |
 |------|---------------|-------|
-| List audiences/lists | `GET /3.0/lists` | get the list id to target |
+| List audiences | `GET /3.0/lists` | get the list id to target |
 | Create a campaign | `POST /3.0/campaigns` | draft only — does NOT send |
 | Set the content | `PUT /3.0/campaigns/{id}/content` | subject/body |
 | **Send the campaign** | `POST /3.0/campaigns/{id}/actions/send` | THIS SENDS |
 | Campaign report | `GET /3.0/reports/{id}` | opens, clicks, bounces |
 
-Slugs/endpoints differ per ESP — check the connected app's docs — but the
-pattern is the same: **draft first, send is a separate gated action.**
+Slugs/endpoints differ per ESP — check the connected app's docs — but the shape
+holds: draft, preview, then a gated send.
 
 ## Rules
 
-1. **Drafting is free, sending is not.** Composing a message, creating a
-   draft campaign, and reading reports are routine. Actually sending to a
-   list (the ESP send action, or a Gmail send to subscribers) sends real
-   mail — draft it, show the subject + audience + body preview, and get
-   approval first (the `send_email` / publish gate).
-2. **Target the right list.** Always list the audiences/lists and confirm
-   the list id + subscriber count before drafting. Sending to the wrong list
-   is not undoable.
-3. **On brand.** Subject and body follow the brand voice in the
-   brand-and-safety policy, same as social copy.
-4. **Respect consent.** Only ever email people the brand has permission to
-   email. Never import a purchased or scraped list. Don't send marketing
-   blasts from a personal Gmail — use a domain-verified address or a real
-   ESP.
-5. **Report results.** After a send, pull the campaign report (or Gmail
-   thread) and include opens/clicks/bounces in the weekly report alongside
-   social and ad numbers.
+1. **Drafting is free, sending is not.** Composing, writing the outbox JSON, or
+   creating a draft campaign is routine. Actually sending to a list (writing the
+   outbox file that goes out, or the ESP send action) sends real mail — show the
+   subject + audience + body preview and get approval first (the send/publish
+   gate).
+2. **Target the right list.** Confirm the list id + subscriber count before
+   drafting. Sending to the wrong list isn't undoable.
+3. **On brand.** Subject and body follow the brand voice in the brand-and-safety
+   policy, same as social copy.
+4. **Respect consent.** Only email people the brand has permission to email.
+   Never import a purchased or scraped list.
+5. **Report results.** After a send, pull the ESP campaign report (opens/clicks/
+   bounces) and include it in the weekly report alongside social and ad numbers.

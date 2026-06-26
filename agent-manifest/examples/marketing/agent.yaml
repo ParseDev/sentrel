@@ -142,10 +142,11 @@ integrations:
 secrets:
   - name: HIGGSFIELD_API_KEY
     why: Higgsfield creative generation (text-to-image FLUX + image-to-video).
-# Email marketing has no required secret: Nova sends low-volume mail through
-# Gmail (connect `google-mail` at /integrations) and bulk newsletters through
-# whatever ESP is connected there (Mailchimp/SendGrid/etc.). See the
-# email-newsletters skill. Without an email app connected, that skill stays idle.
+# Email marketing needs no connection: Nova sends from its own built-in outbox
+# address (the native send-email mechanism). Connect an ESP (Mailchimp/SendGrid)
+# at /integrations only for true bulk newsletters with list management +
+# unsubscribe, or Gmail (`google-mail`) to send from a specific mailbox. See the
+# email-newsletters skill.
 
 permissions:
   generate_creative: auto     # generating assets is cheap + reversible

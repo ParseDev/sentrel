@@ -22,9 +22,9 @@ with human approval before anything posts publicly or spends money.
   monthly budget ceiling and hard approvals on anything that spends. This is
   the one app that does NOT go through the apps proxy.
 
-- **Email** via Gmail (`provider: google-mail`, the raw RFC822 send) for
-  low-volume mail, or a connected ESP (Mailchimp/SendGrid/etc.) via the apps
-  tool for bulk newsletters.
+- **Email** from Nova's **own outbox address** (built-in — no app to connect)
+  for normal sends, or a connected ESP (Mailchimp/SendGrid/etc.) via the apps
+  tool for true bulk newsletters with list management + unsubscribe.
 
 The five skills (`creative-generation`, `social-publishing`, `meta-ads`,
 `email-newsletters`, `ugc-ads`) are **knowledge** — they teach the agent
