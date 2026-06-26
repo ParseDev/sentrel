@@ -41,6 +41,19 @@ class Api::IntegrationsController < ActionController::API
         docs_url: entry[:docs_url]
       }
     end
+
+    # Dedicated MCP servers (Meta Ads, etc.) are connected apps too, but they
+    # live in a separate table. Without surfacing them here, an agent that's
+    # ALREADY using the Meta tools still gets "connect Facebook" proposals,
+    # because the connected-list it consults didn't know Meta was wired. Add
+    # each connected MCP server (+ aliases) so propose_connection + the secrets
+    # guard treat them as connected.
+    McpServer.where(organization_id: agent.organization_id).select(&:connected?).each do |s|
+      mcp_provider_aliases(s).each do |p|
+        items << { provider: p, label: s.name, api_base_url: nil, connect_mode: "mcp", tool: "mcp", docs_url: nil }
+      end
+    end
+
     render json: { integrations: items }
   rescue ActiveRecord::RecordNotFound
     render json: { integrations: [], error: "agent not found" }, status: :ok
@@ -96,6 +109,16 @@ class Api::IntegrationsController < ActionController::API
   end
 
   private
+
+  # A connected MCP server stands in for the provider slug(s) an agent might
+  # otherwise try to "connect". Meta's MCP covers the whole Meta family, so a
+  # connected Meta server suppresses connect-prompts for facebook/instagram/etc.
+  def mcp_provider_aliases(server)
+    slugs = [server.slug].compact
+    blob = [server.slug, server.name, server.url].compact.join(" ").downcase
+    slugs |= %w[meta_ads facebook instagram meta] if blob.match?(/meta|facebook|instagram/)
+    slugs.uniq
+  end
 
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
