@@ -1,8 +1,11 @@
 # agentmanifest
 
-The Agent Bundle spec (`agent-bundle/v1`) — the Dockerfile of AI agents.
-A bundle is a directory: an `agent.yaml` manifest plus the persona files,
-skills, and knowledge it references.
+The open **Agent Bundle** spec (`agent-bundle/v1`) behind [Sentrel](https://sentrel.ai) —
+the Dockerfile of AI agents. A bundle is a directory: an `agent.yaml` manifest
+plus the persona files, skills, and knowledge it references.
+
+Ready-to-deploy example agents live in
+[SentrelAI/agent-templates](https://github.com/SentrelAI/agent-templates).
 
 ## Generate a bundle
 
