@@ -98,5 +98,10 @@ browser (SSH sessions, CI).
 
 ## Examples
 
-- [`examples/sdr`](examples/sdr) — outbound SDR with Apollo, Instantly, and MCP servers
-- [`examples/scheduler`](examples/scheduler) — executive scheduler with cron schedules and an `any_of` calendar group
+Ready-to-deploy example bundles live in their own repo,
+[SentrelAI/agent-templates](https://github.com/SentrelAI/agent-templates):
+
+- **marketing** — full-stack growth operator (Meta Ads, creative, measurement, experimentation)
+- **sdr** — outbound SDR with Apollo, Instantly, and MCP servers
+- **scheduler** — executive scheduler with cron schedules and an `any_of` calendar group
+- **bugfixer** — triages and fixes issues from a tracker
