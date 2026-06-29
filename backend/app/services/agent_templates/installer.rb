@@ -121,7 +121,7 @@ module AgentTemplates
     # Install every skill the definition references. Three entry shapes:
     #
     #   - source: "platform" → look up the seeded built-in by slug; link
-    #     to it. If missing on this instance (e.g. older Alchemy build),
+    #     to it. If missing on this instance (e.g. older Sentrel build),
     #     log + skip; no embed-fallback because platform skills are
     #     intentionally not bundled in the definition.
     #

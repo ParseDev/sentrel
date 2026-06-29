@@ -118,7 +118,7 @@ module AgentTemplates
 
     # Skill entries are emitted in one of two shapes depending on origin:
     #
-    #   - PLATFORM skill (source: "built_in", seeded into every Alchemy
+    #   - PLATFORM skill (source: "built_in", seeded into every Sentrel
     #     install with organization_id IS NULL) → thin REFERENCE: just slug
     #     + metadata. No file bytes, no SKILL.md. Every importer instance
     #     already has the skill by the same slug, so embedding it would

@@ -220,7 +220,7 @@ export function buildSystemPrompt(
       `\n` +
       `## Tool signature\n` +
       `\`request_approval({ summary, payload_type, payload, options?, allow_amendment?, preview_markdown?, preview_attachments? })\`\n` +
-      `- summary: one-line user-facing description ("Publish LinkedIn post about Alchemy", "Send 12 cold emails", "Spend $200 on LinkedIn ads", "Delete duplicate row from prospects sheet")\n` +
+      `- summary: one-line user-facing description ("Publish LinkedIn post about Sentrel", "Send 12 cold emails", "Spend $200 on LinkedIn ads", "Delete duplicate row from prospects sheet")\n` +
       `- payload_type: one of linkedin_post / tweet / email_draft / cold_email_bulk / spend_request / external_share / destructive_action / generic. Pick the closest fit; use 'generic' for anything else (refunds, calendar invites, slack DMs, code changes, scheduling tweets, deleting rows, etc.) and ALWAYS pair with preview_markdown.\n` +
       `- payload: structured data the action will consume. linkedin_post → { text }; email_draft → { to, subject, body }; spend_request → { amount_usd, vendor, purpose }; tweet → { text, scheduled_for? }; destructive_action → { resource, what_will_change }; generic → anything you want.\n` +
       `- options: defaults to Approve/Reject. Override for richer choices, e.g. for a tweet: [{label:"Post now",value:"post_now"},{label:"Schedule 9am",value:"schedule_9am"},{label:"Cancel",value:"cancel"}].\n` +
@@ -230,8 +230,8 @@ export function buildSystemPrompt(
       `\n` +
       `## Few-shot example\n` +
       `User: "Schedule a tweet for 9am tomorrow about our launch."\n` +
-      `Wrong: "Here's a draft: 🚀 We just launched Alchemy! Reply 'ship it' or tell me changes."\n` +
-      `Right: call \`request_approval({ summary: "Schedule tweet for 9am tomorrow", payload_type: "tweet", payload: { text: "🚀 We just launched Alchemy!", scheduled_for: "2026-04-28T09:00:00" }, options: [{label:"Post now",value:"post_now"},{label:"Schedule 9am",value:"schedule"},{label:"Cancel",value:"cancel"}], allow_amendment: true })\`. Then wait for the tool result.\n` +
+      `Wrong: "Here's a draft: 🚀 We just launched Sentrel! Reply 'ship it' or tell me changes."\n` +
+      `Right: call \`request_approval({ summary: "Schedule tweet for 9am tomorrow", payload_type: "tweet", payload: { text: "🚀 We just launched Sentrel!", scheduled_for: "2026-04-28T09:00:00" }, options: [{label:"Post now",value:"post_now"},{label:"Schedule 9am",value:"schedule"},{label:"Cancel",value:"cancel"}], allow_amendment: true })\`. Then wait for the tool result.\n` +
       `\n` +
       `When the tool returns, the result text contains "User decision: <value>" (and optionally "amendment: <text>"). Act on the decision: execute, re-draft with the amendment, or stop.`
     );
