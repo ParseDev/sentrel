@@ -6,8 +6,14 @@ of those is **infra-coupled**, so renaming them is a *coordinated migration*,
 not a find-and-replace. Done wrong, deploys + live connections break. This doc
 is the ordered playbook.
 
-> ✅ Already done in code (safe, shipped): cosmetic example/comment strings
-> renamed to Sentrel. Nothing below is auto-run — execute it deliberately.
+> **Execution status (updated):**
+> - ✅ Cosmetic example/comment strings renamed to Sentrel (shipped).
+> - ✅ **Phase 5 (billing-proxy)** — Sentrel↔OCBrand sanitization pairs added & shipped (`079ced2`).
+> - ✅ **Local working folder** renamed `alchemy-ai/alchemy` → `alchemy-ai/sentrel`.
+> - ⏳ **Phase 0 (repo transfer)** — reserved for you to run (irreversible org transfer; classifier-blocked for the assistant). Command below.
+> - ⏳ **Phases 1–4** — production-coupled (image republish, Rails module + cable cutover, DB rename, Fly apps). NOT auto-run — they need your trigger + a maintenance window. Commands below.
+>
+> Everything still labelled ⏳ below is **deliberately not auto-run** — execute it yourself.
 
 ## The infra-coupled inventory
 
