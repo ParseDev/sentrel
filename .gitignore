@@ -39,6 +39,11 @@
 /.kamal/secrets.*
 !/.kamal/secrets.example
 
+# Dumped prod secrets for the org migration (scripts/dump-ec2-creds.sh) — raw
+# credentials, NEVER commit. Shred these once secrets are re-added to the new org.
+/secrets.env
+/pem/
+
 # WireGuard configs (contain private keys) + bridge systemd units
 /alchemy-bridge.conf
 /*-wg.conf
