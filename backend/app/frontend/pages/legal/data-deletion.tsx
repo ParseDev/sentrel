@@ -150,8 +150,9 @@ export default function DataDeletion({ lastUpdated }: Props) {
             </h2>
             <p>
               For any questions about deleting your data, contact{" "}
-              <a href="mailto:privacy@sentrel.ai">privacy@sentrel.ai</a> or Sentrel at
-              [Company address].
+              <a href="mailto:privacy@sentrel.ai">privacy@sentrel.ai</a> or EE Dojo,
+              Inc. (d/b/a Sentrel), 10000 Washington Blvd, Suite 607, Culver City,
+              CA 90232.
             </p>
           </section>
         </div>

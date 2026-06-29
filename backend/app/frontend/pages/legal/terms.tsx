@@ -30,8 +30,9 @@ export default function TermsOfService({ lastUpdated }: Props) {
             </h2>
             <p>
               These Terms of Service ("Terms") govern your access to and use of
-              sentrel.ai and the Sentrel platform (the "Service"), provided by Sentrel
-              ("Sentrel", "we", "us", or "our"). By creating an account or using the
+              sentrel.ai and the Sentrel platform (the "Service"), provided by
+              EE Dojo, Inc. (d/b/a Sentrel) ("Sentrel", "we", "us", or "our"). By
+              creating an account or using the
               Service, you agree to these Terms. If you are using the Service on behalf
               of an organization, you represent that you have authority to bind that
               organization to these Terms.
@@ -221,9 +222,10 @@ export default function TermsOfService({ lastUpdated }: Props) {
               12. Governing law
             </h2>
             <p>
-              These Terms are governed by the laws of [jurisdiction], without regard to
-              its conflict-of-laws principles. Any disputes arising under these Terms
-              will be resolved in the courts located in [jurisdiction].
+              These Terms are governed by the laws of the State of California,
+              United States, without regard to its conflict-of-laws principles. Any
+              disputes arising under these Terms will be resolved in the state or
+              federal courts located in Los Angeles County, California.
             </p>
           </section>
 
@@ -233,8 +235,9 @@ export default function TermsOfService({ lastUpdated }: Props) {
             </h2>
             <p>
               Questions about these Terms can be sent to{" "}
-              <a href="mailto:legal@sentrel.ai">legal@sentrel.ai</a> or to Sentrel at
-              [Company address].
+              <a href="mailto:legal@sentrel.ai">legal@sentrel.ai</a> or to EE Dojo,
+              Inc. (d/b/a Sentrel), 10000 Washington Blvd, Suite 607, Culver City,
+              CA 90232.
             </p>
           </section>
         </div>

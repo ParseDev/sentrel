@@ -26,9 +26,10 @@ export default function PrivacyPolicy({ lastUpdated }: Props) {
         <div className="space-y-12 text-[15px] leading-relaxed text-muted-foreground [&_a]:text-[var(--color-indigo)] [&_a]:underline-offset-4 hover:[&_a]:underline">
           <section className="space-y-4">
             <p>
-              This Privacy Policy explains how Sentrel ("Sentrel", "we", "us", or
-              "our") collects, uses, shares, and protects information when you use
-              sentrel.ai and the Sentrel platform (the "Service"). Sentrel is an
+              This Privacy Policy explains how EE Dojo, Inc. (d/b/a Sentrel)
+              ("Sentrel", "we", "us", or "our") collects, uses, shares, and
+              protects information when you use sentrel.ai and the Sentrel
+              platform (the "Service"). Sentrel is an
               AI-employee platform: autonomous AI agents that act on your behalf
               across the apps and accounts you choose to connect.
             </p>
@@ -46,7 +47,8 @@ export default function PrivacyPolicy({ lastUpdated }: Props) {
               Sentrel provides a platform where customers configure AI agents that
               perform work autonomously across connected third-party services, with
               human approval required for sensitive actions. The data controller for
-              the purposes of this policy is Sentrel, located at [Company address].
+              the purposes of this policy is EE Dojo, Inc. (d/b/a Sentrel), located
+              at 10000 Washington Blvd, Suite 607, Culver City, CA 90232.
             </p>
             <p>
               If you have any questions about this policy or your data, contact us at{" "}
@@ -324,8 +326,9 @@ export default function PrivacyPolicy({ lastUpdated }: Props) {
             </h2>
             <p>
               Questions or requests about your privacy can be sent to{" "}
-              <a href="mailto:privacy@sentrel.ai">privacy@sentrel.ai</a> or to Sentrel
-              at [Company address].
+              <a href="mailto:privacy@sentrel.ai">privacy@sentrel.ai</a> or to EE Dojo,
+              Inc. (d/b/a Sentrel), 10000 Washington Blvd, Suite 607, Culver City,
+              CA 90232.
             </p>
           </section>
         </div>
