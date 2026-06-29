@@ -69,6 +69,7 @@ skills:
   - ./skills/meta-ads
   - ./skills/email-newsletters
   - ./skills/ugc-ads
+  - ./skills/measurement-and-attribution
 
 knowledge:
   - path: ./knowledge/brand-and-safety-policy.md
