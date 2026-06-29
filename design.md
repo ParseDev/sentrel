@@ -397,8 +397,8 @@ files it references — "the Dockerfile of AI agents."
   validation and `ask_at: deploy|onboarding`). The platform always provides
   `user_name`, `company_name`, `agent_name`, `company_domain`.
 
-Example bundles live under `agent-manifest/examples/` (sdr, marketing,
-scheduler, bugfixer).
+Example bundles live in the [SentrelAI/agent-templates](https://github.com/SentrelAI/agent-templates)
+repo (marketing, sdr, scheduler, bugfixer).
 
 ---
 
