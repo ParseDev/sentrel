@@ -22,6 +22,20 @@ module Nango
       "tiktok-accounts"     => { review: "gated" },
     }.freeze
 
+    # Curated directory apps that aren't Nango provider templates — dedicated
+    # MCP servers we host. Surfaced in the main grid like any other app, but
+    # Connect routes to the MCP OAuth flow (tool: mcp + mcp_url), NOT Nango.
+    CURATED = [
+      {
+        slug: "meta_ads", label: "Meta Ads", category: "Marketing",
+        categories: %w[marketing popular],
+        logo: "/integration-logos/meta_ads.svg", auth_mode: "OAUTH2",
+        api_base_url: "https://graph.facebook.com",
+        docs_url: "https://developers.facebook.com/docs/marketing-apis",
+        tool: "mcp", review: "gated", mcp_url: "https://sentrel-meta-mcp.fly.dev/mcp",
+      },
+    ].freeze
+
     # Nango category slug -> display label for the sidebar.
     CATEGORY_LABELS = {
       "accounting" => "Accounting", "analytics" => "Analytics", "ats" => "Recruiting",
@@ -45,14 +59,30 @@ module Nango
 
       rows = providers.filter_map { |p| build_row(p) }
       return { synced: 0 } if rows.empty?
+      rows += CURATED.map { |c| build_curated_row(c) }
 
       CatalogApp.upsert_all(
         rows,
         unique_by: :slug,
         update_only: %i[label display_name category categories logo auth_mode
-                        api_base_url docs_url scopes modes tool review featured],
+                        api_base_url docs_url scopes modes tool review featured mcp_url],
       )
       { synced: rows.size }
+    end
+
+    # A curated MCP app (Meta Ads) — not from /providers; carries the MCP URL.
+    def build_curated_row(c)
+      now = Time.current
+      {
+        slug: c[:slug], label: c[:label], display_name: c[:label],
+        category: c[:category], categories: Array(c[:categories]),
+        logo: c[:logo], auth_mode: c[:auth_mode], api_base_url: c[:api_base_url],
+        docs_url: c[:docs_url], scopes: [], modes: [],
+        tool: c[:tool] || "mcp", review: c[:review] || "none",
+        featured: Array(c[:categories]).include?("popular"),
+        published: true, position: 0, mcp_url: c[:mcp_url],
+        created_at: now, updated_at: now,
+      }
     end
 
     def build_row(p)
@@ -78,6 +108,7 @@ module Nango
         featured: cats.include?("popular"),
         published: true,
         position: 0,
+        mcp_url: nil, # Nango provider apps connect via the proxy, not an MCP
         created_at: now,
         updated_at: now,
       }

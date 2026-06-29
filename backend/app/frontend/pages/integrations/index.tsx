@@ -27,6 +27,8 @@ interface CatalogEntry {
   auth_type: string
   modes: ConnectMode[]
   review: "none" | "google" | "gated"
+  tool: "proxy" | "mcp"
+  mcp_url: string | null
 }
 
 interface OrgIntegrationConfig {
@@ -63,6 +65,7 @@ interface ServiceCard {
   description: string | null
   available: boolean
   logo: string | null
+  tool: "proxy" | "mcp"
 }
 
 interface Props {
@@ -85,7 +88,7 @@ export default function IntegrationsIndex({
   const requestedSet = new Set(requested_services)
   // The static catalog (Nango directory) is always present now.
   const services: ServiceCard[] = catalog.map((c) => ({
-    slug: c.slug, label: c.label, category: c.category, description: c.description, available: c.available, logo: c.logo,
+    slug: c.slug, label: c.label, category: c.category, description: c.description, available: c.available, logo: c.logo, tool: c.tool,
   }))
   const catalogBySlug = new Map(catalog.map((c) => [c.slug, c]))
   const orgConfigBySlug = new Map(org_integration_configs.map((c) => [c.provider, c]))
@@ -105,10 +108,29 @@ export default function IntegrationsIndex({
   function connect(serviceName: string, _scope: "org" | "user" = "org") {
     const entry = catalogBySlug.get(serviceName)
     if (!entry) return
+    // tool:mcp apps (Meta Ads) connect via the dedicated MCP's OAuth, not Nango.
+    if (entry.tool === "mcp") { connectMcp(entry); return }
     setConnectApp({
       slug: entry.slug, label: entry.label, category: entry.category, description: entry.description,
       logo: entry.logo, auth_type: entry.auth_type, modes: entry.modes, review: entry.review,
     })
+  }
+
+  // Direct MCP connect: reuse an existing server for this slug (just re-auth),
+  // otherwise create one from the catalog's mcp_url, then full-page OAuth.
+  async function connectMcp(entry: CatalogEntry) {
+    const existing = mcp_servers.find((s) => s.slug === entry.slug)
+    if (existing) { window.location.href = `/mcp_servers/${existing.id}/connect`; return }
+    if (!entry.mcp_url) return
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    const res = await fetch("/mcp_servers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify({ name: entry.label, slug: entry.slug, url: entry.mcp_url }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok && data.id) window.location.href = `/mcp_servers/${data.id}/connect`
+    else alert(data.error || "Couldn't start the connection.")
   }
 
   function disconnect(id: number) {
@@ -341,11 +363,16 @@ export default function IntegrationsIndex({
             <>
               <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                 {pagedSlice.map((service) => {
-                  const connected = service.available && integrations.find((i) =>
+                  // tool:mcp apps (Meta) are "connected" via an McpServer, not
+                  // an Integration row — check both.
+                  const mcpServer = service.tool === "mcp"
+                    ? mcp_servers.find((s) => s.slug === service.slug && s.connected)
+                    : undefined
+                  const connected = mcpServer || (service.available && integrations.find((i) =>
                     i.service_name === service.slug &&
                     i.status === "connected" &&
                     (scopeView === "org" ? i.scope !== "user" : i.is_mine)
-                  )
+                  ))
                   const isRequested = !service.available &&
                     (requestedSet.has(service.slug) || optimisticRequested.has(service.slug))
 
@@ -405,7 +432,7 @@ export default function IntegrationsIndex({
                           variant="outline"
                           size="sm"
                           disabled={disconnectingId === connected.id}
-                          onClick={() => setPendingDisconnect({ id: connected.id, label: service.label })}
+                          onClick={() => mcpServer ? disconnectMcp(mcpServer.id) : setPendingDisconnect({ id: connected.id, label: service.label })}
                           className="h-7 shrink-0 gap-1.5 border-destructive/20 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                           aria-label={`Disconnect ${service.label}`}
                         >

@@ -266,6 +266,8 @@ meta_ads:
   modes: [byo_token, managed]
   tool: mcp
   review: gated
+  # Connect routes to the dedicated MCP server's OAuth (not Nango).
+  mcp_url: https://sentrel-meta-mcp.fly.dev/mcp
 
 linkedin:
   logo: /integration-logos/linkedin.svg

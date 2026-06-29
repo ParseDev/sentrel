@@ -135,7 +135,8 @@ class IntegrationCatalog
         scopes: attrs["scopes"] || [],
         modes: attrs["modes"] || %w[managed],
         tool: attrs["tool"] || "proxy",
-        review: attrs["review"] || "none"
+        review: attrs["review"] || "none",
+        mcp_url: attrs["mcp_url"]
       }
     end
   end
