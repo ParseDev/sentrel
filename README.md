@@ -14,7 +14,7 @@
 Most "AI agents" today are a single chatbot dressed in different system prompts. Sentrel is the opposite: every agent is a **real teammate** with its own identity, its own runtime, its own logins to Slack / Gmail / your CRM, and its own dedicated channel where humans talk to it.
 
 - **One process per agent.** Each agent runs in its own Fly Machine. No shared memory, no shared bot identity. Sarah's context never leaks into Casper's.
-- **Real OAuth, not scrapers.** Native integrations with 250+ tools through Composio + dedicated channel apps (Slack, Gmail, Telegram, WhatsApp).
+- **Real OAuth, not scrapers.** Native integrations with 250+ tools through self-hosted Nango + dedicated channel apps (Slack, Gmail, Telegram, WhatsApp).
 - **Policy-gated.** Per-action approval policies — auto-send routine email, draft refunds, never delete data. Set once at the team level.
 - **Model-agnostic.** Claude, GPT, Gemini, OpenRouter. Mix per-agent.
 - **Replayable.** Every tool call, every decision, every $ spent — searchable timeline with full traces.
@@ -113,7 +113,7 @@ Sentrel uses the [Claude Agent SDK](https://docs.anthropic.com/en/api/agent-sdk)
 - Memory consolidation — Haiku-summarized `MEMORY.md` that survives restarts
 - Task system — `create_task`, `assign_to_role`, multi-agent delegation, report-back routing
 - Scheduling — `scheduled_work` table + BullMQ + work-scheduler with `next_run_at` precomputed for Rails wake-sweep
-- Integration search — RAG over the Composio catalog so the agent finds the right tool without us pre-loading 250+ servers
+- Integration skills + a generic `nango_request` proxy — connecting an app auto-installs its `SKILL.md`, so the agent gets just-in-time endpoint docs without pre-loading 250+ servers
 - `propose_connection` — agents can ask the user to connect a service mid-conversation with an inline Connect card
 
 **Control plane (Rails)**
@@ -198,7 +198,7 @@ Manual triggers: both workflows have `workflow_dispatch` in the Actions tab.
 | Agent inner loop | Claude Agent SDK on Bun | Fast cold-start TypeScript runtime; the SDK handles model invocation + tool dispatch — everything *around* the loop (channels, policy, scheduling, multi-agent, persistence) is ours |
 | Agent hosting | Fly Machines (per-agent VM) | Auto-start on inbound, /data volume for memory, 25+ regions |
 | Queues | BullMQ on Redis | Delayed jobs, cron, retries for agent inbox |
-| Integrations | Composio + custom OAuth | 250+ apps via Composio, native Slack channel app, SES email |
+| Integrations | Self-hosted Nango + custom OAuth | 250+ apps via Nango (managed / BYO-OAuth / paste-token), native Slack channel app, SES email |
 | Models | Anthropic / OpenAI / OpenRouter | Per-agent model selection, BYO API keys |
 | Deploy | kamal (Rails) + Fly Machines API (engine) | Single EC2 for the control plane, fleet of micro-VMs for agents |
 | Auth | Devise + per-agent OAuth credentials | Org-scoped users + per-agent Slack / Gmail / Telegram tokens |
@@ -215,7 +215,7 @@ Every agent has the same baseline tools (web search, scheduling, RAG over your d
 knowledge_base   Lets the agent read + cite your uploaded docs
 scheduling       Set reminders, schedule recurring work
 tasks            Create tasks, delegate to other agents, comment to log progress
-integrations     Composio's 250+ apps + native channel integrations
+integrations     Nango's 250+ apps + native channel integrations
 recall           Search prior conversations and audit logs
 send_media       Voice notes, images, file attachments on channel replies
 ```
@@ -349,7 +349,7 @@ Common gotchas:
 What's working today:
 - ✅ Agent creation flow (scratch + template library)
 - ✅ Multi-channel: email (SES), Slack (channel-per-agent), Telegram, web chat
-- ✅ Composio + 250+ integrations
+- ✅ Self-hosted Nango + 250+ integrations
 - ✅ Policy engine + per-action approvals
 - ✅ Knowledge base (RAG over uploaded docs + URLs)
 - ✅ Per-agent encrypted credentials with engine `secrets.get` MCP tool
@@ -375,7 +375,7 @@ What's next:
 |---|---|
 | [`docs/deploy.md`](docs/deploy.md) | Production deploy walkthrough |
 | [`docs/per-agent-hosting.md`](docs/per-agent-hosting.md) | How each agent gets its own Fly Machine |
-| [`docs/integrations.md`](docs/integrations.md) | Composio + native OAuth integrations |
+| [`docs/integrations.md`](docs/integrations.md) | Nango + native OAuth integrations |
 | [`docs/slack-integration-plan.md`](docs/slack-integration-plan.md) | Slack channel-per-agent design |
 | [`docs/monorepo-merge.md`](docs/monorepo-merge.md) | How the two repos became one |
 | [`docs/testing-checklist.md`](docs/testing-checklist.md) | Pre-release smoke tests |
