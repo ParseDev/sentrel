@@ -101,7 +101,10 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
               <Link href={dashboardPath()} prefetch>
-                <AppLogo />
+                {/* Full wordmark when expanded; compact "S" mark when the rail
+                    is collapsed to icons. */}
+                <AppLogo className="group-data-[collapsible=icon]:hidden" />
+                <AppLogo variant="mark" className="hidden group-data-[collapsible=icon]:block" />
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
