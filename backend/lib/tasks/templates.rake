@@ -37,4 +37,32 @@ namespace :templates do
     end
     puts "[templates:import_bundles] imported #{ok}/#{bundles.size}"
   end
+
+  # Repo-driven sync: fetch the PUBLIC agent-templates repo tarball and import
+  # every bundle. Run on a schedule (sidekiq-cron) or trigger from a GitHub
+  # Action on push to the templates repo (repository_dispatch → this task).
+  #
+  #   rails templates:sync
+  #   BUNDLES_REPO=SentrelAI/agent-templates BUNDLES_REF=main rails templates:sync
+  desc "Sync system templates from the public agent-templates GitHub repo"
+  task sync: :environment do
+    require "open-uri"
+    require "tmpdir"
+    repo = ENV.fetch("BUNDLES_REPO", "SentrelAI/agent-templates")
+    ref  = ENV.fetch("BUNDLES_REF", "main")
+    url  = "https://codeload.github.com/#{repo}/tar.gz/refs/heads/#{ref}"
+    puts "[templates:sync] fetching #{url}"
+
+    Dir.mktmpdir do |tmp|
+      tarball = File.join(tmp, "bundles.tar.gz")
+      URI.parse(url).open { |io| File.binwrite(tarball, io.read) }
+      abort "[templates:sync] extract failed" unless system("tar", "xzf", tarball, "-C", tmp)
+      # GitHub tarballs extract to <repo>-<ref>/…
+      root = Dir.children(tmp)
+                .map { |c| File.join(tmp, c) }
+                .find { |p| File.directory?(p) && File.basename(p).start_with?(File.basename(repo)) }
+      abort "[templates:sync] extracted repo dir not found" unless root
+      Rake::Task["templates:import_bundles"].invoke(root, repo, ref)
+    end
+  end
 end
